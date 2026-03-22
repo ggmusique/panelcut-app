@@ -8,13 +8,23 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // ── Auth ──────────────────────────────────────────────────────────────────
 
 export async function signInWithEmail(email) {
+  // OTP 6 chiffres — pas de magic link, reste dans l'app
   const { error } = await supabase.auth.signInWithOtp({
     email,
     options: {
-      emailRedirectTo: window.location.origin,
+      shouldCreateUser: true,
     }
   });
   return { error };
+}
+
+export async function verifyOtp(email, token) {
+  const { data, error } = await supabase.auth.verifyOtp({
+    email,
+    token,
+    type: 'email',
+  });
+  return { data, error };
 }
 
 export async function signOut() {
