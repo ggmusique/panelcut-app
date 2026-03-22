@@ -8,11 +8,12 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // ── Auth ──────────────────────────────────────────────────────────────────
 
 export async function signInWithEmail(email) {
-  // OTP 6 chiffres — pas de magic link, reste dans l'app
+  // Force OTP 6 chiffres — désactive le magic link
   const { error } = await supabase.auth.signInWithOtp({
     email,
     options: {
       shouldCreateUser: true,
+      emailRedirectTo: null, // null = désactive le magic link, envoie OTP uniquement
     }
   });
   return { error };
