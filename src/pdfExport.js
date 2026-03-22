@@ -91,21 +91,21 @@ export function exportPDF(results, project) {
   .leg-item{display:flex;align-items:center;gap:4px;font-size:9px;color:#555}
   .leg-dot{width:10px;height:10px;border-radius:2px;flex-shrink:0}
 
-  .panel-section{margin-bottom:18px;page-break-inside:avoid}
-  .panel-title{font-size:11px;font-weight:700;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;background:#f9f9f9;padding:5px 8px;border-radius:4px}
-  .panel-title .util{font-weight:normal;color:#888;font-size:10px}
-
-  .panel-layout{display:flex;gap:14px;align-items:flex-start}
-  .panel-svg-wrap{flex-shrink:0}
-  .panel-cuts{flex:1;min-width:0}
-  .panel-cuts h4{font-size:9px;font-weight:700;margin-bottom:5px;text-transform:uppercase;letter-spacing:.05em;color:#888}
-  .cut-band{font-size:10px;font-weight:700;color:#e74c3c;margin-top:5px;margin-bottom:1px}
-  .cut-piece{font-size:9px;color:#333;padding-left:8px;line-height:1.7}
-  .cut-piece .furn-tag{background:#f59e0b;color:#0a0f1a;font-size:8px;font-weight:700;padding:1px 4px;border-radius:3px;margin-right:3px}
+  /* ── Grille 2 colonnes × 3 rangées ── */
+  .panels-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:0}
+  .panel-section{page-break-inside:avoid;border:1px solid #e5e5e5;border-radius:6px;overflow:hidden}
+  .panel-title{font-size:10px;font-weight:700;display:flex;justify-content:space-between;align-items:center;background:#f9f9f9;padding:4px 8px;border-bottom:1px solid #e5e5e5}
+  .panel-title .util{font-weight:normal;color:#888;font-size:9px}
+  .panel-body{padding:6px}
+  .panel-svg-wrap{margin-bottom:5px}
+  .panel-cuts h4{font-size:8px;font-weight:700;margin-bottom:3px;text-transform:uppercase;letter-spacing:.05em;color:#888}
+  .cut-band{font-size:9px;font-weight:700;color:#e74c3c;margin-top:4px;margin-bottom:1px}
+  .cut-piece{font-size:8px;color:#333;padding-left:6px;line-height:1.6}
+  .cut-piece .furn-tag{background:#f59e0b;color:#0a0f1a;font-size:7px;font-weight:700;padding:1px 3px;border-radius:2px;margin-right:2px}
   .cut-piece .redeligne{color:#f59e0b;font-weight:600}
-  .cut-piece .rot{color:#8b5cf6;font-size:8px}
-
-  .footer{margin-top:16px;padding-top:8px;border-top:1px solid #e5e5e5;font-size:8px;color:#bbb;display:flex;justify-content:space-between}
+  .cut-piece .rot{color:#8b5cf6;font-size:7px}
+  .page-break{page-break-before:always;margin:0;padding:0;height:0}
+  .footer{margin-top:12px;padding-top:8px;border-top:1px solid #e5e5e5;font-size:8px;color:#bbb;display:flex;justify-content:space-between}
 </style>
 </head>
 <body>
@@ -165,78 +165,93 @@ export function exportPDF(results, project) {
 
 <!-- ═══════════════ PAGES DÉCOUPE ═══════════════ -->
 
-${panels.map((panel, pi) => {
-  const SVG_W = 190;
-  const SVG_H = Math.round(SVG_W * panelH / panelW);
-  const sx = SVG_W / (panelW * 10);
-  const sy = SVG_H / (panelH * 10);
-  const bandCuts = panel.cuts.filter(c => c.type === 'bande');
+${(() => {
+  // Groupe les panneaux par page de 6 (2 col × 3 rangées)
+  const PANELS_PER_PAGE = 6;
+  const pages = [];
+  for (let i = 0; i < panels.length; i += PANELS_PER_PAGE) {
+    pages.push(panels.slice(i, i + PANELS_PER_PAGE));
+  }
 
-  const svgPieces = panel.placed.map(p => {
-    const c = colorMap[p.name] || '#ccc';
-    const px = (p.x || 0) * sx;
-    const py = (p.bandY || 0) * sy;
-    const pw = Math.max(p.l * sx - 0.5, 1);
-    const ph = Math.max(p.h * sy - 0.5, 1);
-    const label = pw > 22 && ph > 9
-      ? `<text x="${(px+pw/2).toFixed(1)}" y="${(py+ph/2+3).toFixed(1)}" text-anchor="middle" font-size="5.5" font-weight="700" fill="#000" font-family="Arial">${(p.l/10).toFixed(1)}×${(p.h/10).toFixed(1)}</text>`
-      : '';
-    return `<rect x="${px.toFixed(1)}" y="${py.toFixed(1)}" width="${pw.toFixed(1)}" height="${ph.toFixed(1)}" fill="${c}" fill-opacity="0.35" stroke="${c}" stroke-width="0.8" rx="1"/>${label}`;
-  }).join('');
-
-  const svgCuts = bandCuts.map(c => {
-    const cy = c.pos * sy;
-    return `<line x1="0" y1="${cy.toFixed(1)}" x2="${SVG_W}" y2="${cy.toFixed(1)}" stroke="#e74c3c" stroke-width="0.7" stroke-dasharray="3,2"/>
-    <text x="${SVG_W-1}" y="${(cy-1).toFixed(1)}" text-anchor="end" font-size="5" fill="#e74c3c" font-family="Arial">${c.posCm}cm</text>`;
-  }).join('');
-
-  const cutsHtml = bandCuts.map(band => {
-    const piecesInBand = panel.cuts.filter(c => c.type === 'piece' && c.bandYCm === band.bandYCm && c.depth === band.depth);
-    return `<div class="cut-band">✂ Coupe à ${band.posCm}cm${band.depth > 0 ? ` <em style="font-weight:normal;color:#999">(chute niv.${band.depth})</em>` : ''}</div>
-    ${piecesInBand.map(pc => {
-      const fTag = pc.furnitureName ? `<span class="furn-tag">${pc.furnitureName}</span>` : '';
-      const rot  = pc.rotated ? `<span class="rot"> [90°]</span>` : '';
-      const red  = pc.redeligne ? `<span class="redeligne"> → redéligner ${pc.redeligne.toCm}cm</span>` : '';
-      return `<div class="cut-piece">${fTag}→ ${pc.name} ${pc.lCm}×${pc.hCm}cm${rot}${red}</div>`;
-    }).join('')}`;
-  }).join('');
-
-  const isNewPage = pi > 0 && pi % 3 === 0;
-
-  return `
-  ${isNewPage ? '<div style="page-break-before:always"></div>' : ''}
-  ${pi === 0 || isNewPage ? `
-  <div class="page-header">
-    <div class="ph-left">
-      <span class="ph-logo">✂ PanelCut Pro</span>
-      <span class="ph-project">${projectName}${client ? ' — ' + client : ''}</span>
-    </div>
-    <div class="ph-right">${devisNum || ''} · ${date}</div>
-  </div>
-  ${pi === 0 ? `<div class="legend">${Object.entries(colorMap).map(([name, color]) =>
-    `<div class="leg-item"><div class="leg-dot" style="background:${color}"></div>${name}</div>`
-  ).join('')}</div>` : ''}
-  ` : ''}
-
-  <div class="panel-section">
-    <div class="panel-title">
-      <span>Panneau ${panel.panelId} / ${panels.length}</span>
-      <span class="util">Utilisation : ${panel.utilizationPct}% · Chute : ${panel.wastePct}%</span>
-    </div>
-    <div class="panel-layout">
-      <div class="panel-svg-wrap">
-        <svg width="${SVG_W}" height="${SVG_H}" style="border:1px solid #ddd;border-radius:3px;background:#fafafa">
-          ${svgPieces}${svgCuts}
-          <text x="${SVG_W/2}" y="${SVG_H-1}" text-anchor="middle" font-size="5" fill="#bbb" font-family="Arial">← ${panelW}cm →</text>
-        </svg>
+  return pages.map((pagePanels, pageIdx) => {
+    const isFirstPage = pageIdx === 0;
+    const pageHeader = `
+    <div class="page-header">
+      <div class="ph-left">
+        <span class="ph-logo">✂ PanelCut Pro</span>
+        <span class="ph-project">${projectName}${client ? ' — ' + client : ''}</span>
       </div>
-      <div class="panel-cuts">
-        <h4>Ordre des coupes</h4>
-        ${cutsHtml}
-      </div>
+      <div class="ph-right">${devisNum || ''} · ${date}</div>
     </div>
-  </div>`;
-}).join('')}
+    ${isFirstPage ? `<div class="legend">${Object.entries(colorMap).map(([name, color]) =>
+      `<div class="leg-item"><div class="leg-dot" style="background:${color}"></div>${name}</div>`
+    ).join('')}</div>` : ''}`;
+
+    const panelsHtml = pagePanels.map(panel => {
+      const SVG_W = 240;
+      const SVG_H = Math.round(SVG_W * panelH / panelW);
+      const sx = SVG_W / (panelW * 10);
+      const sy = SVG_H / (panelH * 10);
+      const bandCuts = panel.cuts.filter(c => c.type === 'bande');
+
+      const svgPieces = panel.placed.map(p => {
+        const c = colorMap[p.name] || '#ccc';
+        const px = (p.x || 0) * sx;
+        const py = (p.bandY || 0) * sy;
+        const pw = Math.max(p.l * sx - 0.5, 1);
+        const ph = Math.max(p.h * sy - 0.5, 1);
+        const label = pw > 20 && ph > 8
+          ? `<text x="${(px+pw/2).toFixed(1)}" y="${(py+ph/2+3).toFixed(1)}" text-anchor="middle" font-size="6" font-weight="700" fill="#000" font-family="Arial">${(p.l/10).toFixed(1)}×${(p.h/10).toFixed(1)}</text>`
+          : '';
+        return `<rect x="${px.toFixed(1)}" y="${py.toFixed(1)}" width="${pw.toFixed(1)}" height="${ph.toFixed(1)}" fill="${c}" fill-opacity="0.35" stroke="${c}" stroke-width="0.8" rx="1"/>${label}`;
+      }).join('');
+
+      const svgCuts = bandCuts.map(c => {
+        const cy = c.pos * sy;
+        return `<line x1="0" y1="${cy.toFixed(1)}" x2="${SVG_W}" y2="${cy.toFixed(1)}" stroke="#e74c3c" stroke-width="0.7" stroke-dasharray="3,2"/>
+        <text x="${SVG_W-1}" y="${(cy-1).toFixed(1)}" text-anchor="end" font-size="5" fill="#e74c3c" font-family="Arial">${c.posCm}cm</text>`;
+      }).join('');
+
+      const cutsHtml = bandCuts.map(band => {
+        const piecesInBand = panel.cuts.filter(c => c.type === 'piece' && c.bandYCm === band.bandYCm && c.depth === band.depth);
+        return `<div class="cut-band">✂ ${band.posCm}cm${band.depth > 0 ? ` <em style="font-weight:normal;color:#999">(chute)</em>` : ''}</div>
+        ${piecesInBand.map(pc => {
+          const fTag = pc.furnitureName ? `<span class="furn-tag">${pc.furnitureName}</span>` : '';
+          const rot  = pc.rotated ? `<span class="rot"> 90°</span>` : '';
+          const red  = pc.redeligne ? `<span class="redeligne"> →${pc.redeligne.toCm}cm</span>` : '';
+          return `<div class="cut-piece">${fTag}→ ${pc.name} ${pc.lCm}×${pc.hCm}${rot}${red}</div>`;
+        }).join('')}`;
+      }).join('');
+
+      return `
+      <div class="panel-section">
+        <div class="panel-title">
+          <span>Panneau ${panel.panelId} / ${panels.length}</span>
+          <span class="util">${panel.utilizationPct}% · chute ${panel.wastePct}%</span>
+        </div>
+        <div class="panel-body">
+          <div class="panel-svg-wrap">
+            <svg width="${SVG_W}" height="${SVG_H}" style="width:100%;border:1px solid #ddd;border-radius:3px;background:#fafafa;display:block">
+              ${svgPieces}${svgCuts}
+              <text x="${SVG_W/2}" y="${SVG_H-1}" text-anchor="middle" font-size="5" fill="#bbb" font-family="Arial">← ${panelW}cm →</text>
+            </svg>
+          </div>
+          <div class="panel-cuts">
+            <h4>Coupes</h4>
+            ${cutsHtml}
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+
+    return `
+    ${pageIdx > 0 ? '<div class="page-break"></div>' : ''}
+    ${pageHeader}
+    <div class="panels-grid">
+      ${panelsHtml}
+    </div>`;
+  }).join('');
+})()}
 
 <div class="footer">
   <span>✂ PanelCut Pro — ${company}</span>
