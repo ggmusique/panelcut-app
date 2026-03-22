@@ -502,3 +502,13 @@ body {
   display: flex; align-items: center; justify-content: center;
 }
 .logout-btn:hover { color: var(--danger); border-color: var(--danger); }
+
+/* ── OTP Input ── */
+.otp-input {
+  text-align: center;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 8px;
+  font-family: 'Courier New', monospace;
+  color: var(--accent);
+}
