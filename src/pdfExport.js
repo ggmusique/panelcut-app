@@ -14,6 +14,58 @@ function hexToRgb(hex) {
   return [r,g,b];
 }
 
+
+function getLargestWasteRect(panel, panelWmm, panelHmm) {
+  const xs = new Set([0, panelWmm]);
+  const ys = new Set([0, panelHmm]);
+  const pieces = panel.placed.map(p => ({
+    x: p.x || 0,
+    y: p.bandY || 0,
+    w: p.l,
+    h: p.h,
+  }));
+
+  pieces.forEach(p => {
+    xs.add(p.x);
+    xs.add(p.x + p.w);
+    ys.add(p.y);
+    ys.add(p.y + p.h);
+  });
+
+  const xList = [...xs].sort((a, b) => a - b);
+  const yList = [...ys].sort((a, b) => a - b);
+  let best = null;
+
+  const overlaps = (rect, piece) => !(
+    piece.x + piece.w <= rect.x ||
+    piece.x >= rect.x + rect.w ||
+    piece.y + piece.h <= rect.y ||
+    piece.y >= rect.y + rect.h
+  );
+
+  for (let xi = 0; xi < xList.length - 1; xi++) {
+    for (let xj = xi + 1; xj < xList.length; xj++) {
+      const w = xList[xj] - xList[xi];
+      if (w <= 0) continue;
+
+      for (let yi = 0; yi < yList.length - 1; yi++) {
+        for (let yj = yi + 1; yj < yList.length; yj++) {
+          const h = yList[yj] - yList[yi];
+          if (h <= 0) continue;
+
+          const rect = { x: xList[xi], y: yList[yi], w, h };
+          const area = w * h;
+          if (best && area <= best.area) continue;
+          if (pieces.some(piece => overlaps(rect, piece))) continue;
+          best = { ...rect, area };
+        }
+      }
+    }
+  }
+
+  return best;
+}
+
 export function exportPDF(results, project) {
   const { panels, summary } = results;
   const panelW = project.panel.w;
@@ -228,6 +280,7 @@ export function exportPDF(results, project) {
     }
 
     const panel = panels[pi];
+    const wasteRect = getLargestWasteRect(panel, panelW * 10, panelH * 10);
     const rowIdx = pi % PANELS_PER_PAGE;
     const baseY = M + 14 + rowIdx * panelAreaH;
 
@@ -291,18 +344,28 @@ export function exportPDF(results, project) {
 
     // Lignes de coupe
     panel.cuts.filter(c=>c.type==='bande').forEach(c => {
-      const cy = svgY + c.pos*scaleY;
-      if (cy > svgY && cy < svgY+SVG_H_mm) {
-        doc.setDrawColor(...RED);
-        doc.setLineWidth(0.4);
-        doc.setLineDashPattern([1,1], 0);
-        doc.line(svgX, cy, svgX+SVG_W_mm, cy);
-        doc.setLineDashPattern([], 0);
-        doc.setTextColor(...RED);
-        doc.setFontSize(5);
-        doc.setFont('helvetica','bold');
-        doc.text(`${c.posCm}`, svgX+SVG_W_mm-0.5, cy-0.5, {align:'right'});
+      doc.setDrawColor(...RED);
+      doc.setLineWidth(0.4);
+      doc.setLineDashPattern([1,1], 0);
+      doc.setTextColor(...RED);
+      doc.setFontSize(5);
+      doc.setFont('helvetica','bold');
+
+      if (c.orientation === 'vertical') {
+        const cx = svgX + c.pos*scaleX;
+        if (cx > svgX && cx < svgX+SVG_W_mm) {
+          doc.line(cx, svgY, cx, svgY+SVG_H_mm);
+          doc.text(`${c.posCm}`, cx+0.5, svgY+2.5);
+        }
+      } else {
+        const cy = svgY + c.pos*scaleY;
+        if (cy > svgY && cy < svgY+SVG_H_mm) {
+          doc.line(svgX, cy, svgX+SVG_W_mm, cy);
+          doc.text(`${c.posCm}`, svgX+SVG_W_mm-0.5, cy-0.5, {align:'right'});
+        }
       }
+
+      doc.setLineDashPattern([], 0);
     });
 
     // Dimension bas SVG
@@ -317,20 +380,30 @@ export function exportPDF(results, project) {
     doc.setFontSize(7);
     doc.setFont('helvetica','bold');
     doc.text('ORDRE DES COUPES', M+3, cy2);
-    cy2 += 5;
+    cy2 += 4;
+
+    if (wasteRect) {
+      doc.setTextColor(...GRAY);
+      doc.setFontSize(6.5);
+      doc.setFont('helvetica','normal');
+      doc.text(`Plus grande chute : ${(wasteRect.w/10).toFixed(1)}×${(wasteRect.h/10).toFixed(1)} cm`, M+3, cy2);
+      cy2 += 4;
+    }
 
     const bandCuts = panel.cuts.filter(c=>c.type==='bande');
     for (const band of bandCuts) {
       if (cy2 > contentY + contentH - 2) break;
-      // Titre coupe
+      const bandLabel = band.orientation === 'vertical'
+        ? `✂ Bande verticale à ${band.posCm} cm`
+        : `✂ Coupe à ${band.posCm} cm`;
       doc.setTextColor(...RED);
       doc.setFontSize(9);
       doc.setFont('helvetica','bold');
-      doc.text(`✂ Coupe à ${band.posCm} cm`, M+3, cy2);
+      doc.text(bandLabel, M+3, cy2);
       cy2 += 4.5;
 
       const piecesInBand = panel.cuts.filter(c =>
-        c.type==='piece' && c.bandYCm===band.bandYCm && c.depth===band.depth
+        c.type==='piece' && c.bandKey===band.bandKey && c.depth===band.depth
       );
       for (const pc of piecesInBand) {
         if (cy2 > contentY + contentH - 1) break;
