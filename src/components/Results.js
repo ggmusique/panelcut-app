@@ -27,9 +27,7 @@ function PanelSVG({ panel, panelW, panelH, colorMap }) {
   const sx = SVG_W / panelW;
   const sy = SVG_H / panelH;
 
-  // Coupe horizontales (bandes)
   const bandCuts = panel.cuts.filter(c => c.type === 'bande');
-  // Pièces placées
   const pieces   = panel.placed;
 
   return (
@@ -69,8 +67,24 @@ function PanelSVG({ panel, panelW, panelH, colorMap }) {
         );
       })}
 
-      {/* Lignes de coupe horizontales */}
+      {/* Lignes de coupe bandes */}
       {bandCuts.map((c, i) => {
+        if (c.orientation === 'vertical') {
+          const cx = c.pos * sx;
+          return (
+            <g key={i}>
+              <line
+                x1={cx.toFixed(1)} y1={0} x2={cx.toFixed(1)} y2={SVG_H}
+                stroke="#e74c3c" strokeWidth="0.8" strokeDasharray="4,2"
+              />
+              <text x={(cx + 1).toFixed(1)} y={7}
+                textAnchor="start" fontSize="6" fill="#e74c3c">
+                {c.posCm}cm
+              </text>
+            </g>
+          );
+        }
+
         const cy = c.pos * sy;
         return (
           <g key={i}>
@@ -197,15 +211,18 @@ export default function Results({ t, results, project }) {
         <div className="cuts-list">
           {panel.cuts.filter(c => c.type === 'bande').map((band, bi) => {
             const piecesInBand = panel.cuts.filter(
-              c => c.type === 'piece' && c.bandYCm === band.bandYCm && c.panelId === band.panelId
+              c => c.type === 'piece' && c.bandKey === band.bandKey && c.panelId === band.panelId
             );
             const indent = band.depth > 0 ? `${band.depth * 12}px` : '0';
+            const label = band.orientation === 'vertical'
+              ? `Bande verticale à ${band.posCm}cm`
+              : `${t.bandCut} ${band.posCm}cm`;
             return (
               <div key={bi} className="cut-group" style={{ marginLeft: indent }}>
                 <div className="cut-band-row">
                   <span className="cut-band-icon">✂</span>
                   <span className="cut-band-text">
-                    {t.bandCut} <strong>{band.posCm}cm</strong>
+                    <strong>{label}</strong>
                     {band.depth > 0 && <span className="cut-depth"> (chute niveau {band.depth})</span>}
                   </span>
                 </div>
