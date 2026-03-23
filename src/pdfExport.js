@@ -291,18 +291,28 @@ export function exportPDF(results, project) {
 
     // Lignes de coupe
     panel.cuts.filter(c=>c.type==='bande').forEach(c => {
-      const cy = svgY + c.pos*scaleY;
-      if (cy > svgY && cy < svgY+SVG_H_mm) {
-        doc.setDrawColor(...RED);
-        doc.setLineWidth(0.4);
-        doc.setLineDashPattern([1,1], 0);
-        doc.line(svgX, cy, svgX+SVG_W_mm, cy);
-        doc.setLineDashPattern([], 0);
-        doc.setTextColor(...RED);
-        doc.setFontSize(5);
-        doc.setFont('helvetica','bold');
-        doc.text(`${c.posCm}`, svgX+SVG_W_mm-0.5, cy-0.5, {align:'right'});
+      doc.setDrawColor(...RED);
+      doc.setLineWidth(0.4);
+      doc.setLineDashPattern([1,1], 0);
+      doc.setTextColor(...RED);
+      doc.setFontSize(5);
+      doc.setFont('helvetica','bold');
+
+      if (c.orientation === 'vertical') {
+        const cx = svgX + c.pos*scaleX;
+        if (cx > svgX && cx < svgX+SVG_W_mm) {
+          doc.line(cx, svgY, cx, svgY+SVG_H_mm);
+          doc.text(`${c.posCm}`, cx+0.5, svgY+2.5);
+        }
+      } else {
+        const cy = svgY + c.pos*scaleY;
+        if (cy > svgY && cy < svgY+SVG_H_mm) {
+          doc.line(svgX, cy, svgX+SVG_W_mm, cy);
+          doc.text(`${c.posCm}`, svgX+SVG_W_mm-0.5, cy-0.5, {align:'right'});
+        }
       }
+
+      doc.setLineDashPattern([], 0);
     });
 
     // Dimension bas SVG
@@ -322,15 +332,17 @@ export function exportPDF(results, project) {
     const bandCuts = panel.cuts.filter(c=>c.type==='bande');
     for (const band of bandCuts) {
       if (cy2 > contentY + contentH - 2) break;
-      // Titre coupe
+      const bandLabel = band.orientation === 'vertical'
+        ? `✂ Bande verticale à ${band.posCm} cm`
+        : `✂ Coupe à ${band.posCm} cm`;
       doc.setTextColor(...RED);
       doc.setFontSize(9);
       doc.setFont('helvetica','bold');
-      doc.text(`✂ Coupe à ${band.posCm} cm`, M+3, cy2);
+      doc.text(bandLabel, M+3, cy2);
       cy2 += 4.5;
 
       const piecesInBand = panel.cuts.filter(c =>
-        c.type==='piece' && c.bandYCm===band.bandYCm && c.depth===band.depth
+        c.type==='piece' && c.bandKey===band.bandKey && c.depth===band.depth
       );
       for (const pc of piecesInBand) {
         if (cy2 > contentY + contentH - 1) break;
