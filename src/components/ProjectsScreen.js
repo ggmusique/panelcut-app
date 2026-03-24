@@ -1,5 +1,5 @@
 ﻿import { useState, useEffect } from 'react';
-import { loadProjects, deleteProject } from '../supabase';
+import { loadProjects, deleteProject, createProject } from '../supabase'; // 1. On importe createProject
 import { Plus, Trash2, FolderOpen, User, Calendar, FileText, Layers, CheckCircle } from 'lucide-react';
 import ImageUpload from './ImageUpload';
 
@@ -8,7 +8,6 @@ export default function ProjectsScreen({ onLoad, onNew, user }) {
   const [loading, setLoading]   = useState(true);
   const [deleting, setDeleting] = useState(null);
   
-  // État pour l'upload
   const [showUpload, setShowUpload] = useState(false);
   const [lastResult, setLastResult] = useState(null);
 
@@ -33,18 +32,43 @@ export default function ProjectsScreen({ onLoad, onNew, user }) {
     return new Date(dateStr).toLocaleDateString('fr-BE', { day: '2-digit', month: '2-digit', year: 'numeric' });
   };
 
-  // Callback quand le scan est fini
-  const handleScanComplete = (result) => {
-    setLastResult(result);
+  // 2. Fonction modifiée pour sauvegarder dans Supabase
+  const handleScanComplete = async (result) => {
     setShowUpload(false);
-    // Ici, plus tard, on sauvegardera le résultat dans Supabase
-    alert(`Analyse terminée ! ${result.pieces?.length || 0} pièces détectées.`);
+    
+    // Création d'un nom automatique basé sur la date
+    const projectName = `Plan du ${new Date().toLocaleDateString('fr-FR')}`;
+    
+    try {
+      // Appel à la base de données avec les pièces détectées par l'IA
+      const { data, error } = await createProject({
+        name: projectName,
+        results_data: {
+          pieces: result.pieces,
+          summary: {
+            totalPanels: result.pieces.length,
+            detectedAt: new Date().toISOString()
+          }
+        }
+      });
+
+      if (error) throw error;
+
+      // Succès : on met à jour l'affichage
+      setLastResult(result);
+      // On rajoute le nouveau projet en haut de la liste sans tout recharger
+      setProjects(prev => [data, ...prev]);
+      
+      alert(`✅ Projet "${projectName}" sauvegardé avec ${result.pieces.length} pièces !`);
+    } catch (err) {
+      console.error(err);
+      alert("Erreur lors de la sauvegarde dans Supabase : " + err.message);
+    }
   };
 
   return (
     <div className="min-h-screen bg-slate-50 pb-20 relative">
       
-      {/* MODAL UPLOAD */}
       {showUpload && (
         <ImageUpload 
           onScanComplete={handleScanComplete} 
@@ -83,12 +107,11 @@ export default function ProjectsScreen({ onLoad, onNew, user }) {
       {/* MAIN CONTENT */}
       <main className="max-w-3xl mx-auto px-6 -mt-16 relative z-20">
         
-        {/* Affichage des résultats du dernier scan (Démo) */}
         {lastResult && (
           <div className="mb-8 bg-green-50 border border-green-200 rounded-2xl p-6 animate-fade-in-up">
             <div className="flex items-center gap-3 mb-4 text-green-800">
               <CheckCircle className="w-6 h-6" />
-              <h3 className="font-bold text-lg">Dernière analyse réussie !</h3>
+              <h3 className="font-bold text-lg">Analyse réussie & Sauvegardée !</h3>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="bg-white p-3 rounded-xl shadow-sm text-center">
