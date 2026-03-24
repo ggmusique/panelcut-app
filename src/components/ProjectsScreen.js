@@ -1,15 +1,18 @@
 ﻿import { useState, useEffect } from 'react';
 import { loadProjects, deleteProject } from '../supabase';
-import { Plus, Trash2, FolderOpen, User, Calendar, FileText, Layers } from 'lucide-react';
+import { Plus, Trash2, FolderOpen, User, Calendar, FileText, Layers, CheckCircle } from 'lucide-react';
+import ImageUpload from './ImageUpload';
 
 export default function ProjectsScreen({ onLoad, onNew, user }) {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading]   = useState(true);
   const [deleting, setDeleting] = useState(null);
+  
+  // État pour l'upload
+  const [showUpload, setShowUpload] = useState(false);
+  const [lastResult, setLastResult] = useState(null);
 
-  useEffect(() => {
-    fetch();
-  }, []);
+  useEffect(() => { fetch(); }, []);
 
   const fetch = async () => {
     setLoading(true);
@@ -27,14 +30,29 @@ export default function ProjectsScreen({ onLoad, onNew, user }) {
   };
 
   const formatDate = (dateStr) => {
-    return new Date(dateStr).toLocaleDateString('fr-BE', {
-      day: '2-digit', month: '2-digit', year: 'numeric'
-    });
+    return new Date(dateStr).toLocaleDateString('fr-BE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  };
+
+  // Callback quand le scan est fini
+  const handleScanComplete = (result) => {
+    setLastResult(result);
+    setShowUpload(false);
+    // Ici, plus tard, on sauvegardera le résultat dans Supabase
+    alert(`Analyse terminée ! ${result.pieces?.length || 0} pièces détectées.`);
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-20">
-      {/* Header Moderne */}
+    <div className="min-h-screen bg-slate-50 pb-20 relative">
+      
+      {/* MODAL UPLOAD */}
+      {showUpload && (
+        <ImageUpload 
+          onScanComplete={handleScanComplete} 
+          onCancel={() => setShowUpload(false)} 
+        />
+      )}
+
+      {/* HEADER */}
       <header className="bg-slate-900 text-white pt-8 pb-24 px-6 rounded-b-[2.5rem] shadow-xl relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600 rounded-full mix-blend-multiply filter blur-3xl opacity-20 -translate-y-1/2 translate-x-1/2"></div>
         <div className="absolute bottom-0 left-0 w-64 h-64 bg-purple-600 rounded-full mix-blend-multiply filter blur-3xl opacity-20 translate-y-1/2 -translate-x-1/2"></div>
@@ -47,39 +65,57 @@ export default function ProjectsScreen({ onLoad, onNew, user }) {
             </div>
             <div className="bg-slate-800/50 backdrop-blur-md p-2 rounded-full border border-slate-700 flex items-center gap-2">
               <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-              <span className="text-xs font-medium text-slate-300 hidden sm:inline">{user?.email}</span>
+              <span className="text-xs font-medium text-slate-300 hidden sm:inline">{user?.email || 'Invité'}</span>
               <User className="w-4 h-4 text-slate-400" />
             </div>
           </div>
 
           <button 
-            onClick={onNew}
+            onClick={() => setShowUpload(true)}
             className="w-full sm:w-auto bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold py-4 px-8 rounded-2xl shadow-lg shadow-orange-500/30 transform transition-all hover:-translate-y-1 active:scale-95 flex items-center justify-center gap-3"
           >
             <Plus className="w-6 h-6" />
-            <span>Nouveau Projet</span>
+            <span>Nouveau Projet (Scan IA)</span>
           </button>
         </div>
       </header>
 
-      {/* Contenu Principal */}
+      {/* MAIN CONTENT */}
       <main className="max-w-3xl mx-auto px-6 -mt-16 relative z-20">
+        
+        {/* Affichage des résultats du dernier scan (Démo) */}
+        {lastResult && (
+          <div className="mb-8 bg-green-50 border border-green-200 rounded-2xl p-6 animate-fade-in-up">
+            <div className="flex items-center gap-3 mb-4 text-green-800">
+              <CheckCircle className="w-6 h-6" />
+              <h3 className="font-bold text-lg">Dernière analyse réussie !</h3>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="bg-white p-3 rounded-xl shadow-sm text-center">
+                <div className="text-2xl font-bold text-green-600">{lastResult.pieces?.length || 0}</div>
+                <div className="text-xs text-slate-500 uppercase font-bold">Pièces</div>
+              </div>
+              <div className="bg-white p-3 rounded-xl shadow-sm text-center">
+                <div className="text-2xl font-bold text-blue-600">{lastResult.meta?.processingTime || 0}ms</div>
+                <div className="text-xs text-slate-500 uppercase font-bold">Temps</div>
+              </div>
+            </div>
+            <button onClick={() => setLastResult(null)} className="mt-4 text-sm text-green-700 underline">Fermer</button>
+          </div>
+        )}
+
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
             <FolderOpen className="w-5 h-5 text-blue-600" />
             Mes Projets
-            {!loading && (
-              <span className="bg-blue-100 text-blue-700 text-xs font-bold px-2 py-0.5 rounded-full">
-                {projects.length}
-              </span>
-            )}
+            {!loading && <span className="bg-blue-100 text-blue-700 text-xs font-bold px-2 py-0.5 rounded-full">{projects.length}</span>}
           </h2>
         </div>
 
         {loading && (
           <div className="flex flex-col items-center justify-center py-20 text-slate-400">
             <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mb-4"></div>
-            <p>Chargement de vos projets...</p>
+            <p>Chargement...</p>
           </div>
         )}
 
@@ -89,60 +125,26 @@ export default function ProjectsScreen({ onLoad, onNew, user }) {
               <Layers className="w-10 h-10 text-slate-300" />
             </div>
             <h3 className="text-lg font-bold text-slate-700 mb-2">Aucun projet</h3>
-            <p className="text-slate-500 mb-6">Commencez par créer votre premier plan de découpe.</p>
-            <button onClick={onNew} className="text-blue-600 font-semibold hover:underline">Créer un projet →</button>
+            <p className="text-slate-500 mb-6">Scannez votre premier plan pour commencer.</p>
           </div>
         )}
 
         <div className="space-y-4">
           {projects.map(p => (
-            <div 
-              key={p.id} 
-              className="group bg-white rounded-2xl p-5 shadow-sm border border-slate-100 hover:shadow-md hover:border-blue-200 transition-all duration-300 cursor-pointer relative overflow-hidden"
-              onClick={() => onLoad(p.id)}
-            >
+            <div key={p.id} className="group bg-white rounded-2xl p-5 shadow-sm border border-slate-100 hover:shadow-md hover:border-blue-200 transition-all cursor-pointer relative overflow-hidden" onClick={() => onLoad(p.id)}>
               <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-gradient-to-b from-blue-500 to-purple-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
               <div className="flex justify-between items-start">
                 <div className="flex-1">
-                  <h3 className="text-lg font-bold text-slate-900 mb-1 group-hover:text-blue-600 transition-colors">
-                    {p.name || 'Sans titre'}
-                  </h3>
-                  {p.client && (
-                    <div className="flex items-center gap-1.5 text-slate-500 text-sm mb-3">
-                      <User className="w-3.5 h-3.5" />
-                      <span>{p.client}</span>
-                    </div>
-                  )}
+                  <h3 className="text-lg font-bold text-slate-900 mb-1 group-hover:text-blue-600">{p.name || 'Sans titre'}</h3>
+                  {p.client && <div className="flex items-center gap-1.5 text-slate-500 text-sm mb-3"><User className="w-3.5 h-3.5" /><span>{p.client}</span></div>}
                   <div className="flex flex-wrap gap-3 text-xs font-medium text-slate-400">
-                    <span className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded-md">
-                      <Calendar className="w-3 h-3" />
-                      {formatDate(p.updated_at)}
-                    </span>
-                    {p.devis_num && (
-                      <span className="flex items-center gap-1 bg-blue-50 text-blue-600 px-2 py-1 rounded-md">
-                        <FileText className="w-3 h-3" />
-                        {p.devis_num}
-                      </span>
-                    )}
-                    {p.results_data && (
-                      <span className="flex items-center gap-1 bg-purple-50 text-purple-600 px-2 py-1 rounded-md">
-                        <Layers className="w-3 h-3" />
-                        {p.results_data.summary?.totalPanels || 0} panneaux
-                      </span>
-                    )}
+                    <span className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded-md"><Calendar className="w-3 h-3" />{formatDate(p.updated_at)}</span>
+                    {p.devis_num && <span className="flex items-center gap-1 bg-blue-50 text-blue-600 px-2 py-1 rounded-md"><FileText className="w-3 h-3" />{p.devis_num}</span>}
+                    {p.results_data && <span className="flex items-center gap-1 bg-purple-50 text-purple-600 px-2 py-1 rounded-md"><Layers className="w-3 h-3" />{p.results_data.summary?.totalPanels || 0} panneaux</span>}
                   </div>
                 </div>
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleDelete(p.id); }}
-                  disabled={deleting === p.id}
-                  className="opacity-0 group-hover:opacity-100 p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all disabled:opacity-50"
-                  title="Supprimer"
-                >
-                  {deleting === p.id ? (
-                    <div className="w-4 h-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin"></div>
-                  ) : (
-                    <Trash2 className="w-5 h-5" />
-                  )}
+                <button onClick={(e) => { e.stopPropagation(); handleDelete(p.id); }} disabled={deleting === p.id} className="opacity-0 group-hover:opacity-100 p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all">
+                  <Trash2 className="w-5 h-5" />
                 </button>
               </div>
             </div>
