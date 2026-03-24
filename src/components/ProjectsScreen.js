@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { loadProjects, deleteProject } from '../supabase';
+import { Plus, Trash2, FolderOpen, User, Calendar, FileText, Layers } from 'lucide-react';
 
 export default function ProjectsScreen({ onLoad, onNew, user }) {
   const [projects, setProjects] = useState([]);
@@ -32,60 +33,122 @@ export default function ProjectsScreen({ onLoad, onNew, user }) {
   };
 
   return (
-    <div className="projects-screen">
+    <div className="min-h-screen bg-slate-50 pb-20">
+      {/* Header Moderne */}
+      <header className="bg-slate-900 text-white pt-8 pb-24 px-6 rounded-b-[2.5rem] shadow-xl relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600 rounded-full mix-blend-multiply filter blur-3xl opacity-20 -translate-y-1/2 translate-x-1/2"></div>
+        <div className="absolute bottom-0 left-0 w-64 h-64 bg-purple-600 rounded-full mix-blend-multiply filter blur-3xl opacity-20 translate-y-1/2 -translate-x-1/2"></div>
 
-      {/* Header utilisateur */}
-      <div className="user-bar">
-        <div className="user-info">
-          <span className="user-dot" />
-          <span className="user-email">{user?.email}</span>
-        </div>
-      </div>
-
-      {/* Nouveau projet */}
-      <button className="btn btn--primary btn--large" onClick={onNew}>
-        + Nouveau projet
-      </button>
-
-      {/* Liste projets */}
-      <div className="projects-title">
-        Mes projets {!loading && `(${projects.length})`}
-      </div>
-
-      {loading && (
-        <div className="projects-loading">
-          <div className="scan-spinner" style={{ width: 28, height: 28 }} />
-        </div>
-      )}
-
-      {!loading && projects.length === 0 && (
-        <div className="empty-state">Aucun projet sauvegardé</div>
-      )}
-
-      {projects.map(p => (
-        <div key={p.id} className="project-card">
-          <div className="project-card-body" onClick={() => onLoad(p.id)}>
-            <div className="project-card-name">{p.name || 'Sans titre'}</div>
-            {p.client && <div className="project-card-client">👤 {p.client}</div>}
-            <div className="project-card-meta">
-              <span>{formatDate(p.updated_at)}</span>
-              {p.devis_num && <span className="project-devis">{p.devis_num}</span>}
-              {p.results_data && (
-                <span className="project-panels">
-                  {p.results_data.summary?.totalPanels} panneaux
-                </span>
-              )}
+        <div className="relative z-10 max-w-3xl mx-auto">
+          <div className="flex justify-between items-start mb-6">
+            <div>
+              <h1 className="text-3xl font-bold mb-1">PanelCut Pro</h1>
+              <p className="text-slate-400 text-sm">Gestion de vos chantiers</p>
+            </div>
+            <div className="bg-slate-800/50 backdrop-blur-md p-2 rounded-full border border-slate-700 flex items-center gap-2">
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+              <span className="text-xs font-medium text-slate-300 hidden sm:inline">{user?.email}</span>
+              <User className="w-4 h-4 text-slate-400" />
             </div>
           </div>
-          <button
-            className="project-delete"
-            onClick={() => handleDelete(p.id)}
-            disabled={deleting === p.id}
+
+          <button 
+            onClick={onNew}
+            className="w-full sm:w-auto bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold py-4 px-8 rounded-2xl shadow-lg shadow-orange-500/30 transform transition-all hover:-translate-y-1 active:scale-95 flex items-center justify-center gap-3"
           >
-            🗑
+            <Plus className="w-6 h-6" />
+            <span>Nouveau Projet</span>
           </button>
         </div>
-      ))}
+      </header>
+
+      {/* Contenu Principal */}
+      <main className="max-w-3xl mx-auto px-6 -mt-16 relative z-20">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+            <FolderOpen className="w-5 h-5 text-blue-600" />
+            Mes Projets
+            {!loading && (
+              <span className="bg-blue-100 text-blue-700 text-xs font-bold px-2 py-0.5 rounded-full">
+                {projects.length}
+              </span>
+            )}
+          </h2>
+        </div>
+
+        {loading && (
+          <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mb-4"></div>
+            <p>Chargement de vos projets...</p>
+          </div>
+        )}
+
+        {!loading && projects.length === 0 && (
+          <div className="bg-white rounded-3xl p-10 text-center shadow-sm border border-slate-100">
+            <div className="bg-slate-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Layers className="w-10 h-10 text-slate-300" />
+            </div>
+            <h3 className="text-lg font-bold text-slate-700 mb-2">Aucun projet</h3>
+            <p className="text-slate-500 mb-6">Commencez par créer votre premier plan de découpe.</p>
+            <button onClick={onNew} className="text-blue-600 font-semibold hover:underline">Créer un projet →</button>
+          </div>
+        )}
+
+        <div className="space-y-4">
+          {projects.map(p => (
+            <div 
+              key={p.id} 
+              className="group bg-white rounded-2xl p-5 shadow-sm border border-slate-100 hover:shadow-md hover:border-blue-200 transition-all duration-300 cursor-pointer relative overflow-hidden"
+              onClick={() => onLoad(p.id)}
+            >
+              <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-gradient-to-b from-blue-500 to-purple-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+              <div className="flex justify-between items-start">
+                <div className="flex-1">
+                  <h3 className="text-lg font-bold text-slate-900 mb-1 group-hover:text-blue-600 transition-colors">
+                    {p.name || 'Sans titre'}
+                  </h3>
+                  {p.client && (
+                    <div className="flex items-center gap-1.5 text-slate-500 text-sm mb-3">
+                      <User className="w-3.5 h-3.5" />
+                      <span>{p.client}</span>
+                    </div>
+                  )}
+                  <div className="flex flex-wrap gap-3 text-xs font-medium text-slate-400">
+                    <span className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded-md">
+                      <Calendar className="w-3 h-3" />
+                      {formatDate(p.updated_at)}
+                    </span>
+                    {p.devis_num && (
+                      <span className="flex items-center gap-1 bg-blue-50 text-blue-600 px-2 py-1 rounded-md">
+                        <FileText className="w-3 h-3" />
+                        {p.devis_num}
+                      </span>
+                    )}
+                    {p.results_data && (
+                      <span className="flex items-center gap-1 bg-purple-50 text-purple-600 px-2 py-1 rounded-md">
+                        <Layers className="w-3 h-3" />
+                        {p.results_data.summary?.totalPanels || 0} panneaux
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleDelete(p.id); }}
+                  disabled={deleting === p.id}
+                  className="opacity-0 group-hover:opacity-100 p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all disabled:opacity-50"
+                  title="Supprimer"
+                >
+                  {deleting === p.id ? (
+                    <div className="w-4 h-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin"></div>
+                  ) : (
+                    <Trash2 className="w-5 h-5" />
+                  )}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </main>
     </div>
   );
 }
