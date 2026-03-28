@@ -59,7 +59,6 @@ export default function App() {
     else setScreen(SCREENS.PIECES);
   };
 
-  // Appele depuis ProjectsScreen apres un scan IA reussi
   const handleScanComplete = (scanResult) => {
     const pieces = (scanResult.pieces || []).map(p => ({
       name: p.name || 'Piece',
@@ -67,16 +66,9 @@ export default function App() {
       height: parseFloat(p.height) || 0,
       qty: parseInt(p.qty, 10) || 1,
     }));
-
     const projectName = 'Plan du ' + new Date().toLocaleDateString('fr-FR');
     const dNum = 'DV-' + new Date().getFullYear() + '-' + String(Math.floor(Math.random() * 9000) + 1000);
-
-    setProject({
-      ...DEFAULT_PROJECT,
-      name: projectName,
-      devisNum: dNum,
-      pieces,
-    });
+    setProject({ ...DEFAULT_PROJECT, name: projectName, devisNum: dNum, pieces });
     setResults(null);
     setScreen(SCREENS.PIECES);
   };
@@ -120,14 +112,14 @@ export default function App() {
   return (
     <div className="app min-h-screen bg-[#0f1620] text-slate-200 font-sans">
       {hasHeader && (
-        <header className="sticky top-0 z-40 bg-[#0f1620]/95 backdrop-blur-md border-b border-white/10 shadow-lg h-16 flex items-center justify-between px-4 gap-4">
+        <header className="sticky top-0 z-40 bg-[#0f1620]/95 backdrop-blur-md border-b border-white/10 shadow-lg h-16 flex items-center justify-between px-4 md:px-8 gap-4">
           <div className="flex items-center gap-2 min-w-0 flex-1">
             {showBack && (
               <button onClick={goBack} className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors flex-shrink-0">
                 <ChevronLeft className="w-5 h-5" />
               </button>
             )}
-            <h1 className="text-sm font-bold text-white truncate">{headerTitle}</h1>
+            <h1 className="text-sm md:text-base font-bold text-white truncate">{headerTitle}</h1>
             {headerSubtitle && <p className="text-[10px] text-slate-500 uppercase truncate hidden sm:block">{headerSubtitle}</p>}
           </div>
 
@@ -145,7 +137,7 @@ export default function App() {
                     }>
                       {i + 1}
                     </div>
-                    <span className="hidden sm:inline">{s.label}</span>
+                    <span className="hidden md:inline">{s.label}</span>
                   </div>
                   {i < steps.length - 1 && (
                     <div className={'w-3 h-px flex-shrink-0 ' + (steps[i + 1].active ? 'bg-orange-500/50' : 'bg-slate-700')} />
@@ -174,7 +166,7 @@ export default function App() {
         </header>
       )}
 
-      <main className={'max-w-5xl mx-auto px-4 w-full mb-20 ' + (hasHeader ? 'mt-20' : 'mt-0')}>
+      <main className={'w-full max-w-7xl mx-auto px-4 md:px-8 mb-20 ' + (hasHeader ? 'mt-4' : 'mt-0')}>
         {screen === SCREENS.AUTH     && <AuthScreen onSkip={() => setScreen(SCREENS.PROJECTS)} />}
         {screen === SCREENS.PROJECTS && <ProjectsScreen user={user} onNew={() => startNew(devisNum)} onLoad={handleLoadProject} onScanComplete={handleScanComplete} />}
         {screen === SCREENS.FORM     && <ProjectForm t={tr} project={project} onChange={setProject} onNext={() => setScreen(SCREENS.PIECES)} />}
