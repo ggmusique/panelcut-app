@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { Upload, X, FileImage, CheckCircle, AlertCircle } from 'lucide-react';
 
 export default function ImageUpload({ onScanComplete, onCancel }) {
@@ -39,13 +39,13 @@ export default function ImageUpload({ onScanComplete, onCancel }) {
   const handleFile = (file) => {
     // Validation basique
     if (!file.type.startsWith('image/')) {
-      setError("Seuls les fichiers images sont acceptés (JPG, PNG).");
+      setError("Seuls les fichiers images sont accept�s (JPG, PNG).");
       return;
     }
     setFile(file);
     setError(null);
     
-    // Création de la preview
+    // Cr�ation de la preview
     const reader = new FileReader();
     reader.onloadend = () => {
       setPreview(reader.result);
@@ -63,7 +63,7 @@ export default function ImageUpload({ onScanComplete, onCancel }) {
       // Conversion en Base64 (nettoyage du header data:image/...)
       const base64Image = preview.split(',')[1];
 
-      const response = await fetch('http://localhost:3001/scan', {
+      const response = await fetch('https://panelcut-server.vercel.app/api/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -78,11 +78,11 @@ export default function ImageUpload({ onScanComplete, onCancel }) {
       }
 
       const data = await response.json();
-      onScanComplete(data); // On renvoie les résultats au parent
+      onScanComplete(data); // On renvoie les r�sultats au parent
 
     } catch (err) {
       console.error(err);
-      setError("Échec de la connexion au serveur. Vérifiez que le backend tourne sur le port 3001.");
+      setError("�chec de la connexion au serveur. V�rifiez que le backend tourne sur le port 3001.");
     } finally {
       setLoading(false);
     }

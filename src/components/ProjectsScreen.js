@@ -1,6 +1,6 @@
-﻿import { useState, useEffect } from 'react';
-import { loadProjects, deleteProject, createProject } from '../supabase'; // 1. On importe createProject
-import { Plus, Trash2, FolderOpen, User, Calendar, FileText, Layers, CheckCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { loadProjects, deleteProject } from '../supabase';
+import { Plus, Trash2, FolderOpen, User, Calendar, FileText, Layers, CheckCircle, X, Ruler, Activity } from 'lucide-react';
 import ImageUpload from './ImageUpload';
 
 export default function ProjectsScreen({ onLoad, onNew, user }) {
@@ -8,12 +8,13 @@ export default function ProjectsScreen({ onLoad, onNew, user }) {
   const [loading, setLoading]   = useState(true);
   const [deleting, setDeleting] = useState(null);
   
+  // États pour l'upload IA
   const [showUpload, setShowUpload] = useState(false);
   const [lastResult, setLastResult] = useState(null);
 
-  useEffect(() => { fetch(); }, []);
+  useEffect(() => { fetchProjects(); }, []);
 
-  const fetch = async () => {
+  const fetchProjects = async () => {
     setLoading(true);
     const { data } = await loadProjects();
     setProjects(data || []);
@@ -29,46 +30,21 @@ export default function ProjectsScreen({ onLoad, onNew, user }) {
   };
 
   const formatDate = (dateStr) => {
-    return new Date(dateStr).toLocaleDateString('fr-BE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    return new Date(dateStr).toLocaleDateString('fr-BE', {
+      day: '2-digit', month: '2-digit', year: 'numeric'
+    });
   };
 
-  // 2. Fonction modifiée pour sauvegarder dans Supabase
-  const handleScanComplete = async (result) => {
+  const handleScanComplete = (result) => {
+    setLastResult(result);
     setShowUpload(false);
-    
-    // Création d'un nom automatique basé sur la date
-    const projectName = `Plan du ${new Date().toLocaleDateString('fr-FR')}`;
-    
-    try {
-      // Appel à la base de données avec les pièces détectées par l'IA
-      const { data, error } = await createProject({
-        name: projectName,
-        results_data: {
-          pieces: result.pieces,
-          summary: {
-            totalPanels: result.pieces.length,
-            detectedAt: new Date().toISOString()
-          }
-        }
-      });
-
-      if (error) throw error;
-
-      // Succès : on met à jour l'affichage
-      setLastResult(result);
-      // On rajoute le nouveau projet en haut de la liste sans tout recharger
-      setProjects(prev => [data, ...prev]);
-      
-      alert(`✅ Projet "${projectName}" sauvegardé avec ${result.pieces.length} pièces !`);
-    } catch (err) {
-      console.error(err);
-      alert("Erreur lors de la sauvegarde dans Supabase : " + err.message);
-    }
+    alert(`Analyse terminée ! ${result.pieces?.length || 0} pièces détectées.`);
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-20 relative">
+    <div className="min-h-screen bg-[#050505] text-slate-200 pb-20 relative font-sans selection:bg-orange-500 selection:text-white">
       
+      {/* MODAL UPLOAD */}
       {showUpload && (
         <ImageUpload 
           onScanComplete={handleScanComplete} 
@@ -76,98 +52,172 @@ export default function ProjectsScreen({ onLoad, onNew, user }) {
         />
       )}
 
-      {/* HEADER */}
-      <header className="bg-slate-900 text-white pt-8 pb-24 px-6 rounded-b-[2.5rem] shadow-xl relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600 rounded-full mix-blend-multiply filter blur-3xl opacity-20 -translate-y-1/2 translate-x-1/2"></div>
-        <div className="absolute bottom-0 left-0 w-64 h-64 bg-purple-600 rounded-full mix-blend-multiply filter blur-3xl opacity-20 translate-y-1/2 -translate-x-1/2"></div>
+      {/* HEADER "BLACK NIGHT" */}
+      <header className="bg-gradient-to-b from-[#1a1a1a] to-[#050505] pt-10 pb-32 px-6 relative overflow-hidden border-b border-white/5">
+        {/* Effets de lueur subtils */}
+        <div className="absolute top-0 right-0 w-96 h-96 bg-orange-600/10 rounded-full mix-blend-screen filter blur-[100px] opacity-50"></div>
+        <div className="absolute bottom-0 left-0 w-96 h-96 bg-blue-600/10 rounded-full mix-blend-screen filter blur-[100px] opacity-30"></div>
 
-        <div className="relative z-10 max-w-3xl mx-auto">
-          <div className="flex justify-between items-start mb-6">
+        <div className="relative z-10 max-w-4xl mx-auto">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
             <div>
-              <h1 className="text-3xl font-bold mb-1">PanelCut Pro</h1>
-              <p className="text-slate-400 text-sm">Gestion de vos chantiers</p>
+              <h1 className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-white via-slate-200 to-slate-400 mb-2 tracking-tight">
+                PanelCut <span className="text-orange-500">Pro</span>
+              </h1>
+              <p className="text-slate-500 font-medium">Optimiseur de découpe intelligent</p>
             </div>
-            <div className="bg-slate-800/50 backdrop-blur-md p-2 rounded-full border border-slate-700 flex items-center gap-2">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-              <span className="text-xs font-medium text-slate-300 hidden sm:inline">{user?.email || 'Invité'}</span>
-              <User className="w-4 h-4 text-slate-400" />
+            
+            <div className="flex items-center gap-3 bg-white/5 backdrop-blur-md px-4 py-2 rounded-full border border-white/10 shadow-lg">
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(34,197,94,0.5)]"></div>
+              <span className="text-sm font-medium text-slate-300">{user?.email || 'Invité'}</span>
+              <div className="w-8 h-8 bg-gradient-to-tr from-orange-500 to-red-500 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-lg">
+                {user?.email ? user.email[0].toUpperCase() : 'U'}
+              </div>
             </div>
           </div>
 
           <button 
             onClick={() => setShowUpload(true)}
-            className="w-full sm:w-auto bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold py-4 px-8 rounded-2xl shadow-lg shadow-orange-500/30 transform transition-all hover:-translate-y-1 active:scale-95 flex items-center justify-center gap-3"
+            className="group relative inline-flex items-center justify-center gap-3 bg-white text-black hover:bg-orange-500 hover:text-white font-bold py-4 px-8 rounded-xl transition-all duration-300 shadow-[0_0_20px_rgba(255,255,255,0.1)] hover:shadow-[0_0_30px_rgba(249,115,22,0.4)] transform hover:-translate-y-1"
           >
-            <Plus className="w-6 h-6" />
+            <Plus className="w-6 h-6 transition-transform group-hover:rotate-90" />
             <span>Nouveau Projet (Scan IA)</span>
           </button>
         </div>
       </header>
 
       {/* MAIN CONTENT */}
-      <main className="max-w-3xl mx-auto px-6 -mt-16 relative z-20">
+      <main className="max-w-4xl mx-auto px-6 -mt-20 relative z-20">
         
+        {/* KPI CARD - DERNIER SCAN */}
         {lastResult && (
-          <div className="mb-8 bg-green-50 border border-green-200 rounded-2xl p-6 animate-fade-in-up">
-            <div className="flex items-center gap-3 mb-4 text-green-800">
-              <CheckCircle className="w-6 h-6" />
-              <h3 className="font-bold text-lg">Analyse réussie & Sauvegardée !</h3>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="bg-white p-3 rounded-xl shadow-sm text-center">
-                <div className="text-2xl font-bold text-green-600">{lastResult.pieces?.length || 0}</div>
-                <div className="text-xs text-slate-500 uppercase font-bold">Pièces</div>
+          <div className="mb-10 bg-gradient-to-br from-[#111] to-[#0a0a0a] border border-white/10 rounded-2xl p-6 shadow-2xl relative overflow-hidden animate-fade-in-up">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-green-500/10 rounded-full blur-3xl"></div>
+            
+            <div className="flex items-center justify-between mb-6 relative z-10">
+              <div className="flex items-center gap-3 text-green-400">
+                <div className="p-2 bg-green-500/10 rounded-lg">
+                  <CheckCircle className="w-6 h-6" />
+                </div>
+                <h3 className="font-bold text-lg text-white">Analyse Réussie</h3>
               </div>
-              <div className="bg-white p-3 rounded-xl shadow-sm text-center">
-                <div className="text-2xl font-bold text-blue-600">{lastResult.meta?.processingTime || 0}ms</div>
-                <div className="text-xs text-slate-500 uppercase font-bold">Temps</div>
+              <button onClick={() => setLastResult(null)} className="text-slate-500 hover:text-white transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 relative z-10">
+              <div className="bg-white/5 backdrop-blur-sm border border-white/5 p-4 rounded-xl text-center hover:bg-white/10 transition-colors">
+                <div className="text-3xl font-bold text-white mb-1">{lastResult.pieces?.length || 0}</div>
+                <div className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Pièces Détectées</div>
+              </div>
+              <div className="bg-white/5 backdrop-blur-sm border border-white/5 p-4 rounded-xl text-center hover:bg-white/10 transition-colors col-span-1 md:col-span-3 flex flex-col justify-center">
+                <div className="text-sm text-slate-300 mb-2 flex items-center justify-center gap-2">
+                  <Activity className="w-4 h-4 text-orange-500" />
+                  Prêt à être intégré au chantier
+                </div>
+                <div className="w-full bg-white/10 h-1.5 rounded-full overflow-hidden">
+                  <div className="bg-gradient-to-r from-orange-500 to-red-500 h-full w-full animate-pulse"></div>
+                </div>
               </div>
             </div>
-            <button onClick={() => setLastResult(null)} className="mt-4 text-sm text-green-700 underline">Fermer</button>
           </div>
         )}
 
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-            <FolderOpen className="w-5 h-5 text-blue-600" />
-            Mes Projets
-            {!loading && <span className="bg-blue-100 text-blue-700 text-xs font-bold px-2 py-0.5 rounded-full">{projects.length}</span>}
+        {/* LISTE DES PROJETS */}
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-xl font-bold text-white flex items-center gap-2">
+            <FolderOpen className="w-6 h-6 text-orange-500" />
+            Vos Chantiers
           </h2>
+          {!loading && (
+            <span className="bg-white/10 text-slate-300 text-xs font-bold px-3 py-1 rounded-full border border-white/5">
+              {projects.length} PROJETS
+            </span>
+          )}
         </div>
 
         {loading && (
-          <div className="flex flex-col items-center justify-center py-20 text-slate-400">
-            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mb-4"></div>
-            <p>Chargement...</p>
+          <div className="flex flex-col items-center justify-center py-20 text-slate-500">
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-orange-500 mb-4"></div>
+            <p className="text-sm font-medium">Chargement des données...</p>
           </div>
         )}
 
         {!loading && projects.length === 0 && (
-          <div className="bg-white rounded-3xl p-10 text-center shadow-sm border border-slate-100">
-            <div className="bg-slate-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Layers className="w-10 h-10 text-slate-300" />
+          <div className="bg-[#111] border border-white/5 rounded-2xl p-12 text-center shadow-xl">
+            <div className="bg-white/5 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
+              <Layers className="w-10 h-10 text-slate-600" />
             </div>
-            <h3 className="text-lg font-bold text-slate-700 mb-2">Aucun projet</h3>
-            <p className="text-slate-500 mb-6">Scannez votre premier plan pour commencer.</p>
+            <h3 className="text-xl font-bold text-white mb-3">Aucun projet</h3>
+            <p className="text-slate-500 mb-8 max-w-md mx-auto">Commencez par scanner un plan de découpe pour générer automatiquement votre liste de pièces.</p>
+            <button onClick={() => setShowUpload(true)} className="text-orange-500 font-bold hover:text-orange-400 transition-colors">Lancer un scan →</button>
           </div>
         )}
 
         <div className="space-y-4">
           {projects.map(p => (
-            <div key={p.id} className="group bg-white rounded-2xl p-5 shadow-sm border border-slate-100 hover:shadow-md hover:border-blue-200 transition-all cursor-pointer relative overflow-hidden" onClick={() => onLoad(p.id)}>
-              <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-gradient-to-b from-blue-500 to-purple-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-              <div className="flex justify-between items-start">
+            <div 
+              key={p.id} 
+              className="group relative bg-[#111] hover:bg-[#161616] rounded-2xl p-6 border border-white/5 hover:border-orange-500/30 transition-all duration-300 cursor-pointer shadow-lg hover:shadow-[0_10px_40px_-10px_rgba(0,0,0,0.5)] overflow-hidden"
+              onClick={() => onLoad(p.id)}
+            >
+              {/* Ligne décorative latérale */}
+              <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-orange-500 to-red-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+              
+              <div className="flex justify-between items-start pl-2">
                 <div className="flex-1">
-                  <h3 className="text-lg font-bold text-slate-900 mb-1 group-hover:text-blue-600">{p.name || 'Sans titre'}</h3>
-                  {p.client && <div className="flex items-center gap-1.5 text-slate-500 text-sm mb-3"><User className="w-3.5 h-3.5" /><span>{p.client}</span></div>}
-                  <div className="flex flex-wrap gap-3 text-xs font-medium text-slate-400">
-                    <span className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded-md"><Calendar className="w-3 h-3" />{formatDate(p.updated_at)}</span>
-                    {p.devis_num && <span className="flex items-center gap-1 bg-blue-50 text-blue-600 px-2 py-1 rounded-md"><FileText className="w-3 h-3" />{p.devis_num}</span>}
-                    {p.results_data && <span className="flex items-center gap-1 bg-purple-50 text-purple-600 px-2 py-1 rounded-md"><Layers className="w-3 h-3" />{p.results_data.summary?.totalPanels || 0} panneaux</span>}
+                  <div className="flex items-center gap-3 mb-2">
+                    <h3 className="text-lg font-bold text-white group-hover:text-orange-500 transition-colors">
+                      {p.name || 'Sans titre'}
+                    </h3>
+                    {p.results_data && (
+                      <span className="px-2 py-0.5 bg-orange-500/10 text-orange-500 text-[10px] font-bold uppercase tracking-wider rounded border border-orange-500/20">
+                        Optimisé
+                      </span>
+                    )}
+                  </div>
+                  
+                  {p.client && (
+                    <div className="flex items-center gap-2 text-slate-400 text-sm mb-4">
+                      <User className="w-4 h-4" />
+                      <span>{p.client}</span>
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap gap-3">
+                    <div className="flex items-center gap-1.5 bg-white/5 px-3 py-1.5 rounded-lg border border-white/5 text-xs text-slate-400">
+                      <Calendar className="w-3.5 h-3.5" />
+                      {formatDate(p.updated_at)}
+                    </div>
+                    
+                    {p.devis_num && (
+                      <div className="flex items-center gap-1.5 bg-blue-500/10 px-3 py-1.5 rounded-lg border border-blue-500/20 text-xs text-blue-400">
+                        <FileText className="w-3.5 h-3.5" />
+                        {p.devis_num}
+                      </div>
+                    )}
+                    
+                    {p.results_data && (
+                      <div className="flex items-center gap-1.5 bg-purple-500/10 px-3 py-1.5 rounded-lg border border-purple-500/20 text-xs text-purple-400">
+                        <Ruler className="w-3.5 h-3.5" />
+                        {p.results_data.summary?.totalPanels || 0} Panneaux
+                      </div>
+                    )}
                   </div>
                 </div>
-                <button onClick={(e) => { e.stopPropagation(); handleDelete(p.id); }} disabled={deleting === p.id} className="opacity-0 group-hover:opacity-100 p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all">
-                  <Trash2 className="w-5 h-5" />
+                
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleDelete(p.id); }}
+                  disabled={deleting === p.id}
+                  className="opacity-0 group-hover:opacity-100 p-3 text-slate-600 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all disabled:opacity-50"
+                  title="Supprimer"
+                >
+                  {deleting === p.id ? (
+                    <div className="w-5 h-5 border-2 border-red-500 border-t-transparent rounded-full animate-spin"></div>
+                  ) : (
+                    <Trash2 className="w-5 h-5" />
+                  )}
                 </button>
               </div>
             </div>
