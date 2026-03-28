@@ -7,34 +7,24 @@ import PiecesList from './components/PiecesList';
 import Results from './components/Results';
 import AuthScreen from './components/AuthScreen';
 import ProjectsScreen from './components/ProjectsScreen';
+import { ChevronLeft, LogOut, Disc } from 'lucide-react';
 import './App.css';
 
-const SCREENS = {
-  AUTH: 'auth', PROJECTS: 'projects',
-  FORM: 'form', PIECES: 'pieces', RESULTS: 'results'
-};
-
-const DEFAULT_PROJECT = {
-  name: '', client: '', company: '',
-  panel: { w: 244, h: 122 },
-  kerf: 3, tolerance: 10,
-  pricePerPanel: 39.8,
-  pieces: [], furniture: [],
-  devisNum: '', supabaseId: null,
-};
+const SCREENS = { AUTH: 'auth', PROJECTS: 'projects', FORM: 'form', PIECES: 'pieces', RESULTS: 'results' };
+const DEFAULT_PROJECT = { name: '', client: '', company: '', panel: { w: 244, h: 122 }, kerf: 3, tolerance: 10, pricePerPanel: 39.8, pieces: [], furniture: [], devisNum: '', supabaseId: null };
 
 export default function App() {
   const lang = useLang();
   const [langOverride, setLangOverride] = useState(lang);
-  const tr = I18N[langOverride];
+  const tr = I18N[langOverride] || I18N['fr'];
 
-  const [screen, setScreen]       = useState(SCREENS.AUTH);
-  const [user, setUser]           = useState(null);
-  const [project, setProject]     = useState({ ...DEFAULT_PROJECT });
-  const [results, setResults]     = useState(null);
+  const [screen, setScreen] = useState(SCREENS.AUTH);
+  const [user, setUser] = useState(null);
+  const [project, setProject] = useState({ ...DEFAULT_PROJECT });
+  const [results, setResults] = useState(null);
   const [computing, setComputing] = useState(false);
-  const [saving, setSaving]       = useState(false);
-  const [saveMsg, setSaveMsg]     = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState('');
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -69,25 +59,38 @@ export default function App() {
     else setScreen(SCREENS.PIECES);
   };
 
+  // Appele depuis ProjectsScreen apres un scan IA reussi
+  const handleScanComplete = (scanResult) => {
+    const pieces = (scanResult.pieces || []).map(p => ({
+      name: p.name || 'Piece',
+      length: parseFloat(p.length) || 0,
+      height: parseFloat(p.height) || 0,
+      qty: parseInt(p.qty, 10) || 1,
+    }));
+
+    const projectName = 'Plan du ' + new Date().toLocaleDateString('fr-FR');
+    const dNum = 'DV-' + new Date().getFullYear() + '-' + String(Math.floor(Math.random() * 9000) + 1000);
+
+    setProject({
+      ...DEFAULT_PROJECT,
+      name: projectName,
+      devisNum: dNum,
+      pieces,
+    });
+    setResults(null);
+    setScreen(SCREENS.PIECES);
+  };
+
   const handleOptimize = useCallback(() => {
     if (!project.pieces.length) return;
     setComputing(true);
     setTimeout(async () => {
-      const res = optimise(project.pieces, project.panel, {
-        kerf: project.kerf, tolerance: project.tolerance,
-      });
-      setResults(res);
-      setComputing(false);
-      setScreen(SCREENS.RESULTS);
+      const res = optimise(project.pieces, project.panel, { kerf: project.kerf, tolerance: project.tolerance });
+      setResults(res); setComputing(false); setScreen(SCREENS.RESULTS);
       if (user) {
         setSaving(true);
-        const { data, error } = await saveProject(project, res);
-        setSaving(false);
-        if (!error && data) {
-          setProject(p => ({ ...p, supabaseId: data.id }));
-          setSaveMsg('✓ Sauvegardé');
-          setTimeout(() => setSaveMsg(''), 3000);
-        }
+        await saveProject(project, res);
+        setSaving(false); setSaveMsg('OK'); setTimeout(() => setSaveMsg(''), 2000);
       }
     }, 50);
   }, [project, user]);
@@ -95,73 +98,85 @@ export default function App() {
   const handleSave = async () => {
     if (!user) return;
     setSaving(true);
-    const { data, error } = await saveProject(project, results);
-    setSaving(false);
-    if (!error && data) {
-      setProject(p => ({ ...p, supabaseId: data.id }));
-      setSaveMsg('✓ Sauvegardé');
-    } else {
-      setSaveMsg('✗ Erreur');
-    }
-    setTimeout(() => setSaveMsg(''), 3000);
+    await saveProject(project, results);
+    setSaving(false); setSaveMsg('OK'); setTimeout(() => setSaveMsg(''), 2000);
   };
 
-  const handleSignOut = async () => {
-    await signOut();
-    setUser(null);
-    setScreen(SCREENS.AUTH);
-  };
-
+  const handleSignOut = async () => { await signOut(); setUser(null); setScreen(SCREENS.AUTH); };
+  const toggleLang = () => setLangOverride(l => l === 'fr' ? 'en' : 'fr');
   const devisNum = 'DV-' + new Date().getFullYear() + '-' + String(Math.floor(Math.random() * 9000) + 1000);
+
   const showBack = [SCREENS.FORM, SCREENS.PIECES, SCREENS.RESULTS].includes(screen);
   const showSave = user && [SCREENS.PIECES, SCREENS.RESULTS].includes(screen);
 
-  return (
-    <div className="app">
-      <header className="app-header">
-        <div className="header-left">
-          {showBack && <button className="back-btn" onClick={goBack}>←</button>}
-          <div className="logo" onClick={() => user && setScreen(SCREENS.PROJECTS)} style={{ cursor: user ? 'pointer' : 'default' }}>
-            <span className="logo-icon">✂</span>
-            <div>
-              <div className="logo-name">{tr.appName}</div>
-              {screen === SCREENS.PROJECTS && user && <div className="logo-sub">{user.email}</div>}
-            </div>
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          {(saveMsg || saving) && <span className="save-msg">{saving ? '💾...' : saveMsg}</span>}
-          {showSave && !saving && <button className="save-btn" onClick={handleSave} title="Sauvegarder">💾</button>}
-          {user && screen === SCREENS.PROJECTS && <button className="logout-btn" onClick={handleSignOut} title="Déconnexion">⎋</button>}
-          <button className="lang-btn" onClick={() => setLangOverride(l => l === 'fr' ? 'en' : 'fr')}>
-            {langOverride === 'fr' ? 'EN' : 'FR'}
-          </button>
-        </div>
-      </header>
+  let headerTitle = 'PanelCut Pro', headerSubtitle = '', steps = [];
+  if (screen === SCREENS.PROJECTS) { headerTitle = 'Dashboard'; headerSubtitle = user?.email || 'Guest'; }
+  else if (screen === SCREENS.FORM) { headerTitle = tr.newProject || 'Nouveau projet'; steps = [{ label: tr.panel, active: true }, { label: tr.pieces, active: false }, { label: tr.results, active: false }]; }
+  else if (screen === SCREENS.PIECES) { headerTitle = project.name || tr.newProject; steps = [{ label: tr.panel, active: true }, { label: tr.pieces, active: true }, { label: tr.results, active: false }]; }
+  else if (screen === SCREENS.RESULTS) { headerTitle = tr.results || 'Resultats'; steps = [{ label: tr.panel, active: true }, { label: tr.pieces, active: true }, { label: tr.results, active: true }]; }
 
-      {[SCREENS.FORM, SCREENS.PIECES, SCREENS.RESULTS].includes(screen) && (
-        <div className="stepper">
-          {[
-            { key: SCREENS.FORM, label: tr.panel },
-            { key: SCREENS.PIECES, label: tr.pieces },
-            { key: SCREENS.RESULTS, label: tr.results },
-          ].map((s, i) => {
-            const order = [SCREENS.FORM, SCREENS.PIECES, SCREENS.RESULTS];
-            const active = order.indexOf(s.key) <= order.indexOf(screen);
-            return (
-              <div key={s.key} className={`step ${active ? 'step--active' : ''}`}>
-                <div className="step-dot">{i + 1}</div>
-                <div className="step-label">{s.label}</div>
-                {i < 2 && <div className="step-line" />}
-              </div>
-            );
-          })}
-        </div>
+  const hasHeader = screen !== SCREENS.AUTH;
+
+  return (
+    <div className="app min-h-screen bg-[#0f1620] text-slate-200 font-sans">
+      {hasHeader && (
+        <header className="sticky top-0 z-40 bg-[#0f1620]/95 backdrop-blur-md border-b border-white/10 shadow-lg h-16 flex items-center justify-between px-4 gap-4">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            {showBack && (
+              <button onClick={goBack} className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors flex-shrink-0">
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+            )}
+            <h1 className="text-sm font-bold text-white truncate">{headerTitle}</h1>
+            {headerSubtitle && <p className="text-[10px] text-slate-500 uppercase truncate hidden sm:block">{headerSubtitle}</p>}
+          </div>
+
+          {steps.length > 0 && (
+            <div className="flex items-center gap-1 flex-shrink-0">
+              {steps.map((s, i) => (
+                <div key={i} className="flex items-center gap-1">
+                  <div className={
+                    'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold transition-all ' +
+                    (s.active ? 'bg-orange-500/20 text-orange-400 border border-orange-500/40' : 'text-slate-600')
+                  }>
+                    <div className={
+                      'w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-black flex-shrink-0 ' +
+                      (s.active ? 'bg-orange-500 text-black' : 'bg-slate-700 text-slate-500')
+                    }>
+                      {i + 1}
+                    </div>
+                    <span className="hidden sm:inline">{s.label}</span>
+                  </div>
+                  {i < steps.length - 1 && (
+                    <div className={'w-3 h-px flex-shrink-0 ' + (steps[i + 1].active ? 'bg-orange-500/50' : 'bg-slate-700')} />
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {(saveMsg || saving) && <span className="text-[11px] text-green-400 font-medium">{saving ? '...' : saveMsg}</span>}
+            {showSave && !saving && (
+              <button onClick={handleSave} className="p-1.5 rounded-lg text-slate-400 hover:text-green-400 hover:bg-white/10 transition-colors">
+                <Disc className="w-4 h-4" />
+              </button>
+            )}
+            <button onClick={toggleLang} className="px-2 py-1 text-slate-400 hover:text-white border border-white/10 hover:border-white/30 rounded-lg text-[11px] font-bold transition-colors">
+              {langOverride === 'fr' ? 'EN' : 'FR'}
+            </button>
+            {user && (
+              <button onClick={handleSignOut} className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-white/10 transition-colors">
+                <LogOut className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        </header>
       )}
 
-      <main className="app-main">
+      <main className={'max-w-5xl mx-auto px-4 w-full mb-20 ' + (hasHeader ? 'mt-20' : 'mt-0')}>
         {screen === SCREENS.AUTH     && <AuthScreen onSkip={() => setScreen(SCREENS.PROJECTS)} />}
-        {screen === SCREENS.PROJECTS && <ProjectsScreen user={user} onNew={() => startNew(devisNum)} onLoad={handleLoadProject} />}
+        {screen === SCREENS.PROJECTS && <ProjectsScreen user={user} onNew={() => startNew(devisNum)} onLoad={handleLoadProject} onScanComplete={handleScanComplete} />}
         {screen === SCREENS.FORM     && <ProjectForm t={tr} project={project} onChange={setProject} onNext={() => setScreen(SCREENS.PIECES)} />}
         {screen === SCREENS.PIECES   && <PiecesList t={tr} project={project} onChange={setProject} onOptimize={handleOptimize} computing={computing} />}
         {screen === SCREENS.RESULTS  && results && <Results t={tr} results={results} project={project} />}
