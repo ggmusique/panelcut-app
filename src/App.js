@@ -7,7 +7,7 @@ import PiecesList from './components/PiecesList';
 import Results from './components/Results';
 import AuthScreen from './components/AuthScreen';
 import ProjectsScreen from './components/ProjectsScreen';
-import { ChevronLeft, LogOut, Disc } from 'lucide-react';
+import { ChevronLeft, ChevronRight, LogOut, Disc } from 'lucide-react';
 import './App.css';
 
 const SCREENS = { AUTH: 'auth', PROJECTS: 'projects', FORM: 'form', PIECES: 'pieces', RESULTS: 'results' };
@@ -38,7 +38,6 @@ export default function App() {
   const [langOverride, setLangOverride] = useState(lang);
   const tr = I18N[langOverride] || I18N['fr'];
 
-  // Restore from localStorage on first render
   const [screen,  setScreenRaw]  = useState(() => lsGet(LS_SCREEN,  SCREENS.AUTH));
   const [project, setProjectRaw] = useState(() => lsGet(LS_PROJECT, { ...DEFAULT_PROJECT }));
   const [results, setResultsRaw] = useState(() => lsGet(LS_RESULTS, null));
@@ -48,7 +47,6 @@ export default function App() {
   const [saving,    setSaving]    = useState(false);
   const [saveMsg,   setSaveMsg]   = useState('');
 
-  // Wrapped setters that also persist to localStorage
   const setScreen  = (s) => { setScreenRaw(s);  lsSet(LS_SCREEN,  s); };
   const setProject = (p) => { setProjectRaw(p); lsSet(LS_PROJECT, p); };
   const setResults = (r) => { setResultsRaw(r); lsSet(LS_RESULTS, r); };
@@ -57,7 +55,6 @@ export default function App() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         setUser(session.user);
-        // Only redirect to dashboard if coming from auth screen (fresh login)
         const savedScreen = lsGet(LS_SCREEN, SCREENS.AUTH);
         if (savedScreen === SCREENS.AUTH) setScreen(SCREENS.PROJECTS);
       }
@@ -65,7 +62,6 @@ export default function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
         setUser(session.user);
-        // Only redirect to dashboard on actual sign-in (not tab focus)
         if (_event === 'SIGNED_IN') {
           const savedScreen = lsGet(LS_SCREEN, SCREENS.AUTH);
           if (savedScreen === SCREENS.AUTH) setScreen(SCREENS.PROJECTS);
@@ -95,6 +91,31 @@ export default function App() {
     else setScreen(SCREENS.AUTH);
   };
 
+  const handleOptimize = useCallback(() => {
+    if (!project.pieces.length) return;
+    setComputing(true);
+    setTimeout(async () => {
+      const res = optimise(project.pieces, project.panel, { kerf: project.kerf, tolerance: project.tolerance });
+      setResults(res); setComputing(false); setScreen(SCREENS.RESULTS);
+      if (user) {
+        setSaving(true);
+        await saveProject(project, res);
+        setSaving(false); setSaveMsg('OK'); setTimeout(() => setSaveMsg(''), 2000);
+      }
+    }, 50);
+  }, [project, user]);
+
+  // Next button logic
+  const canGoNext =
+    (screen === SCREENS.FORM    && project.name?.trim().length > 0) ||
+    (screen === SCREENS.PIECES  && project.pieces.length > 0 && !computing);
+  const showNext = [SCREENS.FORM, SCREENS.PIECES].includes(screen);
+
+  const goNext = () => {
+    if (screen === SCREENS.FORM)   setScreen(SCREENS.PIECES);
+    if (screen === SCREENS.PIECES) handleOptimize();
+  };
+
   const handleLoadProject = async (id) => {
     const { data, error } = await loadProject(id);
     if (error || !data) return;
@@ -117,20 +138,6 @@ export default function App() {
     setResults(null);
     setScreen(SCREENS.PIECES);
   };
-
-  const handleOptimize = useCallback(() => {
-    if (!project.pieces.length) return;
-    setComputing(true);
-    setTimeout(async () => {
-      const res = optimise(project.pieces, project.panel, { kerf: project.kerf, tolerance: project.tolerance });
-      setResults(res); setComputing(false); setScreen(SCREENS.RESULTS);
-      if (user) {
-        setSaving(true);
-        await saveProject(project, res);
-        setSaving(false); setSaveMsg('OK'); setTimeout(() => setSaveMsg(''), 2000);
-      }
-    }, 50);
-  }, [project, user]);
 
   const handleSave = async () => {
     if (!user) return;
@@ -211,12 +218,24 @@ export default function App() {
             </div>
           )}
 
-          {/* RIGHT: save + lang + logout */}
+          {/* RIGHT: next + save + lang + logout */}
           <div className="flex items-center gap-1.5 flex-shrink-0">
             {(saveMsg || saving) && <span className="text-[11px] text-green-400 font-medium">{saving ? '...' : saveMsg}</span>}
             {showSave && !saving && (
               <button onClick={handleSave} className="p-1.5 rounded-lg text-slate-400 hover:text-green-400 hover:bg-white/10 transition-colors">
                 <Disc className="w-4 h-4" />
+              </button>
+            )}
+            {showNext && (
+              <button
+                onClick={goNext}
+                disabled={!canGoNext}
+                className={'p-1.5 rounded-lg transition-colors flex-shrink-0 ' +
+                  (canGoNext
+                    ? 'text-orange-400 hover:text-white hover:bg-orange-500/20'
+                    : 'text-slate-700 cursor-not-allowed')}
+              >
+                <ChevronRight className="w-5 h-5" />
               </button>
             )}
             <button onClick={toggleLang} className="px-2 py-1 text-slate-400 hover:text-white border border-white/10 hover:border-white/30 rounded-lg text-[11px] font-bold transition-colors">
