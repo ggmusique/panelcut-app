@@ -118,20 +118,20 @@ export default function App() {
       {hasHeader && (
         <header className="sticky top-0 z-40 bg-[#0f1620]/95 backdrop-blur-md border-b border-white/10 shadow-lg h-16 flex items-center justify-between px-4 md:px-8 gap-2">
 
-          {/* LEFT: back + title */}
-          <div className="flex items-center gap-2 min-w-0 flex-shrink-0">
+          {/* LEFT: back + title + version */}
+          <div className="flex items-center gap-2 flex-shrink-0">
             {showBack && (
               <button onClick={goBack} className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors flex-shrink-0">
                 <ChevronLeft className="w-5 h-5" />
               </button>
             )}
-            <div className="flex items-center gap-1.5">
-              <h1 className={'font-bold text-white truncate ' + (hasSteps ? 'hidden md:block text-sm md:text-base' : 'text-sm md:text-base')}>
+            <div className="flex flex-col">
+              <h1 className={'font-bold text-white ' + (hasSteps ? 'hidden md:block text-sm md:text-base' : 'text-sm md:text-base')}>
                 {headerTitle}
               </h1>
-              {/* Version badge — toujours visible */}
-              <span className="text-[9px] font-mono text-slate-600 hidden sm:inline">
-                v{APP_VERSION}·{GIT_HASH}
+              {/* Badge version: orange vif, gras, visible partout */}
+              <span className="text-[11px] font-mono font-black text-orange-400" style={{textShadow:'0 0 8px #f97316'}}>
+                v{APP_VERSION} · {GIT_HASH}
               </span>
             </div>
             {headerSubtitle && <p className="text-[10px] text-slate-500 uppercase truncate hidden sm:block">{headerSubtitle}</p>}
