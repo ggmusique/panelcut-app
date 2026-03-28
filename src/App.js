@@ -16,7 +16,6 @@ const DEFAULT_PROJECT = { name: '', client: '', company: '', panel: { w: 244, h:
 const APP_VERSION = process.env.REACT_APP_VERSION || '1.0.0';
 const GIT_HASH   = process.env.REACT_APP_GIT_HASH  || 'dev';
 
-// ── localStorage helpers ──────────────────────────────────────────────────────
 const LS_SCREEN  = 'pc_screen';
 const LS_PROJECT = 'pc_project';
 const LS_RESULTS = 'pc_results';
@@ -31,7 +30,6 @@ function lsSet(key, value) {
 function lsClear() {
   [LS_SCREEN, LS_PROJECT, LS_RESULTS].forEach(k => localStorage.removeItem(k));
 }
-// ─────────────────────────────────────────────────────────────────────────────
 
 export default function App() {
   const lang = useLang();
@@ -105,10 +103,9 @@ export default function App() {
     }, 50);
   }, [project, user]);
 
-  // Next button logic
   const canGoNext =
-    (screen === SCREENS.FORM    && project.name?.trim().length > 0) ||
-    (screen === SCREENS.PIECES  && project.pieces.length > 0 && !computing);
+    (screen === SCREENS.FORM   && project.name?.trim().length > 0) ||
+    (screen === SCREENS.PIECES && project.pieces.length > 0 && !computing);
   const showNext = [SCREENS.FORM, SCREENS.PIECES].includes(screen);
 
   const goNext = () => {
@@ -163,26 +160,27 @@ export default function App() {
 
   let headerTitle = 'PanelCut Pro', headerSubtitle = '', steps = [];
   if (screen === SCREENS.PROJECTS) { headerTitle = 'Dashboard'; headerSubtitle = user?.email || 'Guest'; }
-  else if (screen === SCREENS.FORM) { headerTitle = tr.newProject || 'Nouveau projet'; steps = [{ label: tr.panel, active: true }, { label: tr.pieces, active: false }, { label: tr.results, active: false }]; }
-  else if (screen === SCREENS.PIECES) { headerTitle = project.name || tr.newProject; steps = [{ label: tr.panel, active: true }, { label: tr.pieces, active: true }, { label: tr.results, active: false }]; }
-  else if (screen === SCREENS.RESULTS) { headerTitle = tr.results || 'Resultats'; steps = [{ label: tr.panel, active: true }, { label: tr.pieces, active: true }, { label: tr.results, active: true }]; }
+  else if (screen === SCREENS.FORM)    { headerTitle = tr.newProject || 'Nouveau projet'; steps = [{ label: tr.panel, active: true }, { label: tr.pieces, active: false }, { label: tr.results, active: false }]; }
+  else if (screen === SCREENS.PIECES)  { headerTitle = project.name || tr.newProject;    steps = [{ label: tr.panel, active: true }, { label: tr.pieces, active: true  }, { label: tr.results, active: false }]; }
+  else if (screen === SCREENS.RESULTS) { headerTitle = tr.results || 'Resultats';         steps = [{ label: tr.panel, active: true }, { label: tr.pieces, active: true  }, { label: tr.results, active: true  }]; }
 
   const hasHeader = screen !== SCREENS.AUTH;
-  const hasSteps = steps.length > 0;
+  const hasSteps  = steps.length > 0;
 
   return (
     <div className="app min-h-screen bg-[#0f1620] text-slate-200 font-sans">
       {hasHeader && (
         <header className="sticky top-0 z-40 bg-[#0f1620]/95 backdrop-blur-md border-b border-white/10 shadow-lg h-16 flex items-center justify-between px-4 md:px-8 gap-2">
 
-          {/* LEFT: back + title + version */}
-          <div className="flex items-center gap-2 flex-shrink-0">
+          {/* LEFT: ‹ title › */}
+          <div className="flex items-center gap-1 flex-shrink-0">
             {showBack && (
-              <button onClick={goBack} className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors flex-shrink-0">
+              <button onClick={goBack} className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors">
                 <ChevronLeft className="w-5 h-5" />
               </button>
             )}
-            <div className="flex flex-col">
+
+            <div className="flex flex-col mx-1">
               <h1 className={'font-bold text-white ' + (hasSteps ? 'hidden md:block text-sm md:text-base' : 'text-sm md:text-base')}>
                 {headerTitle}
               </h1>
@@ -190,7 +188,21 @@ export default function App() {
                 v{APP_VERSION} · {GIT_HASH}
               </span>
             </div>
-            {headerSubtitle && <p className="text-[10px] text-slate-500 uppercase truncate hidden sm:block">{headerSubtitle}</p>}
+
+            {showNext && (
+              <button
+                onClick={goNext}
+                disabled={!canGoNext}
+                className={'p-1.5 rounded-lg transition-colors ' +
+                  (canGoNext
+                    ? 'text-orange-400 hover:text-white hover:bg-orange-500/20'
+                    : 'text-slate-700 cursor-not-allowed')}
+              >
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            )}
+
+            {headerSubtitle && <p className="text-[10px] text-slate-500 uppercase truncate hidden sm:block ml-1">{headerSubtitle}</p>}
           </div>
 
           {/* CENTER: stepper */}
@@ -218,24 +230,12 @@ export default function App() {
             </div>
           )}
 
-          {/* RIGHT: next + save + lang + logout */}
+          {/* RIGHT: save + lang + logout */}
           <div className="flex items-center gap-1.5 flex-shrink-0">
             {(saveMsg || saving) && <span className="text-[11px] text-green-400 font-medium">{saving ? '...' : saveMsg}</span>}
             {showSave && !saving && (
               <button onClick={handleSave} className="p-1.5 rounded-lg text-slate-400 hover:text-green-400 hover:bg-white/10 transition-colors">
                 <Disc className="w-4 h-4" />
-              </button>
-            )}
-            {showNext && (
-              <button
-                onClick={goNext}
-                disabled={!canGoNext}
-                className={'p-1.5 rounded-lg transition-colors flex-shrink-0 ' +
-                  (canGoNext
-                    ? 'text-orange-400 hover:text-white hover:bg-orange-500/20'
-                    : 'text-slate-700 cursor-not-allowed')}
-              >
-                <ChevronRight className="w-5 h-5" />
               </button>
             )}
             <button onClick={toggleLang} className="px-2 py-1 text-slate-400 hover:text-white border border-white/10 hover:border-white/30 rounded-lg text-[11px] font-bold transition-colors">
