@@ -21,14 +21,18 @@ function getColor(name, colorMap) {
   return colorMap[name];
 }
 
-// Affiche en cm avec 1 decimale seulement si ce n'est pas un entier
-// ex: 500 -> "50", 759 -> "75.9", 380 -> "38"
+// Affiche en cm avec 1 decimale seulement si ce n'est pas un entier rond
 function fmtCm(tenthsMm) {
   const cm = tenthsMm / 10;
   return Number.isInteger(cm) ? String(cm) : cm.toFixed(1);
 }
 
-function computeWasteZones(placed, panelW, panelH) {
+/**
+ * Chaque coupe consomme 1 kerf APRES la piece.
+ * usedW = lastPiece.x + lastPiece.l + kerf
+ * usedH = lastBand.bandY + lastBand.bandH + kerf
+ */
+function computeWasteZones(placed, panelW, panelH, kerf) {
   const zones = [];
 
   const bands = {};
@@ -41,9 +45,10 @@ function computeWasteZones(placed, panelW, panelH) {
 
   const sortedBands = Object.values(bands).sort((a, b) => a.bandY - b.bandY);
 
+  // Chute laterale (droite) — +kerf car le dernier trait de scie est compris
   for (const band of sortedBands) {
     const lastPiece = [...band.pieces].sort((a, b) => (a.x || 0) - (b.x || 0)).pop();
-    const usedW  = (lastPiece.x || 0) + lastPiece.l;
+    const usedW  = (lastPiece.x || 0) + lastPiece.l + kerf;
     const wasteW = panelW - usedW;
     if (wasteW > 5) {
       zones.push({
@@ -56,9 +61,10 @@ function computeWasteZones(placed, panelW, panelH) {
     }
   }
 
+  // Chute du bas — +kerf car la coupe horizontale est comprise
   const lastBand = sortedBands[sortedBands.length - 1];
   if (lastBand) {
-    const usedH  = lastBand.bandY + lastBand.bandH;
+    const usedH  = lastBand.bandY + lastBand.bandH + kerf;
     const wasteH = panelH - usedH;
     if (wasteH > 5) {
       zones.push({
@@ -74,7 +80,7 @@ function computeWasteZones(placed, panelW, panelH) {
   return zones;
 }
 
-function PanelSVG({ panel, panelW, panelH, colorMap }) {
+function PanelSVG({ panel, panelW, panelH, kerf, colorMap }) {
   const MARGIN_R = 52;
   const SVG_W    = 500;
   const SVG_H    = Math.round(SVG_W * panelH / panelW);
@@ -83,7 +89,7 @@ function PanelSVG({ panel, panelW, panelH, colorMap }) {
 
   const hCuts = panel.cuts.filter(c => c.type === 'bande' && c.orientation === 'horizontal');
   const vCuts = panel.cuts.filter(c => c.type === 'bande' && c.orientation === 'vertical');
-  const wasteZones = computeWasteZones(panel.placed, panelW, panelH);
+  const wasteZones = computeWasteZones(panel.placed, panelW, panelH, kerf);
 
   return (
     <div className="relative group">
@@ -211,6 +217,7 @@ export default function Results({ t, results, project }) {
   const panel      = results.panels[currentPanel];
   const panelW     = Math.round(project.panel.w * 10);
   const panelH     = Math.round(project.panel.h * 10);
+  const kerf       = Math.round((project.kerf ?? 3) * 1);  // kerf en dixiemes de mm (deja en mm -> *1, stored as mm)
   const totalCost  = (results.summary.totalPanels * (project.pricePerPanel || 0)).toFixed(2);
   const utilization = panel.utilizationPct;
 
@@ -307,7 +314,7 @@ export default function Results({ t, results, project }) {
         {tab === 'visual' && (
           <div className="space-y-4">
             <PanelNav />
-            <PanelSVG panel={panel} panelW={panelW} panelH={panelH} colorMap={colorMap} />
+            <PanelSVG panel={panel} panelW={panelW} panelH={panelH} kerf={kerf} colorMap={colorMap} />
             <div className="flex justify-center gap-2">
               {results.panels.map((_, i) => (
                 <button key={i} onClick={() => setCurrentPanel(i)}
