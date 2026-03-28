@@ -16,32 +16,74 @@ const DEFAULT_PROJECT = { name: '', client: '', company: '', panel: { w: 244, h:
 const APP_VERSION = process.env.REACT_APP_VERSION || '1.0.0';
 const GIT_HASH   = process.env.REACT_APP_GIT_HASH  || 'dev';
 
+// ── localStorage helpers ──────────────────────────────────────────────────────
+const LS_SCREEN  = 'pc_screen';
+const LS_PROJECT = 'pc_project';
+const LS_RESULTS = 'pc_results';
+
+function lsGet(key, fallback) {
+  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
+  catch { return fallback; }
+}
+function lsSet(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
+}
+function lsClear() {
+  [LS_SCREEN, LS_PROJECT, LS_RESULTS].forEach(k => localStorage.removeItem(k));
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 export default function App() {
   const lang = useLang();
   const [langOverride, setLangOverride] = useState(lang);
   const tr = I18N[langOverride] || I18N['fr'];
 
-  const [screen, setScreen] = useState(SCREENS.AUTH);
-  const [user, setUser] = useState(null);
-  const [project, setProject] = useState({ ...DEFAULT_PROJECT });
-  const [results, setResults] = useState(null);
+  // Restore from localStorage on first render
+  const [screen,  setScreenRaw]  = useState(() => lsGet(LS_SCREEN,  SCREENS.AUTH));
+  const [project, setProjectRaw] = useState(() => lsGet(LS_PROJECT, { ...DEFAULT_PROJECT }));
+  const [results, setResultsRaw] = useState(() => lsGet(LS_RESULTS, null));
+
+  const [user,      setUser]      = useState(null);
   const [computing, setComputing] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [saveMsg, setSaveMsg] = useState('');
+  const [saving,    setSaving]    = useState(false);
+  const [saveMsg,   setSaveMsg]   = useState('');
+
+  // Wrapped setters that also persist to localStorage
+  const setScreen  = (s) => { setScreenRaw(s);  lsSet(LS_SCREEN,  s); };
+  const setProject = (p) => { setProjectRaw(p); lsSet(LS_PROJECT, p); };
+  const setResults = (r) => { setResultsRaw(r); lsSet(LS_RESULTS, r); };
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) { setUser(session.user); setScreen(SCREENS.PROJECTS); }
+      if (session?.user) {
+        setUser(session.user);
+        // Only redirect to dashboard if coming from auth screen (fresh login)
+        const savedScreen = lsGet(LS_SCREEN, SCREENS.AUTH);
+        if (savedScreen === SCREENS.AUTH) setScreen(SCREENS.PROJECTS);
+      }
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) { setUser(session.user); setScreen(SCREENS.PROJECTS); }
-      else { setUser(null); setScreen(SCREENS.AUTH); }
+      if (session?.user) {
+        setUser(session.user);
+        // Only redirect to dashboard on actual sign-in (not tab focus)
+        if (_event === 'SIGNED_IN') {
+          const savedScreen = lsGet(LS_SCREEN, SCREENS.AUTH);
+          if (savedScreen === SCREENS.AUTH) setScreen(SCREENS.PROJECTS);
+        }
+      } else {
+        setUser(null);
+        lsClear();
+        setScreenRaw(SCREENS.AUTH);
+        setProjectRaw({ ...DEFAULT_PROJECT });
+        setResultsRaw(null);
+      }
     });
     return () => subscription.unsubscribe();
   }, []);
 
   const startNew = (devisNum = '') => {
-    setProject({ ...DEFAULT_PROJECT, devisNum });
+    const p = { ...DEFAULT_PROJECT, devisNum };
+    setProject(p);
     setResults(null);
     setScreen(SCREENS.FORM);
   };
@@ -97,7 +139,15 @@ export default function App() {
     setSaving(false); setSaveMsg('OK'); setTimeout(() => setSaveMsg(''), 2000);
   };
 
-  const handleSignOut = async () => { await signOut(); setUser(null); setScreen(SCREENS.AUTH); };
+  const handleSignOut = async () => {
+    await signOut();
+    setUser(null);
+    lsClear();
+    setScreenRaw(SCREENS.AUTH);
+    setProjectRaw({ ...DEFAULT_PROJECT });
+    setResultsRaw(null);
+  };
+
   const toggleLang = () => setLangOverride(l => l === 'fr' ? 'en' : 'fr');
   const devisNum = 'DV-' + new Date().getFullYear() + '-' + String(Math.floor(Math.random() * 9000) + 1000);
 
@@ -129,7 +179,6 @@ export default function App() {
               <h1 className={'font-bold text-white ' + (hasSteps ? 'hidden md:block text-sm md:text-base' : 'text-sm md:text-base')}>
                 {headerTitle}
               </h1>
-              {/* Badge version: orange vif, gras, visible partout */}
               <span className="text-[11px] font-mono font-black text-orange-400" style={{textShadow:'0 0 8px #f97316'}}>
                 v{APP_VERSION} · {GIT_HASH}
               </span>
