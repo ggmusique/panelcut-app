@@ -208,6 +208,7 @@ export function optimise(pieces, panel, opts = {}) {
   const panelArea = W * H;
 
   const panels  = [];
+  all.sort((a, b) => (b.length * b.height) - (a.length * a.height));
   let remaining = [...all];
   let panelId   = 1;
   let totalWaste = 0;
