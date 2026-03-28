@@ -189,14 +189,14 @@ export default function App() {
               </span>
             </div>
 
+            {/* Bouton NEXT — toujours visible, orange si actif, gris clair si pas encore possible */}
             {showNext && (
               <button
-                onClick={goNext}
-                disabled={!canGoNext}
+                onClick={canGoNext ? goNext : undefined}
                 className={'p-1.5 rounded-lg transition-colors ' +
                   (canGoNext
-                    ? 'text-orange-400 hover:text-white hover:bg-orange-500/20'
-                    : 'text-slate-700 cursor-not-allowed')}
+                    ? 'text-orange-400 hover:text-white hover:bg-orange-500/20 cursor-pointer'
+                    : 'text-slate-500 cursor-not-allowed opacity-40')}
               >
                 <ChevronRight className="w-5 h-5" />
               </button>
