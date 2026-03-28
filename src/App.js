@@ -108,27 +108,33 @@ export default function App() {
   else if (screen === SCREENS.RESULTS) { headerTitle = tr.results || 'Resultats'; steps = [{ label: tr.panel, active: true }, { label: tr.pieces, active: true }, { label: tr.results, active: true }]; }
 
   const hasHeader = screen !== SCREENS.AUTH;
+  const hasSteps = steps.length > 0;
 
   return (
     <div className="app min-h-screen bg-[#0f1620] text-slate-200 font-sans">
       {hasHeader && (
-        <header className="sticky top-0 z-40 bg-[#0f1620]/95 backdrop-blur-md border-b border-white/10 shadow-lg h-16 flex items-center justify-between px-4 md:px-8 gap-4">
-          <div className="flex items-center gap-2 min-w-0 flex-1">
+        <header className="sticky top-0 z-40 bg-[#0f1620]/95 backdrop-blur-md border-b border-white/10 shadow-lg h-16 flex items-center justify-between px-4 md:px-8 gap-2">
+
+          {/* LEFT: back + title (title hidden on mobile when stepper present) */}
+          <div className="flex items-center gap-2 min-w-0 flex-shrink-0">
             {showBack && (
               <button onClick={goBack} className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors flex-shrink-0">
                 <ChevronLeft className="w-5 h-5" />
               </button>
             )}
-            <h1 className="text-sm md:text-base font-bold text-white truncate">{headerTitle}</h1>
+            <h1 className={'font-bold text-white truncate ' + (hasSteps ? 'hidden md:block text-sm md:text-base' : 'text-sm md:text-base')}>
+              {headerTitle}
+            </h1>
             {headerSubtitle && <p className="text-[10px] text-slate-500 uppercase truncate hidden sm:block">{headerSubtitle}</p>}
           </div>
 
-          {steps.length > 0 && (
-            <div className="flex items-center gap-1 flex-shrink-0">
+          {/* CENTER: stepper */}
+          {hasSteps && (
+            <div className="flex items-center gap-1 flex-1 justify-center">
               {steps.map((s, i) => (
                 <div key={i} className="flex items-center gap-1">
                   <div className={
-                    'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold transition-all ' +
+                    'flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-bold transition-all ' +
                     (s.active ? 'bg-orange-500/20 text-orange-400 border border-orange-500/40' : 'text-slate-600')
                   }>
                     <div className={
@@ -147,6 +153,7 @@ export default function App() {
             </div>
           )}
 
+          {/* RIGHT: save + lang + logout */}
           <div className="flex items-center gap-1.5 flex-shrink-0">
             {(saveMsg || saving) && <span className="text-[11px] text-green-400 font-medium">{saving ? '...' : saveMsg}</span>}
             {showSave && !saving && (
