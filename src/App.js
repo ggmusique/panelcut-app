@@ -166,7 +166,7 @@ export default function App() {
         </header>
       )}
 
-      <main className={'w-full max-w-7xl mx-auto px-4 md:px-8 mb-20 ' + (hasHeader ? 'mt-4' : 'mt-0')}>
+      <main className={'w-full px-4 md:px-8 mb-20 ' + (hasHeader ? 'mt-4' : 'mt-0')}>
         {screen === SCREENS.AUTH     && <AuthScreen onSkip={() => setScreen(SCREENS.PROJECTS)} />}
         {screen === SCREENS.PROJECTS && <ProjectsScreen user={user} onNew={() => startNew(devisNum)} onLoad={handleLoadProject} onScanComplete={handleScanComplete} />}
         {screen === SCREENS.FORM     && <ProjectForm t={tr} project={project} onChange={setProject} onNext={() => setScreen(SCREENS.PIECES)} />}
