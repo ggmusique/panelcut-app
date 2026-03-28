@@ -7,8 +7,6 @@ export default function ProjectsScreen({ onLoad, onNew, user, onScanComplete }) 
   const [projects, setProjects] = useState([]);
   const [loading, setLoading]   = useState(true);
   const [deleting, setDeleting] = useState(null);
-  
-  // États pour l'upload IA
   const [showUpload, setShowUpload] = useState(false);
   const [lastResult, setLastResult] = useState(null);
 
@@ -44,7 +42,6 @@ export default function ProjectsScreen({ onLoad, onNew, user, onScanComplete }) 
   return (
     <div className="min-h-screen bg-[#050505] text-slate-200 pb-20 relative font-sans selection:bg-orange-500 selection:text-white">
       
-      {/* MODAL UPLOAD */}
       {showUpload && (
         <ImageUpload 
           onScanComplete={handleScanComplete} 
@@ -52,13 +49,12 @@ export default function ProjectsScreen({ onLoad, onNew, user, onScanComplete }) 
         />
       )}
 
-      {/* HEADER "BLACK NIGHT" */}
+      {/* HEADER */}
       <header className="bg-gradient-to-b from-[#1a1a1a] to-[#050505] pt-10 pb-32 px-6 relative overflow-hidden border-b border-white/5">
-        {/* Effets de lueur subtils */}
         <div className="absolute top-0 right-0 w-96 h-96 bg-orange-600/10 rounded-full mix-blend-screen filter blur-[100px] opacity-50"></div>
         <div className="absolute bottom-0 left-0 w-96 h-96 bg-blue-600/10 rounded-full mix-blend-screen filter blur-[100px] opacity-30"></div>
 
-        <div className="relative z-10 max-w-4xl mx-auto">
+        <div className="relative z-10 max-w-6xl mx-auto">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
             <div>
               <h1 className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-white via-slate-200 to-slate-400 mb-2 tracking-tight">
@@ -76,24 +72,31 @@ export default function ProjectsScreen({ onLoad, onNew, user, onScanComplete }) 
             </div>
           </div>
 
-          <button 
-            onClick={() => setShowUpload(true)}
-            className="group relative inline-flex items-center justify-center gap-3 bg-white text-black hover:bg-orange-500 hover:text-white font-bold py-4 px-8 rounded-xl transition-all duration-300 shadow-[0_0_20px_rgba(255,255,255,0.1)] hover:shadow-[0_0_30px_rgba(249,115,22,0.4)] transform hover:-translate-y-1"
-          >
-            <Plus className="w-6 h-6 transition-transform group-hover:rotate-90" />
-            <span>Nouveau Projet (Scan IA)</span>
-          </button>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <button 
+              onClick={() => setShowUpload(true)}
+              className="group relative inline-flex items-center justify-center gap-3 bg-white text-black hover:bg-orange-500 hover:text-white font-bold py-4 px-8 rounded-xl transition-all duration-300 shadow-[0_0_20px_rgba(255,255,255,0.1)] hover:shadow-[0_0_30px_rgba(249,115,22,0.4)] transform hover:-translate-y-1"
+            >
+              <Plus className="w-6 h-6 transition-transform group-hover:rotate-90" />
+              <span>Nouveau Projet (Scan IA)</span>
+            </button>
+            <button 
+              onClick={onNew}
+              className="group relative inline-flex items-center justify-center gap-3 bg-white/10 hover:bg-white/20 text-white font-bold py-4 px-8 rounded-xl transition-all duration-300 border border-white/10 hover:border-white/30 transform hover:-translate-y-1"
+            >
+              <Plus className="w-6 h-6" />
+              <span>Nouveau Manuel</span>
+            </button>
+          </div>
         </div>
       </header>
 
       {/* MAIN CONTENT */}
-      <main className="max-w-4xl mx-auto px-6 -mt-20 relative z-20">
+      <main className="max-w-6xl mx-auto px-6 -mt-20 relative z-20">
         
-        {/* KPI CARD - DERNIER SCAN */}
         {lastResult && (
           <div className="mb-10 bg-gradient-to-br from-[#111] to-[#0a0a0a] border border-white/10 rounded-2xl p-6 shadow-2xl relative overflow-hidden animate-fade-in-up">
             <div className="absolute top-0 right-0 w-32 h-32 bg-green-500/10 rounded-full blur-3xl"></div>
-            
             <div className="flex items-center justify-between mb-6 relative z-10">
               <div className="flex items-center gap-3 text-green-400">
                 <div className="p-2 bg-green-500/10 rounded-lg">
@@ -105,7 +108,6 @@ export default function ProjectsScreen({ onLoad, onNew, user, onScanComplete }) 
                 <X className="w-5 h-5" />
               </button>
             </div>
-
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 relative z-10">
               <div className="bg-white/5 backdrop-blur-sm border border-white/5 p-4 rounded-xl text-center hover:bg-white/10 transition-colors">
                 <div className="text-3xl font-bold text-white mb-1">{lastResult.pieces?.length || 0}</div>
@@ -155,19 +157,19 @@ export default function ProjectsScreen({ onLoad, onNew, user, onScanComplete }) 
           </div>
         )}
 
-        <div className="space-y-4">
+        {/* GRILLE RESPONSIVE */}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {projects.map(p => (
             <div 
               key={p.id} 
-              className="group relative bg-[#111] hover:bg-[#161616] rounded-2xl p-6 border border-white/5 hover:border-orange-500/30 transition-all duration-300 cursor-pointer shadow-lg hover:shadow-[0_10px_40px_-10px_rgba(0,0,0,0.5)] overflow-hidden"
+              className="group relative bg-[#111] hover:bg-[#161616] rounded-2xl p-6 border border-white/5 hover:border-orange-500/30 transition-all duration-300 cursor-pointer shadow-lg hover:shadow-[0_10px_40px_-10px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col justify-between"
               onClick={() => onLoad(p.id)}
             >
-              {/* Ligne décorative latérale */}
               <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-orange-500 to-red-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
               
               <div className="flex justify-between items-start pl-2">
                 <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-2">
+                  <div className="flex items-center gap-3 mb-2 flex-wrap">
                     <h3 className="text-lg font-bold text-white group-hover:text-orange-500 transition-colors">
                       {p.name || 'Sans titre'}
                     </h3>
@@ -185,19 +187,17 @@ export default function ProjectsScreen({ onLoad, onNew, user, onScanComplete }) 
                     </div>
                   )}
 
-                  <div className="flex flex-wrap gap-3">
+                  <div className="flex flex-wrap gap-2 mt-3">
                     <div className="flex items-center gap-1.5 bg-white/5 px-3 py-1.5 rounded-lg border border-white/5 text-xs text-slate-400">
                       <Calendar className="w-3.5 h-3.5" />
                       {formatDate(p.updated_at)}
                     </div>
-                    
                     {p.devis_num && (
                       <div className="flex items-center gap-1.5 bg-blue-500/10 px-3 py-1.5 rounded-lg border border-blue-500/20 text-xs text-blue-400">
                         <FileText className="w-3.5 h-3.5" />
                         {p.devis_num}
                       </div>
                     )}
-                    
                     {p.results_data && (
                       <div className="flex items-center gap-1.5 bg-purple-500/10 px-3 py-1.5 rounded-lg border border-purple-500/20 text-xs text-purple-400">
                         <Ruler className="w-3.5 h-3.5" />

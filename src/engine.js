@@ -73,7 +73,9 @@ function cut(rect, pieces, kerf, tol, depth, panelId) {
     const bandH  = bestGroup.bandH;
     const cutPos = usedH + bandH;
     const cutNum = allCuts.filter(c => c.type === 'bande').length + 1;
+    const bKey   = `H:${panelId}:${depth}:${usedH}`;
 
+    // Coupe horizontale traversante (toute la largeur du panneau)
     allCuts.push({
       type: 'bande',
       cutNum,
@@ -83,15 +85,40 @@ function cut(rect, pieces, kerf, tol, depth, panelId) {
       bandHCm: (bandH / 10).toFixed(1),
       bandY: usedH,
       bandYCm: (usedH / 10).toFixed(1),
+      orientation: 'horizontal',
       panelId,
-      depth
+      depth,
+      bandKey: bKey,
     });
 
     const placedIds = new Set();
     let posInBand = 0;
-    for (const idx of bestSel) {
-      const p = bestGroup.pieces[idx];
-      posInBand += p.l + kerf;
+
+    for (let si = 0; si < bestSel.length; si++) {
+      const idx = bestSel[si];
+      const p   = bestGroup.pieces[idx];
+      const xStart = posInBand;
+
+      // Coupe verticale traversante AVANT cette pièce
+      // (sauf pour la première pièce qui part du bord gauche)
+      // Après la dernière pièce on ne coupe pas non plus (bord droit = chute)
+      if (si > 0) {
+        allCuts.push({
+          type: 'bande',
+          cutNum: allCuts.filter(c => c.type === 'bande').length + 1,
+          pos: xStart,          // position X dans la bande
+          posCm: (xStart / 10).toFixed(1),
+          bandY: usedH,
+          bandYCm: (usedH / 10).toFixed(1),
+          bandH,
+          bandHCm: (bandH / 10).toFixed(1),
+          orientation: 'vertical',
+          panelId,
+          depth,
+          bandKey: bKey,
+        });
+      }
+
       allCuts.push({
         type: 'piece',
         id: p.id,
@@ -100,34 +127,39 @@ function cut(rect, pieces, kerf, tol, depth, panelId) {
         h: p.h, hCm: (p.h / 10).toFixed(1),
         bandH, bandHCm: (bandH / 10).toFixed(1),
         bandY: usedH, bandYCm: (usedH / 10).toFixed(1),
-        x: posInBand - p.l - kerf,
-        xCm: ((posInBand - p.l - kerf) / 10).toFixed(1),
+        x: xStart,
+        xCm: (xStart / 10).toFixed(1),
         redeligne: p.h < bandH
           ? { fromCm: (bandH / 10).toFixed(1), toCm: (p.h / 10).toFixed(1) }
           : null,
         rotated: p.rotated || false,
-        panelId, depth
+        panelId,
+        depth,
+        bandKey: bKey,
       });
-      allPlaced.push({ ...p, bandY: usedH, x: posInBand - p.l - kerf });
+
+      allPlaced.push({ ...p, bandY: usedH, x: xStart });
       placedIds.add(p.id);
+      posInBand += p.l + kerf;
     }
 
     // Récursion dans la chute longitudinale de la bande
-    const bandWasteL = W - kerf - bestUtil - bestSel.length * kerf;
+    const bandWasteL = W - kerf - bestUtil - (bestSel.length - 1) * kerf;
     if (bandWasteL >= cm(5)) {
       const subP = remaining.filter(p => !placedIds.has(p.id) && p.h <= bandH);
       if (subP.length > 0) {
+        const offsetX = W - bandWasteL;
         const sub = cut({ W: bandWasteL, H: bandH }, subP, kerf, tol, depth + 1, panelId);
         for (const p of sub.placed) {
           placedIds.add(p.id);
-          // Ajuste la position X dans le contexte global
-          allPlaced.push({ ...p, bandY: usedH, x: p.x + (W - bandWasteL) });
-          allCuts.push(...sub.cuts.map(c => ({
-            ...c,
-            bandY: usedH,
-            x: (c.x || 0) + (W - bandWasteL)
-          })));
+          allPlaced.push({ ...p, bandY: usedH, x: p.x + offsetX });
         }
+        allCuts.push(...sub.cuts.map(c => ({
+          ...c,
+          bandY: usedH,
+          x: (c.x || 0) + offsetX,
+          pos: c.orientation === 'vertical' ? (c.pos || 0) + offsetX : c.pos,
+        })));
         remaining = remaining.filter(p => !placedIds.has(p.id));
       }
     }

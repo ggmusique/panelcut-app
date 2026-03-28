@@ -13,32 +13,77 @@ import './App.css';
 const SCREENS = { AUTH: 'auth', PROJECTS: 'projects', FORM: 'form', PIECES: 'pieces', RESULTS: 'results' };
 const DEFAULT_PROJECT = { name: '', client: '', company: '', panel: { w: 244, h: 122 }, kerf: 3, tolerance: 10, pricePerPanel: 39.8, pieces: [], furniture: [], devisNum: '', supabaseId: null };
 
+const APP_VERSION = process.env.REACT_APP_VERSION || '1.0.0';
+const GIT_HASH   = process.env.REACT_APP_GIT_HASH  || 'dev';
+
+// ── localStorage helpers ──────────────────────────────────────────────────────
+const LS_SCREEN  = 'pc_screen';
+const LS_PROJECT = 'pc_project';
+const LS_RESULTS = 'pc_results';
+
+function lsGet(key, fallback) {
+  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
+  catch { return fallback; }
+}
+function lsSet(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
+}
+function lsClear() {
+  [LS_SCREEN, LS_PROJECT, LS_RESULTS].forEach(k => localStorage.removeItem(k));
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 export default function App() {
   const lang = useLang();
   const [langOverride, setLangOverride] = useState(lang);
   const tr = I18N[langOverride] || I18N['fr'];
 
-  const [screen, setScreen] = useState(SCREENS.AUTH);
-  const [user, setUser] = useState(null);
-  const [project, setProject] = useState({ ...DEFAULT_PROJECT });
-  const [results, setResults] = useState(null);
+  // Restore from localStorage on first render
+  const [screen,  setScreenRaw]  = useState(() => lsGet(LS_SCREEN,  SCREENS.AUTH));
+  const [project, setProjectRaw] = useState(() => lsGet(LS_PROJECT, { ...DEFAULT_PROJECT }));
+  const [results, setResultsRaw] = useState(() => lsGet(LS_RESULTS, null));
+
+  const [user,      setUser]      = useState(null);
   const [computing, setComputing] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [saveMsg, setSaveMsg] = useState('');
+  const [saving,    setSaving]    = useState(false);
+  const [saveMsg,   setSaveMsg]   = useState('');
+
+  // Wrapped setters that also persist to localStorage
+  const setScreen  = (s) => { setScreenRaw(s);  lsSet(LS_SCREEN,  s); };
+  const setProject = (p) => { setProjectRaw(p); lsSet(LS_PROJECT, p); };
+  const setResults = (r) => { setResultsRaw(r); lsSet(LS_RESULTS, r); };
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) { setUser(session.user); setScreen(SCREENS.PROJECTS); }
+      if (session?.user) {
+        setUser(session.user);
+        // Only redirect to dashboard if coming from auth screen (fresh login)
+        const savedScreen = lsGet(LS_SCREEN, SCREENS.AUTH);
+        if (savedScreen === SCREENS.AUTH) setScreen(SCREENS.PROJECTS);
+      }
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) { setUser(session.user); setScreen(SCREENS.PROJECTS); }
-      else { setUser(null); setScreen(SCREENS.AUTH); }
+      if (session?.user) {
+        setUser(session.user);
+        // Only redirect to dashboard on actual sign-in (not tab focus)
+        if (_event === 'SIGNED_IN') {
+          const savedScreen = lsGet(LS_SCREEN, SCREENS.AUTH);
+          if (savedScreen === SCREENS.AUTH) setScreen(SCREENS.PROJECTS);
+        }
+      } else {
+        setUser(null);
+        lsClear();
+        setScreenRaw(SCREENS.AUTH);
+        setProjectRaw({ ...DEFAULT_PROJECT });
+        setResultsRaw(null);
+      }
     });
     return () => subscription.unsubscribe();
   }, []);
 
   const startNew = (devisNum = '') => {
-    setProject({ ...DEFAULT_PROJECT, devisNum });
+    const p = { ...DEFAULT_PROJECT, devisNum };
+    setProject(p);
     setResults(null);
     setScreen(SCREENS.FORM);
   };
@@ -59,7 +104,6 @@ export default function App() {
     else setScreen(SCREENS.PIECES);
   };
 
-  // Appele depuis ProjectsScreen apres un scan IA reussi
   const handleScanComplete = (scanResult) => {
     const pieces = (scanResult.pieces || []).map(p => ({
       name: p.name || 'Piece',
@@ -67,16 +111,9 @@ export default function App() {
       height: parseFloat(p.height) || 0,
       qty: parseInt(p.qty, 10) || 1,
     }));
-
     const projectName = 'Plan du ' + new Date().toLocaleDateString('fr-FR');
     const dNum = 'DV-' + new Date().getFullYear() + '-' + String(Math.floor(Math.random() * 9000) + 1000);
-
-    setProject({
-      ...DEFAULT_PROJECT,
-      name: projectName,
-      devisNum: dNum,
-      pieces,
-    });
+    setProject({ ...DEFAULT_PROJECT, name: projectName, devisNum: dNum, pieces });
     setResults(null);
     setScreen(SCREENS.PIECES);
   };
@@ -102,7 +139,15 @@ export default function App() {
     setSaving(false); setSaveMsg('OK'); setTimeout(() => setSaveMsg(''), 2000);
   };
 
-  const handleSignOut = async () => { await signOut(); setUser(null); setScreen(SCREENS.AUTH); };
+  const handleSignOut = async () => {
+    await signOut();
+    setUser(null);
+    lsClear();
+    setScreenRaw(SCREENS.AUTH);
+    setProjectRaw({ ...DEFAULT_PROJECT });
+    setResultsRaw(null);
+  };
+
   const toggleLang = () => setLangOverride(l => l === 'fr' ? 'en' : 'fr');
   const devisNum = 'DV-' + new Date().getFullYear() + '-' + String(Math.floor(Math.random() * 9000) + 1000);
 
@@ -116,27 +161,38 @@ export default function App() {
   else if (screen === SCREENS.RESULTS) { headerTitle = tr.results || 'Resultats'; steps = [{ label: tr.panel, active: true }, { label: tr.pieces, active: true }, { label: tr.results, active: true }]; }
 
   const hasHeader = screen !== SCREENS.AUTH;
+  const hasSteps = steps.length > 0;
 
   return (
     <div className="app min-h-screen bg-[#0f1620] text-slate-200 font-sans">
       {hasHeader && (
-        <header className="sticky top-0 z-40 bg-[#0f1620]/95 backdrop-blur-md border-b border-white/10 shadow-lg h-16 flex items-center justify-between px-4 gap-4">
-          <div className="flex items-center gap-2 min-w-0 flex-1">
+        <header className="sticky top-0 z-40 bg-[#0f1620]/95 backdrop-blur-md border-b border-white/10 shadow-lg h-16 flex items-center justify-between px-4 md:px-8 gap-2">
+
+          {/* LEFT: back + title + version */}
+          <div className="flex items-center gap-2 flex-shrink-0">
             {showBack && (
               <button onClick={goBack} className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors flex-shrink-0">
                 <ChevronLeft className="w-5 h-5" />
               </button>
             )}
-            <h1 className="text-sm font-bold text-white truncate">{headerTitle}</h1>
+            <div className="flex flex-col">
+              <h1 className={'font-bold text-white ' + (hasSteps ? 'hidden md:block text-sm md:text-base' : 'text-sm md:text-base')}>
+                {headerTitle}
+              </h1>
+              <span className="text-[11px] font-mono font-black text-orange-400" style={{textShadow:'0 0 8px #f97316'}}>
+                v{APP_VERSION} · {GIT_HASH}
+              </span>
+            </div>
             {headerSubtitle && <p className="text-[10px] text-slate-500 uppercase truncate hidden sm:block">{headerSubtitle}</p>}
           </div>
 
-          {steps.length > 0 && (
-            <div className="flex items-center gap-1 flex-shrink-0">
+          {/* CENTER: stepper */}
+          {hasSteps && (
+            <div className="flex items-center gap-1 flex-1 justify-center">
               {steps.map((s, i) => (
                 <div key={i} className="flex items-center gap-1">
                   <div className={
-                    'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold transition-all ' +
+                    'flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-bold transition-all ' +
                     (s.active ? 'bg-orange-500/20 text-orange-400 border border-orange-500/40' : 'text-slate-600')
                   }>
                     <div className={
@@ -145,7 +201,7 @@ export default function App() {
                     }>
                       {i + 1}
                     </div>
-                    <span className="hidden sm:inline">{s.label}</span>
+                    <span className="hidden md:inline">{s.label}</span>
                   </div>
                   {i < steps.length - 1 && (
                     <div className={'w-3 h-px flex-shrink-0 ' + (steps[i + 1].active ? 'bg-orange-500/50' : 'bg-slate-700')} />
@@ -155,6 +211,7 @@ export default function App() {
             </div>
           )}
 
+          {/* RIGHT: save + lang + logout */}
           <div className="flex items-center gap-1.5 flex-shrink-0">
             {(saveMsg || saving) && <span className="text-[11px] text-green-400 font-medium">{saving ? '...' : saveMsg}</span>}
             {showSave && !saving && (
@@ -174,7 +231,7 @@ export default function App() {
         </header>
       )}
 
-      <main className={'max-w-5xl mx-auto px-4 w-full mb-20 ' + (hasHeader ? 'mt-20' : 'mt-0')}>
+      <main className={'w-full px-4 md:px-8 mb-20 ' + (hasHeader ? 'mt-4' : 'mt-0')}>
         {screen === SCREENS.AUTH     && <AuthScreen onSkip={() => setScreen(SCREENS.PROJECTS)} />}
         {screen === SCREENS.PROJECTS && <ProjectsScreen user={user} onNew={() => startNew(devisNum)} onLoad={handleLoadProject} onScanComplete={handleScanComplete} />}
         {screen === SCREENS.FORM     && <ProjectForm t={tr} project={project} onChange={setProject} onNext={() => setScreen(SCREENS.PIECES)} />}
