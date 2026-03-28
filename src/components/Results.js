@@ -22,24 +22,18 @@ function getColor(name, colorMap) {
 }
 
 /**
- * Calcule les zones de chute correctement en comptant le kerf.
+ * Calcule les zones de chute.
  *
- * Le moteur stocke pour chaque pièce :
- *   x     = position de début dans la bande (bord gauche de la pièce)
- *   bandY = position de début de la bande  (bord haut de la bande)
+ * Le moteur stocke x = bord gauche de la piece, bandY = bord haut de la bande.
+ * La premiere piece part a x=0 (pas de kerf de bord gauche).
+ * La chute laterale commence donc a : lastPiece.x + lastPiece.l
+ * (pas de kerf supplementaire, le bord droit du panneau n est pas une coupe)
  *
- * Largeur occupée dans une bande :
- *   lastPiece.x + lastPiece.l + kerf
- *   (le kerf final = trait de lame à droite de la dernière pièce)
- *
- * Hauteur occupée dans le panneau :
- *   lastBand.bandY + lastBand.bandH + kerf
- *   (le kerf final = trait de lame sous la dernière bande)
+ * Pareil verticalement : la chute du bas commence a lastBand.bandY + lastBand.bandH
  */
-function computeWasteZones(placed, panelW, panelH, kerf) {
+function computeWasteZones(placed, panelW, panelH) {
   const zones = [];
 
-  // Regrouper par bande (bandY)
   const bands = {};
   for (const p of placed) {
     const key = p.bandY;
@@ -50,13 +44,12 @@ function computeWasteZones(placed, panelW, panelH, kerf) {
 
   const sortedBands = Object.values(bands).sort((a, b) => a.bandY - b.bandY);
 
-  // Chute latérale (droite) de chaque bande
+  // Chute laterale (droite)
   for (const band of sortedBands) {
     const lastPiece = [...band.pieces].sort((a, b) => (a.x || 0) - (b.x || 0)).pop();
-    // largeur utilisée = fin de la dernière pièce + 1 kerf (trait à droite)
-    const usedW  = (lastPiece.x || 0) + lastPiece.l + kerf;
+    const usedW  = (lastPiece.x || 0) + lastPiece.l;  // fin de la derniere piece
     const wasteW = panelW - usedW;
-    if (wasteW > kerf * 2) {
+    if (wasteW > 5) {
       zones.push({
         x: usedW, y: band.bandY,
         w: wasteW, h: band.bandH,
@@ -67,13 +60,12 @@ function computeWasteZones(placed, panelW, panelH, kerf) {
     }
   }
 
-  // Chute du bas (sous toutes les bandes)
+  // Chute du bas
   const lastBand = sortedBands[sortedBands.length - 1];
   if (lastBand) {
-    // hauteur utilisée = fin de la dernière bande + 1 kerf (trait sous la bande)
-    const usedH  = lastBand.bandY + lastBand.bandH + kerf;
+    const usedH  = lastBand.bandY + lastBand.bandH;  // fin de la derniere bande
     const wasteH = panelH - usedH;
-    if (wasteH > kerf * 2) {
+    if (wasteH > 5) {
       zones.push({
         x: 0, y: usedH,
         w: panelW, h: wasteH,
@@ -87,7 +79,7 @@ function computeWasteZones(placed, panelW, panelH, kerf) {
   return zones;
 }
 
-function PanelSVG({ panel, panelW, panelH, kerf, colorMap }) {
+function PanelSVG({ panel, panelW, panelH, colorMap }) {
   const MARGIN_R = 52;
   const SVG_W    = 500;
   const SVG_H    = Math.round(SVG_W * panelH / panelW);
@@ -96,7 +88,7 @@ function PanelSVG({ panel, panelW, panelH, kerf, colorMap }) {
 
   const hCuts = panel.cuts.filter(c => c.type === 'bande' && c.orientation === 'horizontal');
   const vCuts = panel.cuts.filter(c => c.type === 'bande' && c.orientation === 'vertical');
-  const wasteZones = computeWasteZones(panel.placed, panelW, panelH, kerf);
+  const wasteZones = computeWasteZones(panel.placed, panelW, panelH);
 
   return (
     <div className="relative group">
@@ -117,7 +109,7 @@ function PanelSVG({ panel, panelW, panelH, kerf, colorMap }) {
 
         <rect x={0} y={0} width={SVG_W} height={SVG_H} fill="url(#grid)" />
 
-        {/* Zones de chute hachurees rouge */}
+        {/* Zones de chute */}
         {wasteZones.map((z, i) => {
           const zx = z.x * sx;
           const zy = z.y * sy;
@@ -162,7 +154,7 @@ function PanelSVG({ panel, panelW, panelH, kerf, colorMap }) {
           );
         })}
 
-        {/* Coupes HORIZONTALES : pleine largeur + cote a droite */}
+        {/* Coupes HORIZONTALES */}
         {hCuts.map((c, i) => {
           const cy = c.pos * sy;
           return (
@@ -174,7 +166,7 @@ function PanelSVG({ panel, panelW, panelH, kerf, colorMap }) {
           );
         })}
 
-        {/* Coupes VERTICALES : hauteur de la bande uniquement + etiquette */}
+        {/* Coupes VERTICALES : sur la hauteur de la bande seulement */}
         {vCuts.map((c, i) => {
           const cx  = c.pos * sx;
           const top = (c.bandY || 0) * sy;
@@ -221,8 +213,6 @@ export default function Results({ t, results, project }) {
   const [tab, setTab] = useState('resume');
   const colorMap = {};
 
-  // kerf en dixiemes de mm comme dans le moteur (ex: 3mm -> 30)
-  const kerf       = Math.round((project.kerf ?? 3) * 10);
   const panel      = results.panels[currentPanel];
   const panelW     = Math.round(project.panel.w * 10);
   const panelH     = Math.round(project.panel.h * 10);
@@ -322,7 +312,7 @@ export default function Results({ t, results, project }) {
         {tab === 'visual' && (
           <div className="space-y-4">
             <PanelNav />
-            <PanelSVG panel={panel} panelW={panelW} panelH={panelH} kerf={kerf} colorMap={colorMap} />
+            <PanelSVG panel={panel} panelW={panelW} panelH={panelH} colorMap={colorMap} />
             <div className="flex justify-center gap-2">
               {results.panels.map((_, i) => (
                 <button key={i} onClick={() => setCurrentPanel(i)}
