@@ -39,6 +39,31 @@ export async function getUser() {
 
 // ── Projects ──────────────────────────────────────────────────────────────
 
+
+export async function createProject(input = {}) {
+  const user = await getUser();
+  if (!user) return { data: null, error: { message: 'not_authenticated' } };
+
+  const payload = {
+    user_id: user.id,
+    name: input.name || 'Sans titre',
+    client: input.client || null,
+    company: input.company || null,
+    devis_num: input.devis_num || null,
+    project_data: input.project_data || null,
+    results_data: input.results_data || null,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { data, error } = await supabase
+    .from('projects')
+    .insert(payload)
+    .select('id, name, client, company, devis_num, created_at, updated_at, results_data')
+    .single();
+
+  return { data, error };
+}
+
 export async function saveProject(project, results) {
   const user = await getUser();
   if (!user) return { error: 'not_authenticated' };
