@@ -1,4 +1,4 @@
-﻿import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { optimise } from './engineV2';
 import { I18N, useLang } from './i18n';
 import { supabase, saveProject, loadProject, signOut } from './supabase';
@@ -44,6 +44,7 @@ export default function App() {
     else if (screen === SCREENS.FORM) setScreen(user ? SCREENS.PROJECTS : SCREENS.AUTH);
     else setScreen(SCREENS.AUTH);
   };
+
   const handleLoadProject = async (id) => {
     const { data, error } = await loadProject(id);
     if (error || !data) return;
@@ -77,47 +78,85 @@ export default function App() {
   const handleSignOut = async () => { await signOut(); setUser(null); setScreen(SCREENS.AUTH); };
   const toggleLang = () => setLangOverride(l => l === 'fr' ? 'en' : 'fr');
   const devisNum = 'DV-' + new Date().getFullYear() + '-' + String(Math.floor(Math.random() * 9000) + 1000);
-  
+
   const showBack = [SCREENS.FORM, SCREENS.PIECES, SCREENS.RESULTS].includes(screen);
   const showSave = user && [SCREENS.PIECES, SCREENS.RESULTS].includes(screen);
 
-  let headerTitle = "PanelCut Pro", headerSubtitle = "", steps = [];
-  if (screen === SCREENS.PROJECTS) { headerTitle = "Dashboard"; headerSubtitle = user?.email || "Guest"; }
-  else if (screen === SCREENS.FORM) { headerTitle = tr.newProject || "New Project"; steps = [{ label: tr.panel, active: true }, { label: tr.pieces, active: false }, { label: tr.results, active: false }]; }
+  let headerTitle = 'PanelCut Pro', headerSubtitle = '', steps = [];
+  if (screen === SCREENS.PROJECTS) { headerTitle = 'Dashboard'; headerSubtitle = user?.email || 'Guest'; }
+  else if (screen === SCREENS.FORM) { headerTitle = tr.newProject || 'Nouveau projet'; steps = [{ label: tr.panel, active: true }, { label: tr.pieces, active: false }, { label: tr.results, active: false }]; }
   else if (screen === SCREENS.PIECES) { headerTitle = project.name || tr.newProject; steps = [{ label: tr.panel, active: true }, { label: tr.pieces, active: true }, { label: tr.results, active: false }]; }
-  else if (screen === SCREENS.RESULTS) { headerTitle = tr.results || "Results"; steps = [{ label: tr.panel, active: true }, { label: tr.pieces, active: true }, { label: tr.results, active: true }]; }
+  else if (screen === SCREENS.RESULTS) { headerTitle = tr.results || 'Résultats'; steps = [{ label: tr.panel, active: true }, { label: tr.pieces, active: true }, { label: tr.results, active: true }]; }
 
   const hasHeader = screen !== SCREENS.AUTH;
 
   return (
-    <div className="app min-h-screen bg-[#050505] text-slate-200 font-sans">
+    <div className="app min-h-screen bg-[#0f1620] text-slate-200 font-sans">
       {hasHeader && (
-        <header className="sticky top-0 z-40 bg-[#0a0a0a]/95 backdrop-blur-md border-b border-white/10 shadow-lg h-16 flex items-center justify-between px-4">
-          <div className="flex items-center gap-3 flex-1">
-            {showBack && <button onClick={goBack} className="p-2 -ml-2 text-slate-400 hover:text-white"><ChevronLeft className="w-6 h-6"/></button>}
-            <div>
-              <h1 className="text-base font-bold text-white">{headerTitle}</h1>
-              {headerSubtitle && <p className="text-[10px] text-slate-500 uppercase">{headerSubtitle}</p>}
-            </div>
+        <header className="sticky top-0 z-40 bg-[#0f1620]/95 backdrop-blur-md border-b border-white/10 shadow-lg h-16 flex items-center justify-between px-4 gap-4">
+
+          {/* Gauche : bouton retour + titre */}
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            {showBack && (
+              <button onClick={goBack} className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors flex-shrink-0">
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+            )}
+            <h1 className="text-sm font-bold text-white truncate">{headerTitle}</h1>
+            {headerSubtitle && <p className="text-[10px] text-slate-500 uppercase truncate hidden sm:block">{headerSubtitle}</p>}
           </div>
+
+          {/* Centre : stepper */}
           {steps.length > 0 && (
-            <div className="hidden md:flex items-center gap-2 bg-[#111] px-3 py-1 rounded-full border border-white/5">
-              {steps.map((s, i) => (<span key={i} className={`text-[10px] font-bold uppercase ${s.active?'text-orange-500':'text-slate-600'}`}>{i+1}. {s.label} {i<steps.length-1?'|':''}</span>))}
+            <div className="flex items-center gap-1 flex-shrink-0">
+              {steps.map((s, i) => (
+                <div key={i} className="flex items-center gap-1">
+                  <div className={
+                    'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold transition-all ' +
+                    (s.active ? 'bg-orange-500/20 text-orange-400 border border-orange-500/40' : 'text-slate-600')
+                  }>
+                    <div className={
+                      'w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-black flex-shrink-0 ' +
+                      (s.active ? 'bg-orange-500 text-black' : 'bg-slate-700 text-slate-500')
+                    }>
+                      {i + 1}
+                    </div>
+                    <span className="hidden sm:inline">{s.label}</span>
+                  </div>
+                  {i < steps.length - 1 && (
+                    <div className={'w-3 h-px flex-shrink-0 ' + (steps[i + 1].active ? 'bg-orange-500/50' : 'bg-slate-700')} />
+                  )}
+                </div>
+              ))}
             </div>
           )}
-          <div className="flex items-center gap-2 flex-1 justify-end">
-            {showSave && !saving && <button onClick={handleSave} className="p-2 text-slate-400 hover:text-green-400"><Disc className="w-5 h-5"/></button>}
-            <button onClick={toggleLang} className="p-2 text-slate-400 hover:text-white font-bold text-xs border border-white/10 rounded">{langOverride==='fr'?'EN':'FR'}</button>
-            {user && <button onClick={handleSignOut} className="p-2 text-slate-400 hover:text-red-400"><LogOut className="w-5 h-5"/></button>}
+
+          {/* Droite : actions */}
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {(saveMsg || saving) && <span className="text-[11px] text-green-400 font-medium">{saving ? '...' : saveMsg}</span>}
+            {showSave && !saving && (
+              <button onClick={handleSave} className="p-1.5 rounded-lg text-slate-400 hover:text-green-400 hover:bg-white/10 transition-colors">
+                <Disc className="w-4 h-4" />
+              </button>
+            )}
+            <button onClick={toggleLang} className="px-2 py-1 text-slate-400 hover:text-white border border-white/10 hover:border-white/30 rounded-lg text-[11px] font-bold transition-colors">
+              {langOverride === 'fr' ? 'EN' : 'FR'}
+            </button>
+            {user && (
+              <button onClick={handleSignOut} className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-white/10 transition-colors">
+                <LogOut className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </header>
       )}
-      <main className={`max-w-5xl mx-auto px-4 w-full ${hasHeader?'mt-20':'mt-0'} mb-20 transition-all duration-300`}>
-        {screen === SCREENS.AUTH && <AuthScreen onSkip={()=>setScreen(SCREENS.PROJECTS)}/>}
-        {screen === SCREENS.PROJECTS && <ProjectsScreen user={user} onNew={()=>startNew(devisNum)} onLoad={handleLoadProject}/>}
-        {screen === SCREENS.FORM && <ProjectForm t={tr} project={project} onChange={setProject} onNext={()=>setScreen(SCREENS.PIECES)}/>}
-        {screen === SCREENS.PIECES && <PiecesList t={tr} project={project} onChange={setProject} onOptimize={handleOptimize} computing={computing}/>}
-        {screen === SCREENS.RESULTS && results && <Results t={tr} results={results} project={project}/>}
+
+      <main className={'max-w-5xl mx-auto px-4 w-full mb-20 ' + (hasHeader ? 'mt-20' : 'mt-0')}>
+        {screen === SCREENS.AUTH     && <AuthScreen onSkip={() => setScreen(SCREENS.PROJECTS)} />}
+        {screen === SCREENS.PROJECTS && <ProjectsScreen user={user} onNew={() => startNew(devisNum)} onLoad={handleLoadProject} />}
+        {screen === SCREENS.FORM     && <ProjectForm t={tr} project={project} onChange={setProject} onNext={() => setScreen(SCREENS.PIECES)} />}
+        {screen === SCREENS.PIECES   && <PiecesList t={tr} project={project} onChange={setProject} onOptimize={handleOptimize} computing={computing} />}
+        {screen === SCREENS.RESULTS  && results && <Results t={tr} results={results} project={project} />}
       </main>
     </div>
   );
