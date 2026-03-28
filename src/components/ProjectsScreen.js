@@ -3,7 +3,7 @@ import { loadProjects, deleteProject } from '../supabase';
 import { Plus, Trash2, FolderOpen, User, Calendar, FileText, Layers, CheckCircle, X, Ruler, Activity } from 'lucide-react';
 import ImageUpload from './ImageUpload';
 
-export default function ProjectsScreen({ onLoad, onNew, user }) {
+export default function ProjectsScreen({ onLoad, onNew, user, onScanComplete }) {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading]   = useState(true);
   const [deleting, setDeleting] = useState(null);
@@ -38,7 +38,7 @@ export default function ProjectsScreen({ onLoad, onNew, user }) {
   const handleScanComplete = (result) => {
     setLastResult(result);
     setShowUpload(false);
-    alert(`Analyse terminée ! ${result.pieces?.length || 0} pièces détectées.`);
+    if (onScanComplete) onScanComplete(result);
   };
 
   return (

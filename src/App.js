@@ -37,7 +37,12 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  const startNew = (devisNum = '') => { setProject({ ...DEFAULT_PROJECT, devisNum }); setResults(null); setScreen(SCREENS.FORM); };
+  const startNew = (devisNum = '') => {
+    setProject({ ...DEFAULT_PROJECT, devisNum });
+    setResults(null);
+    setScreen(SCREENS.FORM);
+  };
+
   const goBack = () => {
     if (screen === SCREENS.RESULTS) setScreen(SCREENS.PIECES);
     else if (screen === SCREENS.PIECES) setScreen(SCREENS.FORM);
@@ -54,6 +59,28 @@ export default function App() {
     else setScreen(SCREENS.PIECES);
   };
 
+  // Appele depuis ProjectsScreen apres un scan IA reussi
+  const handleScanComplete = (scanResult) => {
+    const pieces = (scanResult.pieces || []).map(p => ({
+      name: p.name || 'Piece',
+      length: parseFloat(p.length) || 0,
+      height: parseFloat(p.height) || 0,
+      qty: parseInt(p.qty, 10) || 1,
+    }));
+
+    const projectName = 'Plan du ' + new Date().toLocaleDateString('fr-FR');
+    const dNum = 'DV-' + new Date().getFullYear() + '-' + String(Math.floor(Math.random() * 9000) + 1000);
+
+    setProject({
+      ...DEFAULT_PROJECT,
+      name: projectName,
+      devisNum: dNum,
+      pieces,
+    });
+    setResults(null);
+    setScreen(SCREENS.PIECES);
+  };
+
   const handleOptimize = useCallback(() => {
     if (!project.pieces.length) return;
     setComputing(true);
@@ -63,7 +90,7 @@ export default function App() {
       if (user) {
         setSaving(true);
         await saveProject(project, res);
-        setSaving(false); setSaveMsg('✓ OK'); setTimeout(() => setSaveMsg(''), 2000);
+        setSaving(false); setSaveMsg('OK'); setTimeout(() => setSaveMsg(''), 2000);
       }
     }, 50);
   }, [project, user]);
@@ -72,7 +99,7 @@ export default function App() {
     if (!user) return;
     setSaving(true);
     await saveProject(project, results);
-    setSaving(false); setSaveMsg('✓ OK'); setTimeout(() => setSaveMsg(''), 2000);
+    setSaving(false); setSaveMsg('OK'); setTimeout(() => setSaveMsg(''), 2000);
   };
 
   const handleSignOut = async () => { await signOut(); setUser(null); setScreen(SCREENS.AUTH); };
@@ -86,7 +113,7 @@ export default function App() {
   if (screen === SCREENS.PROJECTS) { headerTitle = 'Dashboard'; headerSubtitle = user?.email || 'Guest'; }
   else if (screen === SCREENS.FORM) { headerTitle = tr.newProject || 'Nouveau projet'; steps = [{ label: tr.panel, active: true }, { label: tr.pieces, active: false }, { label: tr.results, active: false }]; }
   else if (screen === SCREENS.PIECES) { headerTitle = project.name || tr.newProject; steps = [{ label: tr.panel, active: true }, { label: tr.pieces, active: true }, { label: tr.results, active: false }]; }
-  else if (screen === SCREENS.RESULTS) { headerTitle = tr.results || 'Résultats'; steps = [{ label: tr.panel, active: true }, { label: tr.pieces, active: true }, { label: tr.results, active: true }]; }
+  else if (screen === SCREENS.RESULTS) { headerTitle = tr.results || 'Resultats'; steps = [{ label: tr.panel, active: true }, { label: tr.pieces, active: true }, { label: tr.results, active: true }]; }
 
   const hasHeader = screen !== SCREENS.AUTH;
 
@@ -94,8 +121,6 @@ export default function App() {
     <div className="app min-h-screen bg-[#0f1620] text-slate-200 font-sans">
       {hasHeader && (
         <header className="sticky top-0 z-40 bg-[#0f1620]/95 backdrop-blur-md border-b border-white/10 shadow-lg h-16 flex items-center justify-between px-4 gap-4">
-
-          {/* Gauche : bouton retour + titre */}
           <div className="flex items-center gap-2 min-w-0 flex-1">
             {showBack && (
               <button onClick={goBack} className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors flex-shrink-0">
@@ -106,7 +131,6 @@ export default function App() {
             {headerSubtitle && <p className="text-[10px] text-slate-500 uppercase truncate hidden sm:block">{headerSubtitle}</p>}
           </div>
 
-          {/* Centre : stepper */}
           {steps.length > 0 && (
             <div className="flex items-center gap-1 flex-shrink-0">
               {steps.map((s, i) => (
@@ -131,7 +155,6 @@ export default function App() {
             </div>
           )}
 
-          {/* Droite : actions */}
           <div className="flex items-center gap-1.5 flex-shrink-0">
             {(saveMsg || saving) && <span className="text-[11px] text-green-400 font-medium">{saving ? '...' : saveMsg}</span>}
             {showSave && !saving && (
@@ -153,7 +176,7 @@ export default function App() {
 
       <main className={'max-w-5xl mx-auto px-4 w-full mb-20 ' + (hasHeader ? 'mt-20' : 'mt-0')}>
         {screen === SCREENS.AUTH     && <AuthScreen onSkip={() => setScreen(SCREENS.PROJECTS)} />}
-        {screen === SCREENS.PROJECTS && <ProjectsScreen user={user} onNew={() => startNew(devisNum)} onLoad={handleLoadProject} />}
+        {screen === SCREENS.PROJECTS && <ProjectsScreen user={user} onNew={() => startNew(devisNum)} onLoad={handleLoadProject} onScanComplete={handleScanComplete} />}
         {screen === SCREENS.FORM     && <ProjectForm t={tr} project={project} onChange={setProject} onNext={() => setScreen(SCREENS.PIECES)} />}
         {screen === SCREENS.PIECES   && <PiecesList t={tr} project={project} onChange={setProject} onOptimize={handleOptimize} computing={computing} />}
         {screen === SCREENS.RESULTS  && results && <Results t={tr} results={results} project={project} />}

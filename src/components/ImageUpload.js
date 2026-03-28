@@ -78,7 +78,7 @@ export default function ImageUpload({ onScanComplete, onCancel }) {
       }
 
       const data = await response.json();
-      onScanComplete(data); // On renvoie les r�sultats au parent
+      console.log("SCAN RESULT:", JSON.stringify(data, null, 2)); onScanComplete(data); // On renvoie les r�sultats au parent
 
     } catch (err) {
       console.error(err);
