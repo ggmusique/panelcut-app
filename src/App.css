@@ -27,10 +27,9 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* ── App shell ── */
+/* ── App shell: FULL WIDTH, no max-width constraint ── */
 .app {
-  max-width: 480px;
-  margin: 0 auto;
+  width: 100%;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
@@ -443,7 +442,7 @@ body {
   background: var(--bg-card); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 28px 20px;
   display: flex; flex-direction: column; gap: 14px;
-  text-align: center; width: 100%;
+  text-align: center; width: 100%; max-width: 480px; margin: 0 auto;
 }
 .auth-icon { font-size: 36px; line-height: 1; }
 .auth-title { font-size: 20px; font-weight: 700; color: var(--accent); }
