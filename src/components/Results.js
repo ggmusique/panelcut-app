@@ -22,13 +22,24 @@ function getColor(name, colorMap) {
 }
 
 /**
- * Calcule les zones de chute à partir des pièces placées.
- * Retourne des rectangles {x, y, w, h, wCm, hCm} en coordonnées panneau.
+ * Calcule les zones de chute correctement en comptant le kerf.
+ *
+ * Le moteur stocke pour chaque pièce :
+ *   x     = position de début dans la bande (bord gauche de la pièce)
+ *   bandY = position de début de la bande  (bord haut de la bande)
+ *
+ * Largeur occupée dans une bande :
+ *   lastPiece.x + lastPiece.l + kerf
+ *   (le kerf final = trait de lame à droite de la dernière pièce)
+ *
+ * Hauteur occupée dans le panneau :
+ *   lastBand.bandY + lastBand.bandH + kerf
+ *   (le kerf final = trait de lame sous la dernière bande)
  */
 function computeWasteZones(placed, panelW, panelH, kerf) {
   const zones = [];
 
-  // Regrouper les pièces par bande (bandY)
+  // Regrouper par bande (bandY)
   const bands = {};
   for (const p of placed) {
     const key = p.bandY;
@@ -39,10 +50,11 @@ function computeWasteZones(placed, panelW, panelH, kerf) {
 
   const sortedBands = Object.values(bands).sort((a, b) => a.bandY - b.bandY);
 
+  // Chute latérale (droite) de chaque bande
   for (const band of sortedBands) {
-    const sortedPieces = [...band.pieces].sort((a, b) => (a.x || 0) - (b.x || 0));
-    const lastPiece = sortedPieces[sortedPieces.length - 1];
-    const usedW = (lastPiece.x || 0) + lastPiece.l + (sortedPieces.length > 1 ? kerf : 0);
+    const lastPiece = [...band.pieces].sort((a, b) => (a.x || 0) - (b.x || 0)).pop();
+    // largeur utilisée = fin de la dernière pièce + 1 kerf (trait à droite)
+    const usedW  = (lastPiece.x || 0) + lastPiece.l + kerf;
     const wasteW = panelW - usedW;
     if (wasteW > kerf * 2) {
       zones.push({
@@ -55,10 +67,11 @@ function computeWasteZones(placed, panelW, panelH, kerf) {
     }
   }
 
-  // Chute verticale principale (espace sous toutes les bandes)
+  // Chute du bas (sous toutes les bandes)
   const lastBand = sortedBands[sortedBands.length - 1];
   if (lastBand) {
-    const usedH = lastBand.bandY + lastBand.bandH + kerf;
+    // hauteur utilisée = fin de la dernière bande + 1 kerf (trait sous la bande)
+    const usedH  = lastBand.bandY + lastBand.bandH + kerf;
     const wasteH = panelH - usedH;
     if (wasteH > kerf * 2) {
       zones.push({
@@ -75,7 +88,7 @@ function computeWasteZones(placed, panelW, panelH, kerf) {
 }
 
 function PanelSVG({ panel, panelW, panelH, kerf, colorMap }) {
-  const MARGIN_R = 52; // marge droite pour les cotes
+  const MARGIN_R = 52;
   const SVG_W    = 500;
   const SVG_H    = Math.round(SVG_W * panelH / panelW);
   const sx = SVG_W / panelW;
@@ -102,10 +115,9 @@ function PanelSVG({ panel, panelW, panelH, kerf, colorMap }) {
           </pattern>
         </defs>
 
-        {/* Fond grille */}
         <rect x={0} y={0} width={SVG_W} height={SVG_H} fill="url(#grid)" />
 
-        {/* Zones de chute (hachurées rouge) */}
+        {/* Zones de chute hachurees rouge */}
         {wasteZones.map((z, i) => {
           const zx = z.x * sx;
           const zy = z.y * sy;
@@ -117,22 +129,19 @@ function PanelSVG({ panel, panelW, panelH, kerf, colorMap }) {
             <g key={`waste-${i}`}>
               <rect x={zx.toFixed(1)} y={zy.toFixed(1)} width={zw.toFixed(1)} height={zh.toFixed(1)}
                 fill="url(#hatch)" stroke="rgba(239,68,68,0.4)" strokeWidth="1" rx="2" />
-              {/* Cote largeur de la chute */}
               {zw > 30 && zh > 16 && (
-                <text x={cx.toFixed(1)} y={(cy - 4).toFixed(1)} textAnchor="middle" fontSize="9" fontWeight="bold" fill="#ef4444" fontFamily="monospace">
-                  {z.wCm}×{z.hCm}cm
-                </text>
-              )}
-              {zw > 30 && zh > 16 && (
-                <text x={cx.toFixed(1)} y={(cy + 8).toFixed(1)} textAnchor="middle" fontSize="7" fill="rgba(239,68,68,0.7)" fontFamily="sans-serif">
-                  CHUTE
-                </text>
+                <>
+                  <text x={cx.toFixed(1)} y={(cy - 4).toFixed(1)} textAnchor="middle" fontSize="9" fontWeight="bold" fill="#ef4444" fontFamily="monospace">
+                    {z.wCm}×{z.hCm}cm
+                  </text>
+                  <text x={cx.toFixed(1)} y={(cy + 8).toFixed(1)} textAnchor="middle" fontSize="7" fill="rgba(239,68,68,0.7)" fontFamily="sans-serif">CHUTE</text>
+                </>
               )}
             </g>
           );
         })}
 
-        {/* Pièces placées */}
+        {/* Pieces */}
         {panel.placed.map((p, i) => {
           const c  = getColor(p.name, colorMap);
           const px = (p.x  || 0) * sx;
@@ -141,62 +150,40 @@ function PanelSVG({ panel, panelW, panelH, kerf, colorMap }) {
           const ph = p.h * sy - 1;
           return (
             <g key={i}>
-              <rect x={(px+1).toFixed(1)} y={(py+1).toFixed(1)}
-                width={Math.max(pw-2,0).toFixed(1)} height={Math.max(ph-2,0).toFixed(1)}
-                fill={c.glow} filter="blur(4px)" opacity="0.5" />
-              <rect x={px.toFixed(1)} y={py.toFixed(1)}
-                width={Math.max(pw,1).toFixed(1)} height={Math.max(ph,1).toFixed(1)}
-                fill={c.fill} stroke={c.stroke} strokeWidth="1.5" rx="2" />
+              <rect x={(px+1).toFixed(1)} y={(py+1).toFixed(1)} width={Math.max(pw-2,0).toFixed(1)} height={Math.max(ph-2,0).toFixed(1)} fill={c.glow} filter="blur(4px)" opacity="0.5" />
+              <rect x={px.toFixed(1)} y={py.toFixed(1)} width={Math.max(pw,1).toFixed(1)} height={Math.max(ph,1).toFixed(1)} fill={c.fill} stroke={c.stroke} strokeWidth="1.5" rx="2" />
               {pw > 40 && ph > 20 && (
                 <g>
-                  <text x={(px+pw/2).toFixed(1)} y={(py+ph/2+4).toFixed(1)}
-                    textAnchor="middle" fontSize="10" fontWeight="700" fill="#ffffff" fontFamily="monospace">
-                    {(p.l/10).toFixed(0)}×{(p.h/10).toFixed(0)}
-                  </text>
-                  <text x={(px+pw/2).toFixed(1)} y={(py+ph/2+14).toFixed(1)}
-                    textAnchor="middle" fontSize="8" fill="#cbd5e1" fontFamily="sans-serif">
-                    {p.name.substring(0,10)}{p.name.length>10?'...':''}
-                  </text>
+                  <text x={(px+pw/2).toFixed(1)} y={(py+ph/2+4).toFixed(1)} textAnchor="middle" fontSize="10" fontWeight="700" fill="#ffffff" fontFamily="monospace">{(p.l/10).toFixed(0)}×{(p.h/10).toFixed(0)}</text>
+                  <text x={(px+pw/2).toFixed(1)} y={(py+ph/2+14).toFixed(1)} textAnchor="middle" fontSize="8" fill="#cbd5e1" fontFamily="sans-serif">{p.name.substring(0,10)}{p.name.length>10?'...':''}</text>
                 </g>
               )}
             </g>
           );
         })}
 
-        {/* Coupes HORIZONTALES — ligne rouge pleine largeur + cote à droite */}
+        {/* Coupes HORIZONTALES : pleine largeur + cote a droite */}
         {hCuts.map((c, i) => {
           const cy = c.pos * sy;
           return (
             <g key={`h-${i}`}>
-              <line x1={0} y1={cy.toFixed(1)} x2={SVG_W} y2={cy.toFixed(1)}
-                stroke="#ef4444" strokeWidth="1.5" strokeDasharray="6,3" />
-              {/* Cote à droite */}
-              <line x1={SVG_W+2} y1={cy.toFixed(1)} x2={SVG_W+10} y2={cy.toFixed(1)}
-                stroke="#ef4444" strokeWidth="1" />
-              <text x={SVG_W+14} y={(cy+4).toFixed(1)}
-                fontSize="9" fontWeight="bold" fill="#ef4444" fontFamily="monospace">
-                {c.posCm}
-              </text>
+              <line x1={0} y1={cy.toFixed(1)} x2={SVG_W} y2={cy.toFixed(1)} stroke="#ef4444" strokeWidth="1.5" strokeDasharray="6,3" />
+              <line x1={SVG_W+2} y1={cy.toFixed(1)} x2={SVG_W+10} y2={cy.toFixed(1)} stroke="#ef4444" strokeWidth="1" />
+              <text x={SVG_W+14} y={(cy+4).toFixed(1)} fontSize="9" fontWeight="bold" fill="#ef4444" fontFamily="monospace">{c.posCm}</text>
             </g>
           );
         })}
 
-        {/* Coupes VERTICALES — ligne rouge sur la hauteur de la bande uniquement */}
+        {/* Coupes VERTICALES : hauteur de la bande uniquement + etiquette */}
         {vCuts.map((c, i) => {
           const cx  = c.pos * sx;
           const top = (c.bandY || 0) * sy;
           const bot = top + (c.bandH || 0) * sy;
           return (
             <g key={`v-${i}`}>
-              <line x1={cx.toFixed(1)} y1={top.toFixed(1)} x2={cx.toFixed(1)} y2={bot.toFixed(1)}
-                stroke="#ef4444" strokeWidth="1.5" strokeDasharray="6,3" />
-              {/* Petite étiquette en haut */}
-              <rect x={(cx-14).toFixed(1)} y={(top+2).toFixed(1)} width="28" height="12" rx="2"
-                fill="#000" fillOpacity="0.85" />
-              <text x={cx.toFixed(1)} y={(top+11).toFixed(1)}
-                textAnchor="middle" fontSize="8" fontWeight="bold" fill="#ef4444" fontFamily="monospace">
-                {c.posCm}
-              </text>
+              <line x1={cx.toFixed(1)} y1={top.toFixed(1)} x2={cx.toFixed(1)} y2={bot.toFixed(1)} stroke="#ef4444" strokeWidth="1.5" strokeDasharray="6,3" />
+              <rect x={(cx-14).toFixed(1)} y={(top+2).toFixed(1)} width="28" height="12" rx="2" fill="#000" fillOpacity="0.85" />
+              <text x={cx.toFixed(1)} y={(top+11).toFixed(1)} textAnchor="middle" fontSize="8" fontWeight="bold" fill="#ef4444" fontFamily="monospace">{c.posCm}</text>
             </g>
           );
         })}
@@ -234,7 +221,8 @@ export default function Results({ t, results, project }) {
   const [tab, setTab] = useState('resume');
   const colorMap = {};
 
-  const kerf       = Math.round((project.kerf ?? 3) * 10); // en 1/10 mm comme le moteur
+  // kerf en dixiemes de mm comme dans le moteur (ex: 3mm -> 30)
+  const kerf       = Math.round((project.kerf ?? 3) * 10);
   const panel      = results.panels[currentPanel];
   const panelW     = Math.round(project.panel.w * 10);
   const panelH     = Math.round(project.panel.h * 10);
@@ -272,7 +260,7 @@ export default function Results({ t, results, project }) {
 
       <div className="px-4 py-4 max-w-7xl mx-auto">
 
-        {/* ═══ RÉSUMÉ ═══ */}
+        {/* RESUME */}
         {tab === 'resume' && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
@@ -330,7 +318,7 @@ export default function Results({ t, results, project }) {
           </div>
         )}
 
-        {/* ═══ VISUEL ═══ */}
+        {/* VISUEL */}
         {tab === 'visual' && (
           <div className="space-y-4">
             <PanelNav />
@@ -344,7 +332,7 @@ export default function Results({ t, results, project }) {
           </div>
         )}
 
-        {/* ═══ COUPES ═══ */}
+        {/* COUPES */}
         {tab === 'cuts' && (
           <div className="space-y-4">
             <PanelNav />
