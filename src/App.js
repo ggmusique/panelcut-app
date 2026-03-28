@@ -13,6 +13,9 @@ import './App.css';
 const SCREENS = { AUTH: 'auth', PROJECTS: 'projects', FORM: 'form', PIECES: 'pieces', RESULTS: 'results' };
 const DEFAULT_PROJECT = { name: '', client: '', company: '', panel: { w: 244, h: 122 }, kerf: 3, tolerance: 10, pricePerPanel: 39.8, pieces: [], furniture: [], devisNum: '', supabaseId: null };
 
+const APP_VERSION = process.env.REACT_APP_VERSION || '1.0.0';
+const GIT_HASH   = process.env.REACT_APP_GIT_HASH  || 'dev';
+
 export default function App() {
   const lang = useLang();
   const [langOverride, setLangOverride] = useState(lang);
@@ -115,16 +118,22 @@ export default function App() {
       {hasHeader && (
         <header className="sticky top-0 z-40 bg-[#0f1620]/95 backdrop-blur-md border-b border-white/10 shadow-lg h-16 flex items-center justify-between px-4 md:px-8 gap-2">
 
-          {/* LEFT: back + title (title hidden on mobile when stepper present) */}
+          {/* LEFT: back + title */}
           <div className="flex items-center gap-2 min-w-0 flex-shrink-0">
             {showBack && (
               <button onClick={goBack} className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors flex-shrink-0">
                 <ChevronLeft className="w-5 h-5" />
               </button>
             )}
-            <h1 className={'font-bold text-white truncate ' + (hasSteps ? 'hidden md:block text-sm md:text-base' : 'text-sm md:text-base')}>
-              {headerTitle}
-            </h1>
+            <div className="flex items-center gap-1.5">
+              <h1 className={'font-bold text-white truncate ' + (hasSteps ? 'hidden md:block text-sm md:text-base' : 'text-sm md:text-base')}>
+                {headerTitle}
+              </h1>
+              {/* Version badge — toujours visible */}
+              <span className="text-[9px] font-mono text-slate-600 hidden sm:inline">
+                v{APP_VERSION}·{GIT_HASH}
+              </span>
+            </div>
             {headerSubtitle && <p className="text-[10px] text-slate-500 uppercase truncate hidden sm:block">{headerSubtitle}</p>}
           </div>
 

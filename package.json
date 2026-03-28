@@ -11,7 +11,9 @@
     "react-scripts": "5.0.1"
   },
   "scripts": {
+    "prestart": "node scripts/version.js",
     "start": "node node_modules/react-scripts/bin/react-scripts.js start",
+    "prebuild": "node scripts/version.js",
     "build": "node node_modules/react-scripts/bin/react-scripts.js build"
   },
   "browserslist": {
