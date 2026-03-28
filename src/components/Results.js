@@ -21,16 +21,13 @@ function getColor(name, colorMap) {
   return colorMap[name];
 }
 
-/**
- * Calcule les zones de chute.
- *
- * Le moteur stocke x = bord gauche de la piece, bandY = bord haut de la bande.
- * La premiere piece part a x=0 (pas de kerf de bord gauche).
- * La chute laterale commence donc a : lastPiece.x + lastPiece.l
- * (pas de kerf supplementaire, le bord droit du panneau n est pas une coupe)
- *
- * Pareil verticalement : la chute du bas commence a lastBand.bandY + lastBand.bandH
- */
+// Affiche en cm avec 1 decimale seulement si ce n'est pas un entier
+// ex: 500 -> "50", 759 -> "75.9", 380 -> "38"
+function fmtCm(tenthsMm) {
+  const cm = tenthsMm / 10;
+  return Number.isInteger(cm) ? String(cm) : cm.toFixed(1);
+}
+
 function computeWasteZones(placed, panelW, panelH) {
   const zones = [];
 
@@ -44,33 +41,31 @@ function computeWasteZones(placed, panelW, panelH) {
 
   const sortedBands = Object.values(bands).sort((a, b) => a.bandY - b.bandY);
 
-  // Chute laterale (droite)
   for (const band of sortedBands) {
     const lastPiece = [...band.pieces].sort((a, b) => (a.x || 0) - (b.x || 0)).pop();
-    const usedW  = (lastPiece.x || 0) + lastPiece.l;  // fin de la derniere piece
+    const usedW  = (lastPiece.x || 0) + lastPiece.l;
     const wasteW = panelW - usedW;
     if (wasteW > 5) {
       zones.push({
         x: usedW, y: band.bandY,
         w: wasteW, h: band.bandH,
-        wCm: (wasteW / 10).toFixed(1),
-        hCm: (band.bandH / 10).toFixed(1),
+        wCm: fmtCm(wasteW),
+        hCm: fmtCm(band.bandH),
         type: 'lateral',
       });
     }
   }
 
-  // Chute du bas
   const lastBand = sortedBands[sortedBands.length - 1];
   if (lastBand) {
-    const usedH  = lastBand.bandY + lastBand.bandH;  // fin de la derniere bande
+    const usedH  = lastBand.bandY + lastBand.bandH;
     const wasteH = panelH - usedH;
     if (wasteH > 5) {
       zones.push({
         x: 0, y: usedH,
         w: panelW, h: wasteH,
-        wCm: (panelW / 10).toFixed(1),
-        hCm: (wasteH / 10).toFixed(1),
+        wCm: fmtCm(panelW),
+        hCm: fmtCm(wasteH),
         type: 'bottom',
       });
     }
@@ -146,7 +141,7 @@ function PanelSVG({ panel, panelW, panelH, colorMap }) {
               <rect x={px.toFixed(1)} y={py.toFixed(1)} width={Math.max(pw,1).toFixed(1)} height={Math.max(ph,1).toFixed(1)} fill={c.fill} stroke={c.stroke} strokeWidth="1.5" rx="2" />
               {pw > 40 && ph > 20 && (
                 <g>
-                  <text x={(px+pw/2).toFixed(1)} y={(py+ph/2+4).toFixed(1)} textAnchor="middle" fontSize="10" fontWeight="700" fill="#ffffff" fontFamily="monospace">{(p.l/10).toFixed(0)}×{(p.h/10).toFixed(0)}</text>
+                  <text x={(px+pw/2).toFixed(1)} y={(py+ph/2+4).toFixed(1)} textAnchor="middle" fontSize="10" fontWeight="700" fill="#ffffff" fontFamily="monospace">{fmtCm(p.l)}×{fmtCm(p.h)}</text>
                   <text x={(px+pw/2).toFixed(1)} y={(py+ph/2+14).toFixed(1)} textAnchor="middle" fontSize="8" fill="#cbd5e1" fontFamily="sans-serif">{p.name.substring(0,10)}{p.name.length>10?'...':''}</text>
                 </g>
               )}
@@ -166,7 +161,7 @@ function PanelSVG({ panel, panelW, panelH, colorMap }) {
           );
         })}
 
-        {/* Coupes VERTICALES : sur la hauteur de la bande seulement */}
+        {/* Coupes VERTICALES */}
         {vCuts.map((c, i) => {
           const cx  = c.pos * sx;
           const top = (c.bandY || 0) * sy;
