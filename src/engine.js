@@ -93,21 +93,21 @@ function cut(rect, pieces, kerf, tol, depth, panelId) {
 
     const placedIds = new Set();
     let posInBand = 0;
+    let prevVPos = 0; // position de la derniere coupe verticale (pour cote relative)
 
     for (let si = 0; si < bestSel.length; si++) {
       const idx = bestSel[si];
       const p   = bestGroup.pieces[idx];
       const xStart = posInBand;
 
-      // Coupe verticale traversante AVANT cette pièce
-      // (sauf pour la première pièce qui part du bord gauche)
-      // Après la dernière pièce on ne coupe pas non plus (bord droit = chute)
       if (si > 0) {
+        // Cote relative = position actuelle - position de la coupe V precedente - kerf
+        const relPos = xStart - prevVPos - kerf;
         allCuts.push({
           type: 'bande',
           cutNum: allCuts.filter(c => c.type === 'bande').length + 1,
-          pos: xStart,          // position X dans la bande
-          posCm: ((xStart - kerf) / 10).toFixed(1), // cote relative depuis la coupe precedente (sans kerf)
+          pos: xStart,
+          posCm: (relPos / 10).toFixed(1), // cote depuis la derniere coupe (largeur piece precedente)
           bandY: usedH,
           bandYCm: (usedH / 10).toFixed(1),
           bandH,
@@ -140,6 +140,7 @@ function cut(rect, pieces, kerf, tol, depth, panelId) {
 
       allPlaced.push({ ...p, bandY: usedH, x: xStart });
       placedIds.add(p.id);
+      if (posInBand > 0) prevVPos = posInBand; // mise a jour pour la prochaine cote relative
       posInBand += p.l + kerf;
     }
 
