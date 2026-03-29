@@ -2,15 +2,17 @@ import { useState, useRef } from 'react';
 import { interpretScan } from '../interpretation/interpretScan';
 import { buildCabinetModel } from '../interpretation/buildCabinetModel';
 import { generatePiecesFromModel } from '../interpretation/generatePiecesFromModel';
+import CabinetPreview3D from './CabinetPreview3D';
 
 const SERVER_URL = 'https://panelcut-server.vercel.app';
 
 export default function Scanner({ t, onPiecesDetected, onClose }) {
-  const [status, setStatus]   = useState('idle'); // idle | preview | scanning | done | error
+  const [status, setStatus]   = useState('idle'); // idle | preview | scanning | cabinet-preview | done | error
   const [preview, setPreview] = useState(null);
   const [pieces, setPieces]   = useState([]);
   const [errorMsg, setErrorMsg] = useState('');
   const [selected, setSelected] = useState(new Set());
+  const [cabinetModel, setCabinetModel] = useState(null);
   const inputRef = useRef();
 
   const handleFile = async (file) => {
@@ -71,18 +73,16 @@ export default function Scanner({ t, onPiecesDetected, onClose }) {
       }
 
       const normalizedScan = interpretScan(scanResult);
-      const cabinetModel = buildCabinetModel(normalizedScan);
-      const generatedPieces = generatePiecesFromModel(cabinetModel);
+      const nextCabinetModel = buildCabinetModel(normalizedScan);
 
-      if (generatedPieces.length === 0) {
-        setErrorMsg('Aucune pièce détectée — essaie avec une meilleure photo');
+      if (!nextCabinetModel?.dimensions?.width || !nextCabinetModel?.dimensions?.height || !nextCabinetModel?.dimensions?.depth) {
+        setErrorMsg('Dimensions incomplètes — vérifie le scan avant génération');
         setStatus('error');
         return;
       }
 
-      setPieces(generatedPieces);
-      setSelected(new Set(generatedPieces.map((_, i) => i)));
-      setStatus('done');
+      setCabinetModel(nextCabinetModel);
+      setStatus('cabinet-preview');
 
     } catch (err) {
       console.error('Scan error:', err);
@@ -95,6 +95,22 @@ export default function Scanner({ t, onPiecesDetected, onClose }) {
       );
       setStatus('error');
     }
+  };
+
+
+  const confirmCabinetModel = () => {
+    if (!cabinetModel) return;
+    const generatedPieces = generatePiecesFromModel(cabinetModel);
+
+    if (generatedPieces.length === 0) {
+      setErrorMsg('Aucune pièce générée — ajuste les dimensions puis rescane');
+      setStatus('error');
+      return;
+    }
+
+    setPieces(generatedPieces);
+    setSelected(new Set(generatedPieces.map((_, i) => i)));
+    setStatus('done');
   };
 
   const togglePiece = (i) => {
@@ -115,6 +131,7 @@ export default function Scanner({ t, onPiecesDetected, onClose }) {
     setPreview(null);
     setPieces([]);
     setSelected(new Set());
+    setCabinetModel(null);
     setErrorMsg('');
   };
 
@@ -178,6 +195,30 @@ export default function Scanner({ t, onPiecesDetected, onClose }) {
             <div className="scan-error-icon">⚠️</div>
             <div className="scan-error-text">{errorMsg}</div>
             <button className="btn btn--ghost" onClick={reset}>↩ Réessayer</button>
+          </div>
+        )}
+
+
+        {/* Validation meuble 3D avant génération des pièces */}
+        {status === 'cabinet-preview' && (
+          <div className="scanner-body">
+            <div className="scan-result-header">
+              <span className="scan-result-title">Validation des dimensions détectées</span>
+              <span className="scan-result-hint">Vérifie le meuble 3D avant extraction des pièces</span>
+            </div>
+
+            <CabinetPreview3D model={cabinetModel} />
+
+            <div className="scan-result-note">
+              📐 Contrôle visuel: largeur, hauteur, profondeur et modules internes
+            </div>
+
+            <div className="scanner-btns">
+              <button className="btn btn--ghost" onClick={reset}>↩ Rescanner</button>
+              <button className="btn btn--primary" onClick={confirmCabinetModel}>
+                ✓ Générer les pièces
+              </button>
+            </div>
           </div>
         )}
 
