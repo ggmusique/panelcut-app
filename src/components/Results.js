@@ -159,34 +159,41 @@ function PanelSVG({ panel, panelW, panelH, kerf, colorMap }) {
         })}
 
         {/* Coupes HORIZONTALES — badge discret orange */}
-        {hCuts.map((c, i) => {
-          const cy  = c.pos * sy;
-          const num = i + 1;
-          return (
-            <g key={`h-${i}`}>
-              <line x1={0} y1={cy.toFixed(1)} x2={SVG_W} y2={cy.toFixed(1)} stroke="#f59e0b" strokeWidth="1.5" strokeDasharray="6,3" />
-              <line x1={SVG_W+2} y1={cy.toFixed(1)} x2={SVG_W+10} y2={cy.toFixed(1)} stroke="#f59e0b" strokeWidth="1" />
-              <text x={SVG_W+14} y={(cy+4).toFixed(1)} fontSize="9" fontWeight="bold" fill="#f59e0b" fontFamily="monospace">{c.posCm}</text>
-              <rect x={0} y={(cy-9).toFixed(1)} width="18" height="14" rx="3" fill="#f59e0b" />
-              <text x="9" y={(cy+3).toFixed(1)} textAnchor="middle" fontSize="9" fontWeight="bold" fill="#000" fontFamily="sans-serif">{num}</text>
-            </g>
-          );
-        })}
-
-        {/* Coupes VERTICALES — badge discret bleu */}
-        {vCuts.map((c, i) => {
-          const cx  = c.pos * sx;
-          const top = (c.bandY || 0) * sy;
-          const bot = top + (c.bandH || 0) * sy;
-          const num = hCuts.length + i + 1;
-          return (
-            <g key={`v-${i}`}>
-              <line x1={cx.toFixed(1)} y1={top.toFixed(1)} x2={cx.toFixed(1)} y2={bot.toFixed(1)} stroke="#3b82f6" strokeWidth="1.5" strokeDasharray="5,3" opacity="0.8" />
-              <rect x={(cx-9).toFixed(1)} y={top.toFixed(1)} width="18" height="14" rx="3" fill="#3b82f6" />
-              <text x={cx.toFixed(1)} y={(top+10).toFixed(1)} textAnchor="middle" fontSize="9" fontWeight="bold" fill="#fff" fontFamily="sans-serif">{num}</text>
-            </g>
-          );
-        })}
+        {(() => {
+          // Numérotation synchronisée avec CutList : H1, V2, V3, H4...
+          const allBands = panel.cuts.filter(c => c.type === 'bande');
+          const hBands = allBands.filter(c => c.orientation === 'horizontal').sort((a,b) => (a.pos||0)-(b.pos||0));
+          let num = 1;
+          const svgItems = [];
+          for (const h of hBands) {
+            const cy = h.pos * sy;
+            const n = num++;
+            svgItems.push(
+              <g key={`h-${n}`}>
+                <line x1={0} y1={cy.toFixed(1)} x2={SVG_W} y2={cy.toFixed(1)} stroke="#f59e0b" strokeWidth="1.5" strokeDasharray="6,3" />
+                <line x1={SVG_W+2} y1={cy.toFixed(1)} x2={SVG_W+10} y2={cy.toFixed(1)} stroke="#f59e0b" strokeWidth="1" />
+                <text x={SVG_W+14} y={(cy+4).toFixed(1)} fontSize="9" fontWeight="bold" fill="#f59e0b" fontFamily="monospace">{h.posCm}</text>
+                <rect x={0} y={(cy-9).toFixed(1)} width="18" height="14" rx="3" fill="#f59e0b" />
+                <text x="9" y={(cy+3).toFixed(1)} textAnchor="middle" fontSize="9" fontWeight="bold" fill="#000" fontFamily="sans-serif">{n}</text>
+              </g>
+            );
+            const vBands = allBands.filter(c => c.orientation === 'vertical' && c.bandKey === h.bandKey).sort((a,b) => (a.pos||0)-(b.pos||0));
+            for (const v of vBands) {
+              const cx  = v.pos * sx;
+              const top = (v.bandY || 0) * sy;
+              const bot = top + (v.bandH || 0) * sy;
+              const nv = num++;
+              svgItems.push(
+                <g key={`v-${nv}`}>
+                  <line x1={cx.toFixed(1)} y1={top.toFixed(1)} x2={cx.toFixed(1)} y2={bot.toFixed(1)} stroke="#3b82f6" strokeWidth="1.5" strokeDasharray="5,3" opacity="0.8" />
+                  <rect x={(cx-9).toFixed(1)} y={top.toFixed(1)} width="18" height="14" rx="3" fill="#3b82f6" />
+                  <text x={cx.toFixed(1)} y={(top+10).toFixed(1)} textAnchor="middle" fontSize="9" fontWeight="bold" fill="#fff" fontFamily="sans-serif">{nv}</text>
+                </g>
+              );
+            }
+          }
+          return svgItems;
+        })()}
 
         {/* Cotes panneau */}
         <text x={SVG_W/2} y={SVG_H-4} textAnchor="middle" fontSize="10" fill="#64748b" fontWeight="bold">{panelW/10} cm</text>
@@ -289,7 +296,7 @@ export default function Results({ t, results, project }) {
   const panel      = results.panels[currentPanel];
   const panelW     = Math.round(project.panel.w * 10);
   const panelH     = Math.round(project.panel.h * 10);
-  const kerf       = Math.round((project.kerf ?? 3) * 1);  // kerf en dixiemes de mm (deja en mm -> *1, stored as mm)
+  const kerf       = Math.round((project.kerf ?? 3) * 10); // kerf en dixiemes de mm (mm -> *10)
   const totalCost  = (results.summary.totalPanels * (project.pricePerPanel || 0)).toFixed(2);
   const utilization = panel.utilizationPct;
 
