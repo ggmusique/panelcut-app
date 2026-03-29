@@ -205,33 +205,22 @@ function CutList({ panel }) {
   const allCuts = [];
   let num = 1;
 
-  // Calcule les cotes relatives (depuis le bord de la chute restante)
-  // Pour les H : cote = hauteur de la piece dans cette bande
-  // Pour les V : cote = largeur de la piece depuis le dernier trait
-  let prevHPos = 0;
+  // Les cotes sont maintenant relatives depuis le bord (calculees dans engine.js)
   for (const h of hCuts) {
     const hPieces = panel.cuts.filter(pc =>
       pc.type === 'piece' && pc.bandKey === h.bandKey
     );
-    // Cote relative = position - position precedente
-    const relCm = ((h.pos - prevHPos) / 10).toFixed(1);
-    prevHPos = h.pos;
-    allCuts.push({ num: num++, type: 'horizontal', posCm: relCm, depth: h.depth || 0, pieces: hPieces });
+    allCuts.push({ num: num++, type: 'horizontal', posCm: h.posCm, depth: h.depth || 0, pieces: hPieces });
 
-    // Coupes V dans cette bande — cotes relatives depuis le bord gauche
     const vInBand = bandCuts.filter(c =>
       c.orientation === 'vertical' && c.bandKey === h.bandKey
     ).sort((a, b) => (a.pos || 0) - (b.pos || 0));
 
-    let prevVPos = 0;
     for (const v of vInBand) {
       const vPieces = panel.cuts.filter(pc =>
         pc.type === 'piece' && pc.bandKey === v.bandKey && (pc.x || 0) >= (v.pos || 0)
       );
-      // Cote relative = position V - position V precedente
-      const relVCm = ((v.pos - prevVPos) / 10).toFixed(1);
-      prevVPos = v.pos;
-      allCuts.push({ num: num++, type: 'vertical', posCm: relVCm, depth: v.depth || 0, pieces: vPieces });
+      allCuts.push({ num: num++, type: 'vertical', posCm: v.posCm, depth: v.depth || 0, pieces: vPieces });
     }
   }
 
