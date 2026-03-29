@@ -1,4 +1,7 @@
 import { useState, useRef } from 'react';
+import { interpretScan } from '../interpretation/interpretScan';
+import { buildCabinetModel } from '../interpretation/buildCabinetModel';
+import { generatePiecesFromModel } from '../interpretation/generatePiecesFromModel';
 
 const SERVER_URL = 'https://panelcut-server.vercel.app';
 
@@ -61,20 +64,24 @@ export default function Scanner({ t, onPiecesDetected, onClose }) {
         body: JSON.stringify({ image: base64, mediaType }),
       });
 
-      const data = await res.json();
+      const scanResult = await res.json();
 
-      if (!res.ok || data.error) {
-        throw new Error(data.error || 'server_error');
+      if (!res.ok || scanResult.error) {
+        throw new Error(scanResult.error || 'server_error');
       }
 
-      if (!data.pieces || data.pieces.length === 0) {
+      const normalizedScan = interpretScan(scanResult);
+      const cabinetModel = buildCabinetModel(normalizedScan);
+      const generatedPieces = generatePiecesFromModel(cabinetModel);
+
+      if (generatedPieces.length === 0) {
         setErrorMsg('Aucune pièce détectée — essaie avec une meilleure photo');
         setStatus('error');
         return;
       }
 
-      setPieces(data.pieces);
-      setSelected(new Set(data.pieces.map((_, i) => i)));
+      setPieces(generatedPieces);
+      setSelected(new Set(generatedPieces.map((_, i) => i)));
       setStatus('done');
 
     } catch (err) {
