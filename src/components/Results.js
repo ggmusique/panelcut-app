@@ -106,6 +106,9 @@ function PanelSVG({ panel, panelW, panelH, kerf, colorMap }) {
           <pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
             <line x1="0" y1="0" x2="0" y2="6" stroke="rgba(239,68,68,0.25)" strokeWidth="2" />
           </pattern>
+          <marker id="cutArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M2 1L8 5L2 9" fill="none" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </marker>
         </defs>
 
         <rect x={0} y={0} width={SVG_W} height={SVG_H} fill="url(#grid)" />
@@ -155,28 +158,40 @@ function PanelSVG({ panel, panelW, panelH, kerf, colorMap }) {
           );
         })}
 
-        {/* Coupes HORIZONTALES */}
+        {/* Coupes HORIZONTALES avec numero d ordre et fleche de sens */}
         {hCuts.map((c, i) => {
-          const cy = c.pos * sy;
+          const cy  = c.pos * sy;
+          const num = i + 1;
+          const arrowY = cy - 14;
+          const arrowX1 = 8;
+          const arrowX2 = Math.min(80, SVG_W - 10);
           return (
             <g key={`h-${i}`}>
               <line x1={0} y1={cy.toFixed(1)} x2={SVG_W} y2={cy.toFixed(1)} stroke="#ef4444" strokeWidth="1.5" strokeDasharray="6,3" />
               <line x1={SVG_W+2} y1={cy.toFixed(1)} x2={SVG_W+10} y2={cy.toFixed(1)} stroke="#ef4444" strokeWidth="1" />
               <text x={SVG_W+14} y={(cy+4).toFixed(1)} fontSize="9" fontWeight="bold" fill="#ef4444" fontFamily="monospace">{c.posCm}</text>
+              <circle cx="14" cy={cy.toFixed(1)} r="9" fill="#ef4444" />
+              <text x="14" y={(cy+4).toFixed(1)} textAnchor="middle" fontSize="9" fontWeight="bold" fill="white" fontFamily="sans-serif">{num}</text>
+              <line x1={arrowX1+20} y1={cy.toFixed(1)} x2={arrowX2} y2={cy.toFixed(1)} stroke="#ef4444" strokeWidth="1.5" markerEnd="url(#cutArrow)" />
             </g>
           );
         })}
 
-        {/* Coupes VERTICALES */}
+        {/* Coupes VERTICALES avec numero d ordre et fleche de sens */}
         {vCuts.map((c, i) => {
           const cx  = c.pos * sx;
           const top = (c.bandY || 0) * sy;
           const bot = top + (c.bandH || 0) * sy;
+          const num = hCuts.length + i + 1;
+          const arrowY2 = Math.min(top + 60, bot - 10);
           return (
             <g key={`v-${i}`}>
               <line x1={cx.toFixed(1)} y1={top.toFixed(1)} x2={cx.toFixed(1)} y2={bot.toFixed(1)} stroke="#ef4444" strokeWidth="1.5" strokeDasharray="6,3" />
-              <rect x={(cx-14).toFixed(1)} y={(top+2).toFixed(1)} width="28" height="12" rx="2" fill="#000" fillOpacity="0.85" />
-              <text x={cx.toFixed(1)} y={(top+11).toFixed(1)} textAnchor="middle" fontSize="8" fontWeight="bold" fill="#ef4444" fontFamily="monospace">{c.posCm}</text>
+              <circle cx={cx.toFixed(1)} cy={(top+10).toFixed(1)} r="9" fill="#ef4444" />
+              <text x={cx.toFixed(1)} y={(top+14).toFixed(1)} textAnchor="middle" fontSize="9" fontWeight="bold" fill="white" fontFamily="sans-serif">{num}</text>
+              <line x1={cx.toFixed(1)} y1={(top+21).toFixed(1)} x2={cx.toFixed(1)} y2={arrowY2.toFixed(1)} stroke="#ef4444" strokeWidth="1.5" markerEnd="url(#cutArrow)" />
+              <rect x={(cx+2).toFixed(1)} y={(top+22).toFixed(1)} width="26" height="11" rx="2" fill="#000" fillOpacity="0.7" />
+              <text x={(cx+15).toFixed(1)} y={(top+31).toFixed(1)} textAnchor="middle" fontSize="8" fontWeight="bold" fill="#ef4444" fontFamily="monospace">{c.posCm}</text>
             </g>
           );
         })}
