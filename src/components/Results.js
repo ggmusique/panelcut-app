@@ -307,33 +307,40 @@ export default function Results({ t, results, project }) {
     </div>
   );
 
-  // ─── Calcul des cotes relatives pour le tab "COUPES" ──────────────────────
-  // Les band.posCm stockés sont des positions absolues depuis le bord du panneau.
-  // On recalcule ici la cote depuis le bord de la chute restante.
-  const bandCutsForTab = panel.cuts.filter(c => c.type === 'bande');
-  const hCutsForTab = bandCutsForTab
-    .filter(c => c.orientation === 'horizontal')
+// ─── Calcul des cotes pour le tab "COUPES" ────────────────────────────────
+// La cote affichée = dimension de la pièce dans la bande (pas la position de coupe).
+// Horizontale : hauteur de la bande = h de la première pièce de cette bande.
+// Verticale   : largeur de la pièce = l de la pièce concernée.
+const bandCutsForTab = panel.cuts.filter(c => c.type === 'bande');
+const hCutsForTab = bandCutsForTab
+  .filter(c => c.orientation === 'horizontal')
+  .sort((a, b) => (a.pos || 0) - (b.pos || 0));
+
+const orderedBandsForTab = [];
+for (const h of hCutsForTab) {
+  // La cote H = hauteur de la bande (h de n'importe quelle pièce dans cette bande)
+  const aPieceInBand = panel.placed.find(p => p.bandY === h.bandY);
+  const hCoteCm = aPieceInBand ? fmtCm(aPieceInBand.h) : h.relPosCm;
+  orderedBandsForTab.push({ ...h, relPosCm: hCoteCm });
+
+  const vInBand = bandCutsForTab
+    .filter(c => c.orientation === 'vertical' && c.bandKey === h.bandKey)
     .sort((a, b) => (a.pos || 0) - (b.pos || 0));
 
-  // Construit la liste ordonnée avec cotes relatives
-  const orderedBandsForTab = [];
-  let prevHPosTab = 0;
-  for (const h of hCutsForTab) {
-    const relH = ((h.pos - prevHPosTab) / 10).toFixed(1);
-    prevHPosTab = h.pos;
-    orderedBandsForTab.push({ ...h, relPosCm: relH });
-
-    const vInBand = bandCutsForTab
-      .filter(c => c.orientation === 'vertical' && c.bandKey === h.bandKey)
-      .sort((a, b) => (a.pos || 0) - (b.pos || 0));
-
-    let prevVPosTab = 0;
-    for (const v of vInBand) {
-      const relV = ((v.pos - prevVPosTab) / 10).toFixed(1);
-      prevVPosTab = v.pos;
-      orderedBandsForTab.push({ ...v, relPosCm: relV });
-    }
+  // Pour les coupes V : on identifie la pièce à gauche du trait
+  // et on affiche sa largeur (l)
+  let prevVPos = 0;
+  for (const v of vInBand) {
+    const pieceForCut = panel.placed
+      .filter(p => p.bandY === h.bandY && (p.x || 0) >= prevVPos && (p.x || 0) < v.pos)
+      .sort((a, b) => (a.x || 0) - (b.x || 0))
+      .pop();
+    const vCoteCm = pieceForCut ? fmtCm(pieceForCut.l) : fmtCm(v.pos - prevVPos);
+    prevVPos = v.pos;
+    orderedBandsForTab.push({ ...v, relPosCm: vCoteCm });
   }
+}
+// ─────────────────────────────────────────────────────────────────────────
   // ─────────────────────────────────────────────────────────────────────────
 
   return (
