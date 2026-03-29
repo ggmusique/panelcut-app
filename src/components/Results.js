@@ -198,25 +198,32 @@ function PanelSVG({ panel, panelW, panelH, kerf, colorMap }) {
 
 
 function CutList({ panel }) {
-  const hCuts = panel.cuts.filter(c => c.type === 'bande' && c.orientation === 'horizontal');
-  const vCuts = panel.cuts.filter(c => c.type === 'bande' && c.orientation === 'vertical');
+  // Reconstruit l ordre reel : pour chaque coupe H, on liste les V qui lui appartiennent
+  const bandCuts = panel.cuts.filter(c => c.type === 'bande');
+  const hCuts = bandCuts.filter(c => c.orientation === 'horizontal').sort((a, b) => (a.pos || 0) - (b.pos || 0));
 
-  const allCuts = [
-    ...hCuts.map((c, i) => ({
-      num: i + 1,
-      type: 'horizontal',
-      posCm: c.posCm,
-      depth: c.depth || 0,
-      pieces: panel.cuts.filter(pc => pc.type === 'piece' && pc.bandKey === c.bandKey && pc.panelId === c.panelId),
-    })),
-    ...vCuts.map((c, i) => ({
-      num: hCuts.length + i + 1,
-      type: 'vertical',
-      posCm: c.posCm,
-      depth: c.depth || 0,
-      pieces: panel.cuts.filter(pc => pc.type === 'piece' && pc.bandKey === c.bandKey && pc.panelId === c.panelId),
-    })),
-  ].sort((a, b) => a.num - b.num);
+  const allCuts = [];
+  let num = 1;
+
+  for (const h of hCuts) {
+    // La coupe H elle-meme
+    const hPieces = panel.cuts.filter(pc =>
+      pc.type === 'piece' && pc.bandKey === h.bandKey
+    );
+    allCuts.push({ num: num++, type: 'horizontal', posCm: h.posCm, depth: h.depth || 0, pieces: hPieces });
+
+    // Les coupes V dans cette bande H
+    const vInBand = bandCuts.filter(c =>
+      c.orientation === 'vertical' && c.bandKey === h.bandKey
+    ).sort((a, b) => (a.pos || 0) - (b.pos || 0));
+
+    for (const v of vInBand) {
+      const vPieces = panel.cuts.filter(pc =>
+        pc.type === 'piece' && pc.bandKey === v.bandKey && (pc.x || 0) >= (v.pos || 0)
+      );
+      allCuts.push({ num: num++, type: 'vertical', posCm: v.posCm, depth: v.depth || 0, pieces: vPieces });
+    }
+  }
 
   return (
     <div className="space-y-2 mt-4">
