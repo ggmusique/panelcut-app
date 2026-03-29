@@ -3,6 +3,7 @@ import { interpretScan } from '../interpretation/interpretScan';
 import { buildCabinetModel } from '../interpretation/buildCabinetModel';
 import { generatePiecesFromModel } from '../interpretation/generatePiecesFromModel';
 import CabinetPreview3D from './CabinetPreview3D';
+import CabinetPlan2D from './CabinetPlan2D';
 
 const SERVER_URL = 'https://panelcut-server.vercel.app';
 
@@ -208,6 +209,7 @@ export default function Scanner({ t, onPiecesDetected, onClose }) {
             </div>
 
             <CabinetPreview3D model={cabinetModel} />
+            <CabinetPlan2D model={cabinetModel} />
 
             <div className="scan-result-note">
               📐 Contrôle visuel: largeur, hauteur, profondeur et modules internes
