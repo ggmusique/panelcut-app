@@ -73,6 +73,12 @@ export default function Scanner({ t, onPiecesDetected, onClose }) {
         throw new Error(scanResult.error || 'server_error');
       }
 
+
+      if (Array.isArray(scanResult?.pieces)) {
+        onPiecesDetected(scanResult.pieces);
+        return;
+      }
+
       const normalizedScan = interpretScan(scanResult);
       const nextCabinetModel = buildCabinetModel(normalizedScan);
 

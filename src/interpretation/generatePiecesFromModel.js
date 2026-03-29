@@ -43,11 +43,12 @@ export function generatePiecesFromModel(model) {
     );
   }
 
-  modules.forEach((moduleWidth, index) => {
+  modules.forEach((module, index) => {
+    const moduleWidth = typeof module === 'number' ? module : (module?.width || 0);
     pushPiece(
       pieces,
       `Tablette M${index + 1}`,
-      Math.max(0, moduleWidth - panelThickness * 2),
+      Math.max(0, moduleWidth),
       usefulDepth,
       1,
     );
