@@ -205,29 +205,33 @@ function CutList({ panel }) {
   const allCuts = [];
   let num = 1;
 
+  // Calcule les cotes relatives (depuis le bord de la chute restante)
+  // Pour les H : cote = hauteur de la piece dans cette bande
+  // Pour les V : cote = largeur de la piece depuis le dernier trait
+  let prevHPos = 0;
   for (const h of hCuts) {
-    // La coupe H elle-meme
     const hPieces = panel.cuts.filter(pc =>
       pc.type === 'piece' && pc.bandKey === h.bandKey
     );
-    allCuts.push({ num: num++, type: 'horizontal', posCm: h.posCm, depth: h.depth || 0, pieces: hPieces });
+    // Cote relative = position - position precedente
+    const relCm = ((h.pos - prevHPos) / 10).toFixed(1);
+    prevHPos = h.pos;
+    allCuts.push({ num: num++, type: 'horizontal', posCm: relCm, depth: h.depth || 0, pieces: hPieces });
 
-    // Les coupes V dans cette bande H
+    // Coupes V dans cette bande — cotes relatives depuis le bord gauche
     const vInBand = bandCuts.filter(c =>
       c.orientation === 'vertical' && c.bandKey === h.bandKey
     ).sort((a, b) => (a.pos || 0) - (b.pos || 0));
 
+    let prevVPos = 0;
     for (const v of vInBand) {
-      // La cote utile pour l ebeniste = position x de la piece apres la coupe
       const vPieces = panel.cuts.filter(pc =>
         pc.type === 'piece' && pc.bandKey === v.bandKey && (pc.x || 0) >= (v.pos || 0)
       );
-      // On cherche la premiere piece avant cette coupe pour avoir sa largeur (xCm du debut de la piece suivante)
-      const firstPieceAfter = panel.cuts
-        .filter(pc => pc.type === 'piece' && pc.bandKey === v.bandKey && (pc.x || 0) >= (v.pos || 0))
-        .sort((a, b) => (a.x || 0) - (b.x || 0))[0];
-      const displayCm = firstPieceAfter ? firstPieceAfter.xCm : v.posCm;
-      allCuts.push({ num: num++, type: 'vertical', posCm: displayCm, depth: v.depth || 0, pieces: vPieces });
+      // Cote relative = position V - position V precedente
+      const relVCm = ((v.pos - prevVPos) / 10).toFixed(1);
+      prevVPos = v.pos;
+      allCuts.push({ num: num++, type: 'vertical', posCm: relVCm, depth: v.depth || 0, pieces: vPieces });
     }
   }
 
