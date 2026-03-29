@@ -208,8 +208,8 @@ export default function Scanner({ t, onPiecesDetected, onClose }) {
               <span className="scan-result-hint">Vérifie le meuble 3D avant extraction des pièces</span>
             </div>
 
-            <CabinetPreview3D model={cabinetModel} />
-            <CabinetPlan2D model={cabinetModel} />
+            <CabinetPreview3D cabinet={cabinetModel} />
+              <CabinetPlan2D cabinet={cabinetModel} />
 
             <div className="scan-result-note">
               📐 Contrôle visuel: largeur, hauteur, profondeur et modules internes
