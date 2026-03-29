@@ -80,7 +80,7 @@ function cut(rect, pieces, kerf, tol, depth, panelId) {
       type: 'bande',
       cutNum,
       pos: cutPos,
-      posCm: (cutPos / 10).toFixed(1),
+      posCm: ((cutPos - kerf) / 10).toFixed(1),
       bandH,
       bandHCm: (bandH / 10).toFixed(1),
       bandY: usedH,
@@ -107,7 +107,7 @@ function cut(rect, pieces, kerf, tol, depth, panelId) {
           type: 'bande',
           cutNum: allCuts.filter(c => c.type === 'bande').length + 1,
           pos: xStart,          // position X dans la bande
-          posCm: (xStart / 10).toFixed(1),
+          posCm: ((xStart - kerf) / 10).toFixed(1),
           bandY: usedH,
           bandYCm: (usedH / 10).toFixed(1),
           bandH,
