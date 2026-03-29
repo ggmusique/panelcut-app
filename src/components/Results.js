@@ -21,11 +21,17 @@ function getColor(name, colorMap) {
   return colorMap[name];
 }
 
+// Affiche en cm avec 1 decimale seulement si ce n'est pas un entier rond
 function fmtCm(tenthsMm) {
   const cm = tenthsMm / 10;
   return Number.isInteger(cm) ? String(cm) : cm.toFixed(1);
 }
 
+/**
+ * Chaque coupe consomme 1 kerf APRES la piece.
+ * usedW = lastPiece.x + lastPiece.l + kerf
+ * usedH = lastBand.bandY + lastBand.bandH + kerf
+ */
 function computeWasteZones(placed, panelW, panelH, kerf) {
   const zones = [];
 
@@ -39,6 +45,7 @@ function computeWasteZones(placed, panelW, panelH, kerf) {
 
   const sortedBands = Object.values(bands).sort((a, b) => a.bandY - b.bandY);
 
+  // Chute laterale (droite) — +kerf car le dernier trait de scie est compris
   for (const band of sortedBands) {
     const lastPiece = [...band.pieces].sort((a, b) => (a.x || 0) - (b.x || 0)).pop();
     const usedW  = (lastPiece.x || 0) + lastPiece.l + kerf;
@@ -54,6 +61,7 @@ function computeWasteZones(placed, panelW, panelH, kerf) {
     }
   }
 
+  // Chute du bas — +kerf car la coupe horizontale est comprise
   const lastBand = sortedBands[sortedBands.length - 1];
   if (lastBand) {
     const usedH  = lastBand.bandY + lastBand.bandH + kerf;
@@ -105,6 +113,7 @@ function PanelSVG({ panel, panelW, panelH, kerf, colorMap }) {
 
         <rect x={0} y={0} width={SVG_W} height={SVG_H} fill="url(#grid)" />
 
+        {/* Zones de chute */}
         {wasteZones.map((z, i) => {
           const zx = z.x * sx;
           const zy = z.y * sy;
@@ -128,6 +137,7 @@ function PanelSVG({ panel, panelW, panelH, kerf, colorMap }) {
           );
         })}
 
+        {/* Pieces */}
         {panel.placed.map((p, i) => {
           const c  = getColor(p.name, colorMap);
           const px = (p.x  || 0) * sx;
@@ -148,6 +158,7 @@ function PanelSVG({ panel, panelW, panelH, kerf, colorMap }) {
           );
         })}
 
+        {/* Coupes HORIZONTALES — badge discret orange */}
         {hCuts.map((c, i) => {
           const cy  = c.pos * sy;
           const num = i + 1;
@@ -162,6 +173,7 @@ function PanelSVG({ panel, panelW, panelH, kerf, colorMap }) {
           );
         })}
 
+        {/* Coupes VERTICALES — badge discret bleu */}
         {vCuts.map((c, i) => {
           const cx  = c.pos * sx;
           const top = (c.bandY || 0) * sy;
@@ -176,6 +188,7 @@ function PanelSVG({ panel, panelW, panelH, kerf, colorMap }) {
           );
         })}
 
+        {/* Cotes panneau */}
         <text x={SVG_W/2} y={SVG_H-4} textAnchor="middle" fontSize="10" fill="#64748b" fontWeight="bold">{panelW/10} cm</text>
         <text x="8" y={SVG_H/2} transform={`rotate(-90 8 ${SVG_H/2})`} textAnchor="middle" fontSize="10" fill="#64748b" fontWeight="bold">{panelH/10} cm</text>
       </svg>
@@ -185,21 +198,27 @@ function PanelSVG({ panel, panelW, panelH, kerf, colorMap }) {
 
 
 function CutList({ panel }) {
+  // Reconstruit l ordre reel : pour chaque coupe H, on liste les V qui lui appartiennent
   const bandCuts = panel.cuts.filter(c => c.type === 'bande');
   const hCuts = bandCuts.filter(c => c.orientation === 'horizontal').sort((a, b) => (a.pos || 0) - (b.pos || 0));
 
   const allCuts = [];
   let num = 1;
 
+  // Calcule les cotes relatives (depuis le bord de la chute restante)
+  // Pour les H : cote = hauteur de la piece dans cette bande
+  // Pour les V : cote = largeur de la piece depuis le dernier trait
   let prevHPos = 0;
   for (const h of hCuts) {
     const hPieces = panel.cuts.filter(pc =>
       pc.type === 'piece' && pc.bandKey === h.bandKey
     );
+    // Cote relative = position - position precedente
     const relCm = ((h.pos - prevHPos) / 10).toFixed(1);
     prevHPos = h.pos;
     allCuts.push({ num: num++, type: 'horizontal', posCm: relCm, depth: h.depth || 0, pieces: hPieces });
 
+    // Coupes V dans cette bande — cotes relatives depuis le bord gauche
     const vInBand = bandCuts.filter(c =>
       c.orientation === 'vertical' && c.bandKey === h.bandKey
     ).sort((a, b) => (a.pos || 0) - (b.pos || 0));
@@ -209,6 +228,7 @@ function CutList({ panel }) {
       const vPieces = panel.cuts.filter(pc =>
         pc.type === 'piece' && pc.bandKey === v.bandKey && (pc.x || 0) >= (v.pos || 0)
       );
+      // Cote relative = position V - position V precedente
       const relVCm = ((v.pos - prevVPos) / 10).toFixed(1);
       prevVPos = v.pos;
       allCuts.push({ num: num++, type: 'vertical', posCm: relVCm, depth: v.depth || 0, pieces: vPieces });
@@ -280,7 +300,7 @@ export default function Results({ t, results, project }) {
   const panel      = results.panels[currentPanel];
   const panelW     = Math.round(project.panel.w * 10);
   const panelH     = Math.round(project.panel.h * 10);
-  const kerf       = Math.round((project.kerf ?? 3) * 1);
+  const kerf       = Math.round((project.kerf ?? 3) * 1);  // kerf en dixiemes de mm (deja en mm -> *1, stored as mm)
   const totalCost  = (results.summary.totalPanels * (project.pricePerPanel || 0)).toFixed(2);
   const utilization = panel.utilizationPct;
 
@@ -306,35 +326,6 @@ export default function Results({ t, results, project }) {
       </button>
     </div>
   );
-
-  // ─── Calcul des cotes relatives pour le tab "COUPES" ──────────────────────
-  // Les band.posCm stockés sont des positions absolues depuis le bord du panneau.
-  // On recalcule ici la cote depuis le bord de la chute restante.
-  const bandCutsForTab = panel.cuts.filter(c => c.type === 'bande');
-  const hCutsForTab = bandCutsForTab
-    .filter(c => c.orientation === 'horizontal')
-    .sort((a, b) => (a.pos || 0) - (b.pos || 0));
-
-  // Construit la liste ordonnée avec cotes relatives
-  const orderedBandsForTab = [];
-  let prevHPosTab = 0;
-  for (const h of hCutsForTab) {
-    const relH = ((h.pos - prevHPosTab) / 10).toFixed(1);
-    prevHPosTab = h.pos;
-    orderedBandsForTab.push({ ...h, relPosCm: relH });
-
-    const vInBand = bandCutsForTab
-      .filter(c => c.orientation === 'vertical' && c.bandKey === h.bandKey)
-      .sort((a, b) => (a.pos || 0) - (b.pos || 0));
-
-    let prevVPosTab = 0;
-    for (const v of vInBand) {
-      const relV = ((v.pos - prevVPosTab) / 10).toFixed(1);
-      prevVPosTab = v.pos;
-      orderedBandsForTab.push({ ...v, relPosCm: relV });
-    }
-  }
-  // ─────────────────────────────────────────────────────────────────────────
 
   return (
     <div className="min-h-screen bg-[#050505] text-slate-200 pb-32 font-sans">
@@ -426,7 +417,7 @@ export default function Results({ t, results, project }) {
                 <Scissors className="w-4 h-4 text-orange-500" /> Séquence de découpe
               </h3>
               <div className="space-y-2">
-                {orderedBandsForTab.map((band, bi) => {
+                {panel.cuts.filter(c => c.type === 'bande').map((band, bi) => {
                   const piecesInBand = panel.cuts.filter(
                     c => c.type === 'piece' && c.bandKey === band.bandKey && c.panelId === band.panelId
                   );
@@ -436,7 +427,7 @@ export default function Results({ t, results, project }) {
                         <span className="text-orange-500 font-bold">✂</span>
                         <span className="text-sm">
                           {band.orientation === 'vertical' ? 'Verticale' : 'Horizontale'} à{' '}
-                          <strong className="text-white">{band.relPosCm}cm</strong>
+                          <strong className="text-white">{band.posCm}cm</strong>
                           {band.depth > 0 && <span className="text-xs text-slate-500 ml-1">(Niv.{band.depth})</span>}
                         </span>
                       </div>
@@ -463,7 +454,7 @@ export default function Results({ t, results, project }) {
                     </div>
                   );
                 })}
-                {orderedBandsForTab.length === 0 && (
+                {panel.cuts.filter(c => c.type === 'bande').length === 0 && (
                   <div className="text-center text-slate-500 py-10">Aucune coupe requise.</div>
                 )}
               </div>
