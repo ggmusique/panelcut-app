@@ -158,40 +158,32 @@ function PanelSVG({ panel, panelW, panelH, kerf, colorMap }) {
           );
         })}
 
-        {/* Coupes HORIZONTALES avec numero d ordre et fleche de sens */}
+        {/* Coupes HORIZONTALES — badge discret orange */}
         {hCuts.map((c, i) => {
           const cy  = c.pos * sy;
           const num = i + 1;
-          const arrowY = cy - 14;
-          const arrowX1 = 8;
-          const arrowX2 = Math.min(80, SVG_W - 10);
           return (
             <g key={`h-${i}`}>
-              <line x1={0} y1={cy.toFixed(1)} x2={SVG_W} y2={cy.toFixed(1)} stroke="#ef4444" strokeWidth="1.5" strokeDasharray="6,3" />
-              <line x1={SVG_W+2} y1={cy.toFixed(1)} x2={SVG_W+10} y2={cy.toFixed(1)} stroke="#ef4444" strokeWidth="1" />
-              <text x={SVG_W+14} y={(cy+4).toFixed(1)} fontSize="9" fontWeight="bold" fill="#ef4444" fontFamily="monospace">{c.posCm}</text>
-              <circle cx="14" cy={cy.toFixed(1)} r="9" fill="#ef4444" />
-              <text x="14" y={(cy+4).toFixed(1)} textAnchor="middle" fontSize="9" fontWeight="bold" fill="white" fontFamily="sans-serif">{num}</text>
-              <line x1={arrowX1+20} y1={cy.toFixed(1)} x2={arrowX2} y2={cy.toFixed(1)} stroke="#ef4444" strokeWidth="1.5" markerEnd="url(#cutArrow)" />
+              <line x1={0} y1={cy.toFixed(1)} x2={SVG_W} y2={cy.toFixed(1)} stroke="#f59e0b" strokeWidth="1.5" strokeDasharray="6,3" />
+              <line x1={SVG_W+2} y1={cy.toFixed(1)} x2={SVG_W+10} y2={cy.toFixed(1)} stroke="#f59e0b" strokeWidth="1" />
+              <text x={SVG_W+14} y={(cy+4).toFixed(1)} fontSize="9" fontWeight="bold" fill="#f59e0b" fontFamily="monospace">{c.posCm}</text>
+              <rect x={0} y={(cy-9).toFixed(1)} width="18" height="14" rx="3" fill="#f59e0b" />
+              <text x="9" y={(cy+3).toFixed(1)} textAnchor="middle" fontSize="9" fontWeight="bold" fill="#000" fontFamily="sans-serif">{num}</text>
             </g>
           );
         })}
 
-        {/* Coupes VERTICALES avec numero d ordre et fleche de sens */}
+        {/* Coupes VERTICALES — badge discret bleu */}
         {vCuts.map((c, i) => {
           const cx  = c.pos * sx;
           const top = (c.bandY || 0) * sy;
           const bot = top + (c.bandH || 0) * sy;
           const num = hCuts.length + i + 1;
-          const arrowY2 = Math.min(top + 60, bot - 10);
           return (
             <g key={`v-${i}`}>
-              <line x1={cx.toFixed(1)} y1={top.toFixed(1)} x2={cx.toFixed(1)} y2={bot.toFixed(1)} stroke="#ef4444" strokeWidth="1.5" strokeDasharray="6,3" />
-              <circle cx={cx.toFixed(1)} cy={(top+10).toFixed(1)} r="9" fill="#ef4444" />
-              <text x={cx.toFixed(1)} y={(top+14).toFixed(1)} textAnchor="middle" fontSize="9" fontWeight="bold" fill="white" fontFamily="sans-serif">{num}</text>
-              <line x1={cx.toFixed(1)} y1={(top+21).toFixed(1)} x2={cx.toFixed(1)} y2={arrowY2.toFixed(1)} stroke="#ef4444" strokeWidth="1.5" markerEnd="url(#cutArrow)" />
-              <rect x={(cx+2).toFixed(1)} y={(top+22).toFixed(1)} width="26" height="11" rx="2" fill="#000" fillOpacity="0.7" />
-              <text x={(cx+15).toFixed(1)} y={(top+31).toFixed(1)} textAnchor="middle" fontSize="8" fontWeight="bold" fill="#ef4444" fontFamily="monospace">{c.posCm}</text>
+              <line x1={cx.toFixed(1)} y1={top.toFixed(1)} x2={cx.toFixed(1)} y2={bot.toFixed(1)} stroke="#3b82f6" strokeWidth="1.5" strokeDasharray="5,3" opacity="0.8" />
+              <rect x={(cx-9).toFixed(1)} y={top.toFixed(1)} width="18" height="14" rx="3" fill="#3b82f6" />
+              <text x={cx.toFixed(1)} y={(top+10).toFixed(1)} textAnchor="middle" fontSize="9" fontWeight="bold" fill="#fff" fontFamily="sans-serif">{num}</text>
             </g>
           );
         })}
@@ -200,6 +192,65 @@ function PanelSVG({ panel, panelW, panelH, kerf, colorMap }) {
         <text x={SVG_W/2} y={SVG_H-4} textAnchor="middle" fontSize="10" fill="#64748b" fontWeight="bold">{panelW/10} cm</text>
         <text x="8" y={SVG_H/2} transform={`rotate(-90 8 ${SVG_H/2})`} textAnchor="middle" fontSize="10" fill="#64748b" fontWeight="bold">{panelH/10} cm</text>
       </svg>
+    </div>
+  );
+}
+
+
+function CutList({ panel }) {
+  const hCuts = panel.cuts.filter(c => c.type === 'bande' && c.orientation === 'horizontal');
+  const vCuts = panel.cuts.filter(c => c.type === 'bande' && c.orientation === 'vertical');
+
+  const allCuts = [
+    ...hCuts.map((c, i) => ({
+      num: i + 1,
+      type: 'horizontal',
+      posCm: c.posCm,
+      depth: c.depth || 0,
+      pieces: panel.cuts.filter(pc => pc.type === 'piece' && pc.bandKey === c.bandKey && pc.panelId === c.panelId),
+    })),
+    ...vCuts.map((c, i) => ({
+      num: hCuts.length + i + 1,
+      type: 'vertical',
+      posCm: c.posCm,
+      depth: c.depth || 0,
+      pieces: panel.cuts.filter(pc => pc.type === 'piece' && pc.bandKey === c.bandKey && pc.panelId === c.panelId),
+    })),
+  ].sort((a, b) => a.num - b.num);
+
+  return (
+    <div className="space-y-2 mt-4">
+      <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Ordre des coupes</div>
+      {allCuts.map((cut) => {
+        const isH = cut.type === 'horizontal';
+        const accent = isH ? '#f59e0b' : '#3b82f6';
+        const bg = isH ? 'rgba(245,158,11,0.08)' : 'rgba(59,130,246,0.08)';
+        const border = isH ? 'rgba(245,158,11,0.2)' : 'rgba(59,130,246,0.2)';
+        return (
+          <div key={cut.num} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, background: bg, border: `1px solid ${border}`, borderRadius: 8, padding: '8px 10px' }}>
+            <div style={{ width: 24, height: 24, borderRadius: '50%', background: accent, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: isH ? '#000' : '#fff', flexShrink: 0 }}>
+              {cut.num}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: cut.pieces.length ? 4 : 0 }}>
+                <span style={{ color: accent, fontWeight: 700, fontSize: 12 }}>
+                  {isH ? '→' : '↓'} Coupe {isH ? 'horizontale' : 'verticale'} à <strong style={{ color: '#fff' }}>{cut.posCm} cm</strong>
+                </span>
+                {cut.depth > 0 && <span style={{ fontSize: 10, color: '#475569', background: 'rgba(255,255,255,0.05)', padding: '1px 6px', borderRadius: 4 }}>chute niv.{cut.depth}</span>}
+              </div>
+              {cut.pieces.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                  {cut.pieces.map((pc, pi) => (
+                    <span key={pi} style={{ fontSize: 10, color: '#94a3b8', background: 'rgba(255,255,255,0.05)', padding: '2px 6px', borderRadius: 4, fontFamily: 'monospace' }}>
+                      {pc.name} {pc.lCm}×{pc.hCm}cm{pc.rotated ? ' ↺' : ''}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -330,6 +381,7 @@ export default function Results({ t, results, project }) {
           <div className="space-y-4">
             <PanelNav />
             <PanelSVG panel={panel} panelW={panelW} panelH={panelH} kerf={kerf} colorMap={colorMap} />
+            <CutList panel={panel} />
             <div className="flex justify-center gap-2">
               {results.panels.map((_, i) => (
                 <button key={i} onClick={() => setCurrentPanel(i)}
