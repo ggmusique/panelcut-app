@@ -7,7 +7,7 @@ import PiecesList from './components/PiecesList';
 import Results from './components/Results';
 import AuthScreen from './components/AuthScreen';
 import ProjectsScreen from './components/ProjectsScreen';
-import { ChevronLeft, LogOut, Disc } from 'lucide-react';
+import { ChevronLeft, ChevronRight, LogOut, Disc } from 'lucide-react';
 import './App.css';
 
 const SCREENS = { AUTH: 'auth', PROJECTS: 'projects', FORM: 'form', PIECES: 'pieces', RESULTS: 'results' };
@@ -16,7 +16,6 @@ const DEFAULT_PROJECT = { name: '', client: '', company: '', panel: { w: 244, h:
 const APP_VERSION = process.env.REACT_APP_VERSION || '1.0.0';
 const GIT_HASH   = process.env.REACT_APP_GIT_HASH  || 'dev';
 
-// ── localStorage helpers ──────────────────────────────────────────────────────
 const LS_SCREEN  = 'pc_screen';
 const LS_PROJECT = 'pc_project';
 const LS_RESULTS = 'pc_results';
@@ -31,14 +30,12 @@ function lsSet(key, value) {
 function lsClear() {
   [LS_SCREEN, LS_PROJECT, LS_RESULTS].forEach(k => localStorage.removeItem(k));
 }
-// ─────────────────────────────────────────────────────────────────────────────
 
 export default function App() {
   const lang = useLang();
   const [langOverride, setLangOverride] = useState(lang);
   const tr = I18N[langOverride] || I18N['fr'];
 
-  // Restore from localStorage on first render
   const [screen,  setScreenRaw]  = useState(() => lsGet(LS_SCREEN,  SCREENS.AUTH));
   const [project, setProjectRaw] = useState(() => lsGet(LS_PROJECT, { ...DEFAULT_PROJECT }));
   const [results, setResultsRaw] = useState(() => lsGet(LS_RESULTS, null));
@@ -48,7 +45,6 @@ export default function App() {
   const [saving,    setSaving]    = useState(false);
   const [saveMsg,   setSaveMsg]   = useState('');
 
-  // Wrapped setters that also persist to localStorage
   const setScreen  = (s) => { setScreenRaw(s);  lsSet(LS_SCREEN,  s); };
   const setProject = (p) => { setProjectRaw(p); lsSet(LS_PROJECT, p); };
   const setResults = (r) => { setResultsRaw(r); lsSet(LS_RESULTS, r); };
@@ -57,7 +53,6 @@ export default function App() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         setUser(session.user);
-        // Only redirect to dashboard if coming from auth screen (fresh login)
         const savedScreen = lsGet(LS_SCREEN, SCREENS.AUTH);
         if (savedScreen === SCREENS.AUTH) setScreen(SCREENS.PROJECTS);
       }
@@ -65,7 +60,6 @@ export default function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
         setUser(session.user);
-        // Only redirect to dashboard on actual sign-in (not tab focus)
         if (_event === 'SIGNED_IN') {
           const savedScreen = lsGet(LS_SCREEN, SCREENS.AUTH);
           if (savedScreen === SCREENS.AUTH) setScreen(SCREENS.PROJECTS);
@@ -95,6 +89,30 @@ export default function App() {
     else setScreen(SCREENS.AUTH);
   };
 
+  const handleOptimize = useCallback(() => {
+    if (!project.pieces.length) return;
+    setComputing(true);
+    setTimeout(async () => {
+      const res = optimise(project.pieces, project.panel, { kerf: project.kerf, tolerance: project.tolerance });
+      setResults(res); setComputing(false); setScreen(SCREENS.RESULTS);
+      if (user) {
+        setSaving(true);
+        await saveProject(project, res);
+        setSaving(false); setSaveMsg('OK'); setTimeout(() => setSaveMsg(''), 2000);
+      }
+    }, 50);
+  }, [project, user]);
+
+  const canGoNext =
+    (screen === SCREENS.FORM   && project.name?.trim().length > 0) ||
+    (screen === SCREENS.PIECES && project.pieces.length > 0 && !computing);
+  const showNext = [SCREENS.FORM, SCREENS.PIECES].includes(screen);
+
+  const goNext = () => {
+    if (screen === SCREENS.FORM)   setScreen(SCREENS.PIECES);
+    if (screen === SCREENS.PIECES) handleOptimize();
+  };
+
   const handleLoadProject = async (id) => {
     const { data, error } = await loadProject(id);
     if (error || !data) return;
@@ -117,20 +135,6 @@ export default function App() {
     setResults(null);
     setScreen(SCREENS.PIECES);
   };
-
-  const handleOptimize = useCallback(() => {
-    if (!project.pieces.length) return;
-    setComputing(true);
-    setTimeout(async () => {
-      const res = optimise(project.pieces, project.panel, { kerf: project.kerf, tolerance: project.tolerance });
-      setResults(res); setComputing(false); setScreen(SCREENS.RESULTS);
-      if (user) {
-        setSaving(true);
-        await saveProject(project, res);
-        setSaving(false); setSaveMsg('OK'); setTimeout(() => setSaveMsg(''), 2000);
-      }
-    }, 50);
-  }, [project, user]);
 
   const handleSave = async () => {
     if (!user) return;
@@ -156,26 +160,27 @@ export default function App() {
 
   let headerTitle = 'PanelCut Pro', headerSubtitle = '', steps = [];
   if (screen === SCREENS.PROJECTS) { headerTitle = 'Dashboard'; headerSubtitle = user?.email || 'Guest'; }
-  else if (screen === SCREENS.FORM) { headerTitle = tr.newProject || 'Nouveau projet'; steps = [{ label: tr.panel, active: true }, { label: tr.pieces, active: false }, { label: tr.results, active: false }]; }
-  else if (screen === SCREENS.PIECES) { headerTitle = project.name || tr.newProject; steps = [{ label: tr.panel, active: true }, { label: tr.pieces, active: true }, { label: tr.results, active: false }]; }
-  else if (screen === SCREENS.RESULTS) { headerTitle = tr.results || 'Resultats'; steps = [{ label: tr.panel, active: true }, { label: tr.pieces, active: true }, { label: tr.results, active: true }]; }
+  else if (screen === SCREENS.FORM)    { headerTitle = tr.newProject || 'Nouveau projet'; steps = [{ label: tr.panel, active: true }, { label: tr.pieces, active: false }, { label: tr.results, active: false }]; }
+  else if (screen === SCREENS.PIECES)  { headerTitle = project.name || tr.newProject;    steps = [{ label: tr.panel, active: true }, { label: tr.pieces, active: true  }, { label: tr.results, active: false }]; }
+  else if (screen === SCREENS.RESULTS) { headerTitle = tr.results || 'Resultats';         steps = [{ label: tr.panel, active: true }, { label: tr.pieces, active: true  }, { label: tr.results, active: true  }]; }
 
   const hasHeader = screen !== SCREENS.AUTH;
-  const hasSteps = steps.length > 0;
+  const hasSteps  = steps.length > 0;
 
   return (
     <div className="app min-h-screen bg-[#0f1620] text-slate-200 font-sans">
       {hasHeader && (
         <header className="sticky top-0 z-40 bg-[#0f1620]/95 backdrop-blur-md border-b border-white/10 shadow-lg h-16 flex items-center justify-between px-4 md:px-8 gap-2">
 
-          {/* LEFT: back + title + version */}
-          <div className="flex items-center gap-2 flex-shrink-0">
+          {/* LEFT: ‹ title › */}
+          <div className="flex items-center gap-1 flex-shrink-0">
             {showBack && (
-              <button onClick={goBack} className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors flex-shrink-0">
+              <button onClick={goBack} className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors">
                 <ChevronLeft className="w-5 h-5" />
               </button>
             )}
-            <div className="flex flex-col">
+
+            <div className="flex flex-col mx-1">
               <h1 className={'font-bold text-white ' + (hasSteps ? 'hidden md:block text-sm md:text-base' : 'text-sm md:text-base')}>
                 {headerTitle}
               </h1>
@@ -183,7 +188,21 @@ export default function App() {
                 v{APP_VERSION} · {GIT_HASH}
               </span>
             </div>
-            {headerSubtitle && <p className="text-[10px] text-slate-500 uppercase truncate hidden sm:block">{headerSubtitle}</p>}
+
+            {/* Bouton NEXT — toujours visible, orange si actif, gris clair si pas encore possible */}
+            {showNext && (
+              <button
+                onClick={canGoNext ? goNext : undefined}
+                className={'p-1.5 rounded-lg transition-colors ' +
+                  (canGoNext
+                    ? 'text-orange-400 hover:text-white hover:bg-orange-500/20 cursor-pointer'
+                    : 'text-slate-500 cursor-not-allowed opacity-40')}
+              >
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            )}
+
+            {headerSubtitle && <p className="text-[10px] text-slate-500 uppercase truncate hidden sm:block ml-1">{headerSubtitle}</p>}
           </div>
 
           {/* CENTER: stepper */}
