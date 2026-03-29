@@ -1,201 +1,178 @@
 import { useMemo } from 'react';
 
-const toMmLabel = (cm) => `${Math.round((Number(cm) || 0) * 10)} mm`;
+const mm = (cmValue) => Math.round((Number(cmValue) || 0) * 10);
 
-function Arrow({ x, y, direction = 'left' }) {
-  const size = 5;
-  if (direction === 'left') {
-    return <polyline points={`${x + size},${y - size} ${x},${y} ${x + size},${y + size}`} fill="none" stroke="currentColor" strokeWidth="1.5" />;
+const readNumber = (value, fallback = 0) => {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+};
+
+const toModule = (entry, fallbackHeight, fallbackDepth) => {
+  if (typeof entry === 'number') {
+    return { width: readNumber(entry), height: fallbackHeight, depth: fallbackDepth, shelves: 0, type: 'module' };
   }
-  if (direction === 'right') {
-    return <polyline points={`${x - size},${y - size} ${x},${y} ${x - size},${y + size}`} fill="none" stroke="currentColor" strokeWidth="1.5" />;
-  }
-  if (direction === 'up') {
-    return <polyline points={`${x - size},${y + size} ${x},${y} ${x + size},${y + size}`} fill="none" stroke="currentColor" strokeWidth="1.5" />;
-  }
-  return <polyline points={`${x - size},${y - size} ${x},${y} ${x + size},${y - size}`} fill="none" stroke="currentColor" strokeWidth="1.5" />;
+
+  return {
+    width: readNumber(entry?.width),
+    height: readNumber(entry?.height, fallbackHeight),
+    depth: readNumber(entry?.depth, fallbackDepth),
+    shelves: Math.max(0, Math.round(readNumber(entry?.shelves, 0))),
+    type: entry?.type || 'module',
+  };
+};
+
+function DimArrow({ x, y, dir }) {
+  const s = 4;
+  if (dir === 'l') return <polyline points={`${x + s},${y - s} ${x},${y} ${x + s},${y + s}`} fill="none" stroke="currentColor" strokeWidth="1.2" />;
+  if (dir === 'r') return <polyline points={`${x - s},${y - s} ${x},${y} ${x - s},${y + s}`} fill="none" stroke="currentColor" strokeWidth="1.2" />;
+  if (dir === 'u') return <polyline points={`${x - s},${y + s} ${x},${y} ${x + s},${y + s}`} fill="none" stroke="currentColor" strokeWidth="1.2" />;
+  return <polyline points={`${x - s},${y - s} ${x},${y} ${x + s},${y - s}`} fill="none" stroke="currentColor" strokeWidth="1.2" />;
 }
 
-function HorizontalDimension({ x1, x2, y, label, color = '#0f172a' }) {
+function HorizontalDim({ x1, x2, y, label }) {
   return (
-    <g style={{ color }}>
-      <line x1={x1} y1={y} x2={x2} y2={y} stroke="currentColor" strokeWidth="1.5" />
-      <Arrow x={x1} y={y} direction="right" />
-      <Arrow x={x2} y={y} direction="left" />
-      <text x={(x1 + x2) / 2} y={y - 6} textAnchor="middle" fontSize="11" fill="currentColor">{label}</text>
+    <g style={{ color: '#1e293b' }}>
+      <line x1={x1} y1={y} x2={x2} y2={y} stroke="currentColor" strokeWidth="1.2" />
+      <DimArrow x={x1} y={y} dir="r" />
+      <DimArrow x={x2} y={y} dir="l" />
+      <text x={(x1 + x2) / 2} y={y - 5} textAnchor="middle" fontSize="10" fill="currentColor">{label}</text>
     </g>
   );
 }
 
-function VerticalDimension({ x, y1, y2, label, color = '#0f172a' }) {
+function VerticalDim({ x, y1, y2, label }) {
   return (
-    <g style={{ color }}>
-      <line x1={x} y1={y1} x2={x} y2={y2} stroke="currentColor" strokeWidth="1.5" />
-      <Arrow x={x} y={y1} direction="down" />
-      <Arrow x={x} y={y2} direction="up" />
-      <text x={x + 8} y={(y1 + y2) / 2} fontSize="11" fill="currentColor">{label}</text>
+    <g style={{ color: '#1e293b' }}>
+      <line x1={x} y1={y1} x2={x} y2={y2} stroke="currentColor" strokeWidth="1.2" />
+      <DimArrow x={x} y={y1} dir="d" />
+      <DimArrow x={x} y={y2} dir="u" />
+      <text x={x + 7} y={(y1 + y2) / 2} fontSize="10" fill="currentColor">{label}</text>
     </g>
   );
 }
 
 export default function CabinetPlan2D({ model }) {
-  const drawing = useMemo(() => {
+  const view = useMemo(() => {
     if (!model) return null;
 
-    const width = Number(model?.dimensions?.width) || 0;
-    const height = Number(model?.dimensions?.height) || 0;
-    const depth = Number(model?.dimensions?.depth) || 0;
-    const panelThickness = Number(model?.material?.panelThickness) || 0;
-    const backThickness = Number(model?.material?.backThickness) || 0;
-    const internalHeight = Number(model?.structure?.usefulHeight) || 0;
-    const modules = Array.isArray(model?.structure?.modules) ? model.structure.modules : [];
+    // Support du modèle actuel ({ dimensions/material/structure }) et du format plat documenté.
+    const widthCm = readNumber(model?.dimensions?.width, readNumber(model?.width));
+    const heightCm = readNumber(model?.dimensions?.height, readNumber(model?.height));
+    const depthCm = readNumber(model?.dimensions?.depth, readNumber(model?.depth));
+    const plinthCm = readNumber(model?.dimensions?.plinth, readNumber(model?.plinth));
+    const thicknessCm = readNumber(model?.material?.panelThickness, readNumber(model?.thickness, 1.8));
 
-    const maxForScale = Math.max(width, height, depth, 1);
-    const scale = 180 / maxForScale;
+    const rawModules = model?.modules ?? model?.structure?.modules ?? [];
+    const fallbackInternalHeight = readNumber(model?.structure?.usefulHeight, Math.max(0, heightCm - plinthCm - 2 * thicknessCm));
+    const modules = Array.isArray(rawModules)
+      ? rawModules.map((entry) => toModule(entry, fallbackInternalHeight, depthCm)).filter((entry) => entry.width > 0)
+      : [];
 
-    const front = {
-      originX: 70,
-      originY: 280,
-      w: width * scale,
-      h: height * scale,
-      t: panelThickness * scale,
-    };
+    if (widthCm <= 0 || heightCm <= 0) return null;
 
-    const side = {
-      originX: 510,
-      originY: 280,
-      w: depth * scale,
-      h: height * scale,
-      t: panelThickness * scale,
-      bt: backThickness * scale,
-    };
+    const scale = 360 / Math.max(widthCm, heightCm, 1);
+    const originX = 90;
+    const originY = 300;
+    const w = widthCm * scale;
+    const h = heightCm * scale;
+    const t = Math.max(1.2, thicknessCm * scale);
 
-    return {
-      width,
-      height,
-      depth,
-      panelThickness,
-      backThickness,
-      internalHeight,
-      modules,
-      scale,
-      front,
-      side,
-    };
+    return { widthCm, heightCm, modules, scale, originX, originY, w, h, t };
   }, [model]);
 
-  if (!drawing) return null;
+  if (!view) return null;
 
-  const { front, side } = drawing;
+  let moduleCursorCm = view.t / view.scale;
 
   return (
     <div className="rounded-xl border border-slate-400 bg-white p-3 text-slate-900">
-      <svg viewBox="0 0 860 360" className="w-full" role="img" aria-label="Plan technique du meuble">
-        {/* FRONT VIEW (orthographic): true width x height rectangle */}
-        <text x={front.originX} y={25} fontSize="12" fontWeight="700">Vue de face (L × H)</text>
+      <svg viewBox="0 0 640 380" className="w-full" role="img" aria-label="Plan atelier 2D coté du meuble">
+        <text x={view.originX} y={24} fontSize="12" fontWeight="700">Plan atelier — vue de face</text>
+
+        {/* Contour extérieur du meuble */}
         <rect
-          x={front.originX}
-          y={front.originY - front.h}
-          width={front.w}
-          height={front.h}
+          x={view.originX}
+          y={view.originY - view.h}
+          width={view.w}
+          height={view.h}
           fill="none"
           stroke="#0f172a"
           strokeWidth="2"
         />
 
-        {/* Side panels + top/bottom panel thickness from model source of truth */}
-        <line x1={front.originX + front.t} y1={front.originY - front.h} x2={front.originX + front.t} y2={front.originY} stroke="#475569" strokeWidth="1.5" />
-        <line x1={front.originX + front.w - front.t} y1={front.originY - front.h} x2={front.originX + front.w - front.t} y2={front.originY} stroke="#475569" strokeWidth="1.5" />
-        <line x1={front.originX} y1={front.originY - front.h + front.t} x2={front.originX + front.w} y2={front.originY - front.h + front.t} stroke="#475569" strokeWidth="1.5" />
-        <line x1={front.originX} y1={front.originY - front.t} x2={front.originX + front.w} y2={front.originY - front.t} stroke="#475569" strokeWidth="1.5" />
+        {/* Épaisseurs panneaux (côtés + dessus/dessous) */}
+        <line x1={view.originX + view.t} y1={view.originY - view.h} x2={view.originX + view.t} y2={view.originY} stroke="#475569" strokeWidth="1.2" />
+        <line x1={view.originX + view.w - view.t} y1={view.originY - view.h} x2={view.originX + view.w - view.t} y2={view.originY} stroke="#475569" strokeWidth="1.2" />
+        <line x1={view.originX} y1={view.originY - view.h + view.t} x2={view.originX + view.w} y2={view.originY - view.h + view.t} stroke="#475569" strokeWidth="1.2" />
+        <line x1={view.originX} y1={view.originY - view.t} x2={view.originX + view.w} y2={view.originY - view.t} stroke="#475569" strokeWidth="1.2" />
 
-        {/* Internal vertical separators from module widths without recalculation */}
-        {(() => {
-          let cursorCm = drawing.panelThickness;
-          return drawing.modules.slice(0, -1).map((moduleWidth, index) => {
-            cursorCm += Number(moduleWidth) || 0;
-            const x = front.originX + cursorCm * drawing.scale;
-            cursorCm += drawing.panelThickness;
-            return <line key={`front-sep-${index}`} x1={x} y1={front.originY - front.h + front.t} x2={x} y2={front.originY - front.t} stroke="#0f172a" strokeWidth="1.2" />;
+        {/* Séparations verticales et tablettes éventuelles issues des modules */}
+        {view.modules.slice(0, -1).map((module, index) => {
+          moduleCursorCm += module.width;
+          const x = view.originX + moduleCursorCm * view.scale;
+          moduleCursorCm += view.t / view.scale;
+          return (
+            <line
+              key={`sep-${index}`}
+              x1={x}
+              y1={view.originY - view.h + view.t}
+              x2={x}
+              y2={view.originY - view.t}
+              stroke="#0f172a"
+              strokeWidth="1.2"
+            />
+          );
+        })}
+
+        {view.modules.map((module, index) => {
+          if (!module.shelves) return null;
+          const shelfAreaHeight = Math.max(0, module.height - (view.t / view.scale) * 2) * view.scale;
+          const gap = shelfAreaHeight / (module.shelves + 1);
+
+          const startCm = view.modules.slice(0, index).reduce((sum, m) => sum + m.width, 0) + index * (view.t / view.scale);
+          const xStart = view.originX + view.t + startCm * view.scale;
+          const xEnd = xStart + module.width * view.scale;
+
+          return Array.from({ length: module.shelves }).map((_, shelfIndex) => {
+            const y = view.originY - view.t - gap * (shelfIndex + 1);
+            return <line key={`shelf-${index}-${shelfIndex}`} x1={xStart} y1={y} x2={xEnd} y2={y} stroke="#64748b" strokeWidth="1" />;
           });
-        })()}
+        })}
 
-        {/* Global front dimensions in mm */}
-        <HorizontalDimension x1={front.originX} x2={front.originX + front.w} y={front.originY + 26} label={`Largeur totale ${toMmLabel(drawing.width)}`} />
-        <VerticalDimension x={front.originX - 28} y1={front.originY - front.h} y2={front.originY} label={`Hauteur totale ${toMmLabel(drawing.height)}`} />
+        {/* Cotes principales déterministes */}
+        <HorizontalDim
+          x1={view.originX}
+          x2={view.originX + view.w}
+          y={view.originY + 26}
+          label={`Largeur totale ${mm(view.widthCm)} mm`}
+        />
+        <VerticalDim
+          x={view.originX - 26}
+          y1={view.originY - view.h}
+          y2={view.originY}
+          label={`Hauteur totale ${mm(view.heightCm)} mm`}
+        />
 
-        {/* Module widths chain dimensions in mm */}
+        {/* Cotes de largeur de chaque module */}
         {(() => {
-          let xCursor = front.originX + front.t;
-          return drawing.modules.map((moduleWidth, index) => {
-            const span = (Number(moduleWidth) || 0) * drawing.scale;
-            const start = xCursor;
-            const end = xCursor + span;
-            xCursor = end + front.t;
+          let cursor = view.originX + view.t;
+          return view.modules.map((module, index) => {
+            const w = module.width * view.scale;
+            const x1 = cursor;
+            const x2 = cursor + w;
+            cursor = x2 + view.t;
+
             return (
-              <HorizontalDimension
-                key={`module-dim-${index}`}
-                x1={start}
-                x2={end}
-                y={front.originY - front.h - 20 - index * 14}
-                label={`M${index + 1} ${toMmLabel(moduleWidth)}`}
-                color="#1d4ed8"
+              <HorizontalDim
+                key={`mod-dim-${index}`}
+                x1={x1}
+                x2={x2}
+                y={view.originY - view.h - 16 - index * 13}
+                label={`Module ${index + 1} ${mm(module.width)} mm`}
               />
             );
           });
         })()}
-
-        {/* Internal useful height (same for each module in this model) */}
-        <VerticalDimension
-          x={front.originX + front.w + 22}
-          y1={front.originY - front.h + front.t}
-          y2={front.originY - front.t}
-          label={`Hauteur int. ${toMmLabel(drawing.internalHeight)}`}
-          color="#1d4ed8"
-        />
-
-        {/* SIDE VIEW (orthographic): true depth x height rectangle */}
-        <text x={side.originX} y={25} fontSize="12" fontWeight="700">Vue de côté (P × H)</text>
-        <rect
-          x={side.originX}
-          y={side.originY - side.h}
-          width={side.w}
-          height={side.h}
-          fill="none"
-          stroke="#0f172a"
-          strokeWidth="2"
-        />
-
-        {/* Top/bottom thickness and back panel thickness from model material */}
-        <line x1={side.originX} y1={side.originY - side.h + side.t} x2={side.originX + side.w} y2={side.originY - side.h + side.t} stroke="#475569" strokeWidth="1.5" />
-        <line x1={side.originX} y1={side.originY - side.t} x2={side.originX + side.w} y2={side.originY - side.t} stroke="#475569" strokeWidth="1.5" />
-        <line x1={side.originX + side.w - side.bt} y1={side.originY - side.h} x2={side.originX + side.w - side.bt} y2={side.originY} stroke="#475569" strokeWidth="1.5" />
-
-        <HorizontalDimension x1={side.originX} x2={side.originX + side.w} y={side.originY + 26} label={`Profondeur totale ${toMmLabel(drawing.depth)}`} />
-        <VerticalDimension x={side.originX - 28} y1={side.originY - side.h} y2={side.originY} label={`Hauteur totale ${toMmLabel(drawing.height)}`} />
-
-        {/* Explicit panel thickness dimensions in mm */}
-        <HorizontalDimension
-          x1={side.originX + side.w - side.bt}
-          x2={side.originX + side.w}
-          y={side.originY - side.h - 18}
-          label={`Fond ${toMmLabel(drawing.backThickness)}`}
-          color="#b45309"
-        />
-        <VerticalDimension
-          x={side.originX + side.w + 22}
-          y1={side.originY - side.h}
-          y2={side.originY - side.h + side.t}
-          label={`Dessus ${toMmLabel(drawing.panelThickness)}`}
-          color="#b45309"
-        />
-        <VerticalDimension
-          x={side.originX + side.w + 54}
-          y1={side.originY - side.t}
-          y2={side.originY}
-          label={`Dessous ${toMmLabel(drawing.panelThickness)}`}
-          color="#b45309"
-        />
       </svg>
     </div>
   );
