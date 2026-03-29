@@ -32,7 +32,7 @@ function enrichHorizontal(result, toleranceMode) {
       })),
       cuts: panel.cuts.map(cut => ({
         ...cut,
-        orientation: 'horizontal',
+        orientation: cut.orientation || 'horizontal',
         bandAxis: 'horizontal',
         bandX: cut.type === 'piece' ? (cut.x || 0) : 0,
         bandXCm: (((cut.type === 'piece' ? cut.x : 0) || 0) / 10).toFixed(1),

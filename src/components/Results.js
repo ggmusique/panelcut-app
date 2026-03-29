@@ -198,6 +198,7 @@ function PanelSVG({ panel, panelW, panelH, kerf, colorMap }) {
 
 
 function CutList({ panel }) {
+  console.log("CUTS:", JSON.stringify(panel.cuts.filter(c => c.type === "bande").map(c => ({type: c.type, orientation: c.orientation, pos: c.pos, bandKey: c.bandKey})), null, 2));
   // Reconstruit l ordre reel : pour chaque coupe H, on liste les V qui lui appartiennent
   const bandCuts = panel.cuts.filter(c => c.type === 'bande');
   const hCuts = bandCuts.filter(c => c.orientation === 'horizontal').sort((a, b) => (a.pos || 0) - (b.pos || 0));
