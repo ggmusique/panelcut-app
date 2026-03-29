@@ -21,10 +21,14 @@ function getColor(name, colorMap) {
   return colorMap[name];
 }
 
-// Affiche en cm avec 1 decimale seulement si ce n'est pas un entier rond
+// Affiche en cm — toujours un entier arrondi
 function fmtCm(tenthsMm) {
-  const cm = tenthsMm / 10;
-  return Number.isInteger(cm) ? String(cm) : cm.toFixed(1);
+  return String(Math.round(tenthsMm / 10));
+}
+
+// Convertit mm → cm entier
+function mmToCm(mm) {
+  return Math.round(mm / 10);
 }
 
 /**
@@ -45,7 +49,6 @@ function computeWasteZones(placed, panelW, panelH, kerf) {
 
   const sortedBands = Object.values(bands).sort((a, b) => a.bandY - b.bandY);
 
-  // Chute laterale (droite) — +kerf car le dernier trait de scie est compris
   for (const band of sortedBands) {
     const lastPiece = [...band.pieces].sort((a, b) => (a.x || 0) - (b.x || 0)).pop();
     const usedW  = (lastPiece.x || 0) + lastPiece.l + kerf;
@@ -61,7 +64,6 @@ function computeWasteZones(placed, panelW, panelH, kerf) {
     }
   }
 
-  // Chute du bas — +kerf car la coupe horizontale est comprise
   const lastBand = sortedBands[sortedBands.length - 1];
   if (lastBand) {
     const usedH  = lastBand.bandY + lastBand.bandH + kerf;
@@ -113,7 +115,6 @@ function PanelSVG({ panel, panelW, panelH, kerf, colorMap }) {
 
         <rect x={0} y={0} width={SVG_W} height={SVG_H} fill="url(#grid)" />
 
-        {/* Zones de chute */}
         {wasteZones.map((z, i) => {
           const zx = z.x * sx;
           const zy = z.y * sy;
@@ -137,7 +138,6 @@ function PanelSVG({ panel, panelW, panelH, kerf, colorMap }) {
           );
         })}
 
-        {/* Pieces */}
         {panel.placed.map((p, i) => {
           const c  = getColor(p.name, colorMap);
           const px = (p.x  || 0) * sx;
@@ -158,7 +158,6 @@ function PanelSVG({ panel, panelW, panelH, kerf, colorMap }) {
           );
         })}
 
-        {/* Coupes HORIZONTALES — badge discret orange */}
         {hCuts.map((c, i) => {
           const cy  = c.pos * sy;
           const num = i + 1;
@@ -166,14 +165,13 @@ function PanelSVG({ panel, panelW, panelH, kerf, colorMap }) {
             <g key={`h-${i}`}>
               <line x1={0} y1={cy.toFixed(1)} x2={SVG_W} y2={cy.toFixed(1)} stroke="#f59e0b" strokeWidth="1.5" strokeDasharray="6,3" />
               <line x1={SVG_W+2} y1={cy.toFixed(1)} x2={SVG_W+10} y2={cy.toFixed(1)} stroke="#f59e0b" strokeWidth="1" />
-              <text x={SVG_W+14} y={(cy+4).toFixed(1)} fontSize="9" fontWeight="bold" fill="#f59e0b" fontFamily="monospace">{c.posCm}</text>
+              <text x={SVG_W+14} y={(cy+4).toFixed(1)} fontSize="9" fontWeight="bold" fill="#f59e0b" fontFamily="monospace">{mmToCm(c.pos)}</text>
               <rect x={0} y={(cy-9).toFixed(1)} width="18" height="14" rx="3" fill="#f59e0b" />
               <text x="9" y={(cy+3).toFixed(1)} textAnchor="middle" fontSize="9" fontWeight="bold" fill="#000" fontFamily="sans-serif">{num}</text>
             </g>
           );
         })}
 
-        {/* Coupes VERTICALES — badge discret bleu */}
         {vCuts.map((c, i) => {
           const cx  = c.pos * sx;
           const top = (c.bandY || 0) * sy;
@@ -188,7 +186,6 @@ function PanelSVG({ panel, panelW, panelH, kerf, colorMap }) {
           );
         })}
 
-        {/* Cotes panneau */}
         <text x={SVG_W/2} y={SVG_H-4} textAnchor="middle" fontSize="10" fill="#64748b" fontWeight="bold">{panelW/10} cm</text>
         <text x="8" y={SVG_H/2} transform={`rotate(-90 8 ${SVG_H/2})`} textAnchor="middle" fontSize="10" fill="#64748b" fontWeight="bold">{panelH/10} cm</text>
       </svg>
@@ -198,27 +195,22 @@ function PanelSVG({ panel, panelW, panelH, kerf, colorMap }) {
 
 
 function CutList({ panel }) {
-  // Reconstruit l ordre reel : pour chaque coupe H, on liste les V qui lui appartiennent
   const bandCuts = panel.cuts.filter(c => c.type === 'bande');
   const hCuts = bandCuts.filter(c => c.orientation === 'horizontal').sort((a, b) => (a.pos || 0) - (b.pos || 0));
 
   const allCuts = [];
   let num = 1;
 
-  // Calcule les cotes relatives (depuis le bord de la chute restante)
-  // Pour les H : cote = hauteur de la piece dans cette bande
-  // Pour les V : cote = largeur de la piece depuis le dernier trait
   let prevHPos = 0;
   for (const h of hCuts) {
     const hPieces = panel.cuts.filter(pc =>
       pc.type === 'piece' && pc.bandKey === h.bandKey
     );
-    // Cote relative = position - position precedente
-    const relCm = ((h.pos - prevHPos) / 10).toFixed(1);
+    // Cote relative arrondie à l'entier en cm
+    const relCm = mmToCm(h.pos - prevHPos);
     prevHPos = h.pos;
     allCuts.push({ num: num++, type: 'horizontal', posCm: relCm, depth: h.depth || 0, pieces: hPieces });
 
-    // Coupes V dans cette bande — cotes relatives depuis le bord gauche
     const vInBand = bandCuts.filter(c =>
       c.orientation === 'vertical' && c.bandKey === h.bandKey
     ).sort((a, b) => (a.pos || 0) - (b.pos || 0));
@@ -228,8 +220,7 @@ function CutList({ panel }) {
       const vPieces = panel.cuts.filter(pc =>
         pc.type === 'piece' && pc.bandKey === v.bandKey && (pc.x || 0) >= (v.pos || 0)
       );
-      // Cote relative = position V - position V precedente
-      const relVCm = ((v.pos - prevVPos) / 10).toFixed(1);
+      const relVCm = mmToCm(v.pos - prevVPos);
       prevVPos = v.pos;
       allCuts.push({ num: num++, type: 'vertical', posCm: relVCm, depth: v.depth || 0, pieces: vPieces });
     }
@@ -259,7 +250,7 @@ function CutList({ panel }) {
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                   {cut.pieces.map((pc, pi) => (
                     <span key={pi} style={{ fontSize: 10, color: '#94a3b8', background: 'rgba(255,255,255,0.05)', padding: '2px 6px', borderRadius: 4, fontFamily: 'monospace' }}>
-                      {pc.name} {pc.lCm}×{pc.hCm}cm{pc.rotated ? ' ↺' : ''}
+                      {pc.name} {fmtCm(pc.l * 10)}×{fmtCm(pc.h * 10)}cm{pc.rotated ? ' ↺' : ''}
                     </span>
                   ))}
                 </div>
@@ -300,7 +291,7 @@ export default function Results({ t, results, project }) {
   const panel      = results.panels[currentPanel];
   const panelW     = Math.round(project.panel.w * 10);
   const panelH     = Math.round(project.panel.h * 10);
-  const kerf       = Math.round((project.kerf ?? 3) * 1);  // kerf en dixiemes de mm (deja en mm -> *1, stored as mm)
+  const kerf       = Math.round((project.kerf ?? 3) * 1);
   const totalCost  = (results.summary.totalPanels * (project.pricePerPanel || 0)).toFixed(2);
   const utilization = panel.utilizationPct;
 
@@ -335,7 +326,6 @@ export default function Results({ t, results, project }) {
 
       <div className="px-4 py-4 max-w-7xl mx-auto">
 
-        {/* RESUME */}
         {tab === 'resume' && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
@@ -393,7 +383,6 @@ export default function Results({ t, results, project }) {
           </div>
         )}
 
-        {/* VISUEL */}
         {tab === 'visual' && (
           <div className="space-y-4">
             <PanelNav />
@@ -408,7 +397,6 @@ export default function Results({ t, results, project }) {
           </div>
         )}
 
-        {/* COUPES */}
         {tab === 'cuts' && (
           <div className="space-y-4">
             <PanelNav />
@@ -427,7 +415,7 @@ export default function Results({ t, results, project }) {
                         <span className="text-orange-500 font-bold">✂</span>
                         <span className="text-sm">
                           {band.orientation === 'vertical' ? 'Verticale' : 'Horizontale'} à{' '}
-                          <strong className="text-white">{band.posCm}cm</strong>
+                          <strong className="text-white">{mmToCm(band.pos)}cm</strong>
                           {band.depth > 0 && <span className="text-xs text-slate-500 ml-1">(Niv.{band.depth})</span>}
                         </span>
                       </div>
@@ -440,7 +428,7 @@ export default function Results({ t, results, project }) {
                                 <span className="text-white font-medium">{pc.name}</span>
                               </div>
                               <div className="flex items-center gap-2">
-                                <span className="font-mono text-slate-400 text-xs">{pc.lCm}×{pc.hCm}cm</span>
+                                <span className="font-mono text-slate-400 text-xs">{fmtCm(pc.l * 10)}×{fmtCm(pc.h * 10)}cm</span>
                                 {pc.rotated && (
                                   <span className="flex items-center gap-1 text-[10px] bg-purple-500/10 text-purple-400 px-1.5 py-0.5 rounded border border-purple-500/20">
                                     <RotateCw className="w-3 h-3" />
