@@ -8,9 +8,9 @@ import CabinetPlan2D from './CabinetPlan2D';
 const SERVER_URL = 'https://panelcut-server.vercel.app';
 
 export default function Scanner({ t, onPiecesDetected, onClose }) {
-  const [status, setStatus]   = useState('idle'); // idle | preview | scanning | cabinet-preview | done | error
+  const [status, setStatus] = useState('idle'); // idle | preview | scanning | cabinet-preview | done | error
   const [preview, setPreview] = useState(null);
-  const [pieces, setPieces]   = useState([]);
+  const [pieces, setPieces] = useState([]);
   const [errorMsg, setErrorMsg] = useState('');
   const [selected, setSelected] = useState(new Set());
   const [cabinetModel, setCabinetModel] = useState(null);
@@ -19,25 +19,26 @@ export default function Scanner({ t, onPiecesDetected, onClose }) {
   const handleFile = async (file) => {
     if (!file) return;
 
-    // Convertit en JPEG via Canvas (gère HEIC iPhone + réduit la taille)
     const img = new Image();
     const objectUrl = URL.createObjectURL(file);
 
     img.onload = () => {
-      // Redimensionne si trop grande (max 1600px) pour accélérer le scan
       const MAX = 1600;
       let w = img.width, h = img.height;
       if (w > MAX || h > MAX) {
         if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
         else       { w = Math.round(w * MAX / h); h = MAX; }
       }
+
       const canvas = document.createElement('canvas');
-      canvas.width = w; canvas.height = h;
+      canvas.width = w;
+      canvas.height = h;
       const ctx = canvas.getContext('2d');
       ctx.drawImage(img, 0, 0, w, h);
-      // Exporte en JPEG 0.85 — lisible par Claude Vision
+
       const jpeg = canvas.toDataURL('image/jpeg', 0.85);
       URL.revokeObjectURL(objectUrl);
+
       setPreview(jpeg);
       setStatus('preview');
     };
@@ -57,7 +58,6 @@ export default function Scanner({ t, onPiecesDetected, onClose }) {
     setErrorMsg('');
 
     try {
-      // Extrait base64 pur (sans le préfixe data:image/jpeg;base64,)
       const [header, base64] = preview.split(',');
       const mediaType = header.match(/:(.*?);/)?.[1] || 'image/jpeg';
 
@@ -73,8 +73,14 @@ export default function Scanner({ t, onPiecesDetected, onClose }) {
         throw new Error(scanResult.error || 'server_error');
       }
 
+      // ✅ PATCH ICI : on ne sort PLUS si un cabinet est présent
+      const hasCabinetDimensions =
+        scanResult?.cabinet?.width &&
+        scanResult?.cabinet?.height &&
+        scanResult?.cabinet?.depth;
 
-      if (Array.isArray(scanResult?.pieces)) {
+      if (!hasCabinetDimensions && Array.isArray(scanResult?.pieces)) {
+        // Legacy : ancien scan "pièces seules"
         onPiecesDetected(scanResult.pieces);
         return;
       }
@@ -82,7 +88,11 @@ export default function Scanner({ t, onPiecesDetected, onClose }) {
       const normalizedScan = interpretScan(scanResult);
       const nextCabinetModel = buildCabinetModel(normalizedScan);
 
-      if (!nextCabinetModel?.dimensions?.width || !nextCabinetModel?.dimensions?.height || !nextCabinetModel?.dimensions?.depth) {
+      if (
+        !nextCabinetModel?.dimensions?.width ||
+        !nextCabinetModel?.dimensions?.height ||
+        !nextCabinetModel?.dimensions?.depth
+      ) {
         setErrorMsg('Dimensions incomplètes — vérifie le scan avant génération');
         setStatus('error');
         return;
@@ -104,9 +114,9 @@ export default function Scanner({ t, onPiecesDetected, onClose }) {
     }
   };
 
-
   const confirmCabinetModel = () => {
     if (!cabinetModel) return;
+
     const generatedPieces = generatePiecesFromModel(cabinetModel);
 
     if (generatedPieces.length === 0) {
@@ -121,7 +131,7 @@ export default function Scanner({ t, onPiecesDetected, onClose }) {
   };
 
   const togglePiece = (i) => {
-    setSelected(s => {
+    setSelected((s) => {
       const n = new Set(s);
       n.has(i) ? n.delete(i) : n.add(i);
       return n;
@@ -146,19 +156,14 @@ export default function Scanner({ t, onPiecesDetected, onClose }) {
     <div className="scanner-overlay">
       <div className="scanner-modal">
 
-        {/* Header */}
         <div className="scanner-header">
           <span className="scanner-title">📷 Scanner un plan</span>
           <button className="scanner-close" onClick={onClose}>✕</button>
         </div>
 
-        {/* Idle — bouton photo */}
         {status === 'idle' && (
           <div className="scanner-body">
-            <div
-              className="drop-zone"
-              onClick={() => inputRef.current?.click()}
-            >
+            <div className="drop-zone" onClick={() => inputRef.current?.click()}>
               <div className="drop-icon">📄</div>
               <div className="drop-text">Prendre une photo ou choisir un fichier</div>
               <div className="drop-sub">JPG, PNG — plan à main levée ou imprimé</div>
@@ -169,25 +174,21 @@ export default function Scanner({ t, onPiecesDetected, onClose }) {
               accept="image/*"
               capture="environment"
               style={{ display: 'none' }}
-              onChange={e => handleFile(e.target.files?.[0])}
+              onChange={(e) => handleFile(e.target.files?.[0])}
             />
           </div>
         )}
 
-        {/* Preview */}
         {status === 'preview' && (
           <div className="scanner-body">
             <img src={preview} alt="Plan" className="scan-preview" />
             <div className="scanner-btns">
               <button className="btn btn--ghost" onClick={reset}>↩ Reprendre</button>
-              <button className="btn btn--primary" onClick={scan}>
-                🔍 Analyser avec l'IA
-              </button>
+              <button className="btn btn--primary" onClick={scan}>🔍 Analyser avec l'IA</button>
             </div>
           </div>
         )}
 
-        {/* Scanning */}
         {status === 'scanning' && (
           <div className="scanner-body scanner-body--center">
             <div className="scan-spinner" />
@@ -196,7 +197,6 @@ export default function Scanner({ t, onPiecesDetected, onClose }) {
           </div>
         )}
 
-        {/* Error */}
         {status === 'error' && (
           <div className="scanner-body scanner-body--center">
             <div className="scan-error-icon">⚠️</div>
@@ -205,21 +205,15 @@ export default function Scanner({ t, onPiecesDetected, onClose }) {
           </div>
         )}
 
-
-        {/* Validation meuble 3D avant génération des pièces */}
         {status === 'cabinet-preview' && (
           <div className="scanner-body">
             <div className="scan-result-header">
               <span className="scan-result-title">Validation des dimensions détectées</span>
-              <span className="scan-result-hint">Vérifie le meuble 3D avant extraction des pièces</span>
+              <span className="scan-result-hint">Vérifie le meuble avant extraction</span>
             </div>
 
             <CabinetPreview3D model={cabinetModel} />
-            {cabinetModel && <CabinetPlan2D model={cabinetModel} />}
-
-            <div className="scan-result-note">
-              📐 Contrôle visuel: largeur, hauteur, profondeur et modules internes
-            </div>
+            <CabinetPlan2D model={cabinetModel} />
 
             <div className="scanner-btns">
               <button className="btn btn--ghost" onClick={reset}>↩ Rescanner</button>
@@ -230,16 +224,8 @@ export default function Scanner({ t, onPiecesDetected, onClose }) {
           </div>
         )}
 
-        {/* Résultats — validation */}
         {status === 'done' && (
           <div className="scanner-body">
-            <div className="scan-result-header">
-              <span className="scan-result-title">
-                {pieces.length} pièce{pieces.length > 1 ? 's' : ''} détectée{pieces.length > 1 ? 's' : ''}
-              </span>
-              <span className="scan-result-hint">Coche/décoche pour corriger</span>
-            </div>
-
             <div className="scan-pieces-list">
               {pieces.map((p, i) => (
                 <div
@@ -253,30 +239,22 @@ export default function Scanner({ t, onPiecesDetected, onClose }) {
                   <div className="scan-piece-info">
                     <div className="scan-piece-name">{p.name}</div>
                     <div className="scan-piece-dims">
-                      {p.length} × {p.height} cm
-                      <span className="scan-piece-qty">× {p.qty}</span>
+                      {p.length} × {p.height} cm × {p.qty}
                     </div>
                   </div>
                 </div>
               ))}
             </div>
 
-            <div className="scan-result-note">
-              📝 Les cotes peuvent nécessiter une correction manuelle
-            </div>
-
             <div className="scanner-btns">
               <button className="btn btn--ghost" onClick={reset}>↩ Rescanner</button>
-              <button
-                className="btn btn--primary"
-                onClick={confirm}
-                disabled={selected.size === 0}
-              >
-                ✓ Ajouter {selected.size} pièce{selected.size > 1 ? 's' : ''}
+              <button className="btn btn--primary" onClick={confirm} disabled={selected.size === 0}>
+                ✓ Ajouter les pièces
               </button>
             </div>
           </div>
         )}
+
       </div>
     </div>
   );
