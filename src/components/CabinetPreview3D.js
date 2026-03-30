@@ -37,7 +37,8 @@ export default function CabinetPreview3D({ model }) {
 
     const separators = [];
     let cursor = panelThickness;
-    modules.slice(0, -1).forEach((moduleWidth) => {
+    modules.slice(0, -1).forEach((mod) => {
+      const moduleWidth = typeof mod === 'number' ? mod : clampPositive(mod?.width || mod);
       cursor += clampPositive(moduleWidth);
       const xStart = cursor;
       const xEnd = xStart + panelThickness;
