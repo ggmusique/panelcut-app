@@ -8,49 +8,51 @@ import CabinetPlan2D from './CabinetPlan2D';
 const SERVER_URL = 'https://panelcut-server.vercel.app';
 
 export default function Scanner({ t, onPiecesDetected, onClose }) {
-  const [status, setStatus] = useState('idle'); // idle | preview | scanning | cabinet-preview | done | error
+  const [status, setStatus] = useState('idle');
   const [preview, setPreview] = useState(null);
-  const [pieces, setPieces] = useState([]);
-  const [errorMsg, setErrorMsg] = useState('');
-  const [selected, setSelected] = useState(new Set());
   const [cabinetModel, setCabinetModel] = useState(null);
+  const [pieces, setPieces] = useState([]);
+  const [selected, setSelected] = useState(new Set());
+  const [errorMsg, setErrorMsg] = useState('');
   const inputRef = useRef();
 
-  const handleFile = async (file) => {
+  /* ===================== IMAGE LOAD ===================== */
+
+  const handleFile = (file) => {
     if (!file) return;
 
     const img = new Image();
-    const objectUrl = URL.createObjectURL(file);
+    const url = URL.createObjectURL(file);
 
     img.onload = () => {
       const MAX = 1600;
-      let w = img.width, h = img.height;
+      let { width: w, height: h } = img;
       if (w > MAX || h > MAX) {
-        if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
-        else       { w = Math.round(w * MAX / h); h = MAX; }
+        const ratio = Math.min(MAX / w, MAX / h);
+        w = Math.round(w * ratio);
+        h = Math.round(h * ratio);
       }
 
       const canvas = document.createElement('canvas');
       canvas.width = w;
       canvas.height = h;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, w, h);
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
 
-      const jpeg = canvas.toDataURL('image/jpeg', 0.85);
-      URL.revokeObjectURL(objectUrl);
-
-      setPreview(jpeg);
+      setPreview(canvas.toDataURL('image/jpeg', 0.85));
       setStatus('preview');
+      URL.revokeObjectURL(url);
     };
 
     img.onerror = () => {
-      URL.revokeObjectURL(objectUrl);
-      setErrorMsg('Impossible de lire cette image — essaie un autre format');
+      URL.revokeObjectURL(url);
+      setErrorMsg('Image invalide');
       setStatus('error');
     };
 
-    img.src = objectUrl;
+    img.src = url;
   };
+
+  /* ===================== SCAN ===================== */
 
   const scan = async () => {
     if (!preview) return;
@@ -58,87 +60,53 @@ export default function Scanner({ t, onPiecesDetected, onClose }) {
     setErrorMsg('');
 
     try {
-      const [header, base64] = preview.split(',');
-      const mediaType = header.match(/:(.*?);/)?.[1] || 'image/jpeg';
-
+      const [, base64] = preview.split(',');
       const res = await fetch(`${SERVER_URL}/api/scan`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: base64, mediaType }),
+        body: JSON.stringify({ image: base64, mediaType: 'image/jpeg' }),
       });
 
       const scanResult = await res.json();
-
       if (!res.ok || scanResult.error) {
-        throw new Error(scanResult.error || 'server_error');
+        throw new Error(scanResult.error || 'scan_error');
       }
 
-      // ✅ PATCH ICI : on ne sort PLUS si un cabinet est présent
-      const hasCabinetDimensions =
-        scanResult?.cabinet?.width &&
-        scanResult?.cabinet?.height &&
-        scanResult?.cabinet?.depth;
-
-      if (!hasCabinetDimensions && Array.isArray(scanResult?.pieces)) {
-        // Legacy : ancien scan "pièces seules"
+      // Compat pièces seules
+      if (Array.isArray(scanResult?.pieces)) {
         onPiecesDetected(scanResult.pieces);
         return;
       }
 
-      const normalizedScan = interpretScan(scanResult);
-      const nextCabinetModel = buildCabinetModel(normalizedScan);
+      const normalized = interpretScan(scanResult);
+      const model = buildCabinetModel(normalized);
 
-      if (
-        !nextCabinetModel?.dimensions?.width ||
-        !nextCabinetModel?.dimensions?.height ||
-        !nextCabinetModel?.dimensions?.depth
-      ) {
-        setErrorMsg('Dimensions incomplètes — vérifie le scan avant génération');
-        setStatus('error');
-        return;
+      if (!model?.dimensions?.width || !model?.dimensions?.height || !model?.dimensions?.depth) {
+        throw new Error('dimensions_invalides');
       }
 
-      setCabinetModel(nextCabinetModel);
+      setCabinetModel(model);
       setStatus('cabinet-preview');
 
-    } catch (err) {
-      console.error('Scan error:', err);
-      setErrorMsg(
-        err.message === 'too_many_requests'
-          ? '20 scans/heure max atteints — réessaie plus tard'
-          : err.message === 'api_key_missing'
-          ? 'Clé API manquante sur le serveur'
-          : 'Erreur réseau — vérifie ta connexion'
-      );
+    } catch (e) {
+      console.error(e);
+      setErrorMsg('Erreur lors du scan');
       setStatus('error');
     }
   };
 
-  const confirmCabinetModel = () => {
+  /* ===================== PIECES ===================== */
+
+  const generatePieces = () => {
     if (!cabinetModel) return;
 
-    const generatedPieces = generatePiecesFromModel(cabinetModel);
-
-    if (generatedPieces.length === 0) {
-      setErrorMsg('Aucune pièce générée — ajuste les dimensions puis rescane');
-      setStatus('error');
-      return;
-    }
-
-    setPieces(generatedPieces);
-    setSelected(new Set(generatedPieces.map((_, i) => i)));
+    const generated = generatePiecesFromModel(cabinetModel);
+    setPieces(generated);
+    setSelected(new Set(generated.map((_, i) => i)));
     setStatus('done');
   };
 
-  const togglePiece = (i) => {
-    setSelected((s) => {
-      const n = new Set(s);
-      n.has(i) ? n.delete(i) : n.add(i);
-      return n;
-    });
-  };
-
-  const confirm = () => {
+  const confirmPieces = () => {
     const confirmed = pieces.filter((_, i) => selected.has(i));
     onPiecesDetected(confirmed);
   };
@@ -146,112 +114,95 @@ export default function Scanner({ t, onPiecesDetected, onClose }) {
   const reset = () => {
     setStatus('idle');
     setPreview(null);
+    setCabinetModel(null);
     setPieces([]);
     setSelected(new Set());
-    setCabinetModel(null);
     setErrorMsg('');
   };
+
+  /* ===================== UI ===================== */
 
   return (
     <div className="scanner-overlay">
       <div className="scanner-modal">
 
         <div className="scanner-header">
-          <span className="scanner-title">📷 Scanner un plan</span>
-          <button className="scanner-close" onClick={onClose}>✕</button>
+          <span>📷 Scanner un plan</span>
+          <button onClick={onClose}>✕</button>
         </div>
 
         {status === 'idle' && (
           <div className="scanner-body">
-            <div className="drop-zone" onClick={() => inputRef.current?.click()}>
-              <div className="drop-icon">📄</div>
-              <div className="drop-text">Prendre une photo ou choisir un fichier</div>
-              <div className="drop-sub">JPG, PNG — plan à main levée ou imprimé</div>
+            <div className="drop-zone" onClick={() => inputRef.current.click()}>
+              📄 Choisir une image
             </div>
             <input
               ref={inputRef}
               type="file"
               accept="image/*"
-              capture="environment"
-              style={{ display: 'none' }}
-              onChange={(e) => handleFile(e.target.files?.[0])}
+              hidden
+              onChange={e => handleFile(e.target.files[0])}
             />
           </div>
         )}
 
         {status === 'preview' && (
           <div className="scanner-body">
-            <img src={preview} alt="Plan" className="scan-preview" />
-            <div className="scanner-btns">
-              <button className="btn btn--ghost" onClick={reset}>↩ Reprendre</button>
-              <button className="btn btn--primary" onClick={scan}>🔍 Analyser avec l'IA</button>
-            </div>
+            <img src={preview} className="scan-preview" />
+            <button onClick={scan}>🔍 Analyser</button>
+            <button onClick={reset}>↩ Reprendre</button>
           </div>
         )}
 
         {status === 'scanning' && (
-          <div className="scanner-body scanner-body--center">
-            <div className="scan-spinner" />
-            <div className="scan-loading-text">Analyse du plan en cours…</div>
-            <div className="scan-loading-sub">Claude Vision lit les cotes</div>
-          </div>
+          <div className="scanner-body">Analyse en cours…</div>
         )}
 
-        {status === 'error' && (
-          <div className="scanner-body scanner-body--center">
-            <div className="scan-error-icon">⚠️</div>
-            <div className="scan-error-text">{errorMsg}</div>
-            <button className="btn btn--ghost" onClick={reset}>↩ Réessayer</button>
-          </div>
-        )}
-
-        {status === 'cabinet-preview' && (
+        {status === 'cabinet-preview' && cabinetModel && (
           <div className="scanner-body">
-            <div className="scan-result-header">
-              <span className="scan-result-title">Validation des dimensions détectées</span>
-              <span className="scan-result-hint">Vérifie le meuble avant extraction</span>
-            </div>
-
             <CabinetPreview3D model={cabinetModel} />
             <CabinetPlan2D model={cabinetModel} />
 
             <div className="scanner-btns">
-              <button className="btn btn--ghost" onClick={reset}>↩ Rescanner</button>
-              <button className="btn btn--primary" onClick={confirmCabinetModel}>
-                ✓ Générer les pièces
-              </button>
+              <button onClick={reset}>↩ Rescanner</button>
+              <button onClick={generatePieces}>✓ Générer les pièces</button>
             </div>
           </div>
         )}
 
         {status === 'done' && (
           <div className="scanner-body">
+
+            {/* ✅ ON GARDE LES PLANS */}
+            <CabinetPreview3D model={cabinetModel} />
+            <CabinetPlan2D model={cabinetModel} />
+
+            <button onClick={() => setStatus('cabinet-preview')}>
+              ← Retour aux plans
+            </button>
+
             <div className="scan-pieces-list">
               {pieces.map((p, i) => (
-                <div
-                  key={i}
-                  className={`scan-piece-row ${selected.has(i) ? 'scan-piece-row--selected' : ''}`}
-                  onClick={() => togglePiece(i)}
-                >
-                  <div className="scan-piece-check">
-                    {selected.has(i) ? '☑' : '☐'}
-                  </div>
-                  <div className="scan-piece-info">
-                    <div className="scan-piece-name">{p.name}</div>
-                    <div className="scan-piece-dims">
-                      {p.length} × {p.height} cm × {p.qty}
-                    </div>
-                  </div>
+                <div key={i} onClick={() => {
+                  const n = new Set(selected);
+                  n.has(i) ? n.delete(i) : n.add(i);
+                  setSelected(n);
+                }}>
+                  {selected.has(i) ? '☑' : '☐'} {p.name} — {p.length} × {p.height} × {p.qty}
                 </div>
               ))}
             </div>
 
-            <div className="scanner-btns">
-              <button className="btn btn--ghost" onClick={reset}>↩ Rescanner</button>
-              <button className="btn btn--primary" onClick={confirm} disabled={selected.size === 0}>
-                ✓ Ajouter les pièces
-              </button>
-            </div>
+            <button disabled={!selected.size} onClick={confirmPieces}>
+              ✓ Ajouter les pièces
+            </button>
+          </div>
+        )}
+
+        {status === 'error' && (
+          <div className="scanner-body">
+            ⚠️ {errorMsg}
+            <button onClick={reset}>↩ Recommencer</button>
           </div>
         )}
 
