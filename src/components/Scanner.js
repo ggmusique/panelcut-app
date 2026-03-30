@@ -8,105 +8,149 @@ import CabinetPlan2D from './CabinetPlan2D';
 const SERVER_URL = 'https://panelcut-server.vercel.app';
 
 export default function Scanner({ t, onPiecesDetected, onClose }) {
-  const [status, setStatus] = useState('idle');
+  const [status, setStatus] = useState('idle'); 
   const [preview, setPreview] = useState(null);
-  const [cabinetModel, setCabinetModel] = useState(null);
   const [pieces, setPieces] = useState([]);
-  const [selected, setSelected] = useState(new Set());
   const [errorMsg, setErrorMsg] = useState('');
+  const [selected, setSelected] = useState(new Set());
+  const [cabinetModel, setCabinetModel] = useState(null);
   const inputRef = useRef();
 
-  /* ===================== IMAGE LOAD ===================== */
-
+  /* =========================
+     FILE HANDLING
+  ========================= */
   const handleFile = (file) => {
     if (!file) return;
 
     const img = new Image();
-    const url = URL.createObjectURL(file);
+    const objectUrl = URL.createObjectURL(file);
 
     img.onload = () => {
       const MAX = 1600;
-      let { width: w, height: h } = img;
+      let w = img.width;
+      let h = img.height;
+
       if (w > MAX || h > MAX) {
-        const ratio = Math.min(MAX / w, MAX / h);
-        w = Math.round(w * ratio);
-        h = Math.round(h * ratio);
+        if (w > h) {
+          h = Math.round((h * MAX) / w);
+          w = MAX;
+        } else {
+          w = Math.round((w * MAX) / h);
+          h = MAX;
+        }
       }
 
       const canvas = document.createElement('canvas');
       canvas.width = w;
       canvas.height = h;
-      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
 
-      setPreview(canvas.toDataURL('image/jpeg', 0.85));
+      const jpeg = canvas.toDataURL('image/jpeg', 0.85);
+      URL.revokeObjectURL(objectUrl);
+
+      setPreview(jpeg);
       setStatus('preview');
-      URL.revokeObjectURL(url);
     };
 
     img.onerror = () => {
-      URL.revokeObjectURL(url);
-      setErrorMsg('Image invalide');
+      URL.revokeObjectURL(objectUrl);
+      setErrorMsg('Impossible de lire cette image');
       setStatus('error');
     };
 
-    img.src = url;
+    img.src = objectUrl;
   };
 
-  /* ===================== SCAN ===================== */
-
+  /* =========================
+     SCAN PIPELINE
+  ========================= */
   const scan = async () => {
     if (!preview) return;
+
     setStatus('scanning');
     setErrorMsg('');
 
     try {
-      const [, base64] = preview.split(',');
+      const [header, base64] = preview.split(',');
+      const mediaType = header.match(/:(.*?);/)?.[1] || 'image/jpeg';
+
       const res = await fetch(`${SERVER_URL}/api/scan`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: base64, mediaType: 'image/jpeg' }),
+        body: JSON.stringify({ image: base64, mediaType }),
       });
 
       const scanResult = await res.json();
-      if (!res.ok || scanResult.error) {
-        throw new Error(scanResult.error || 'scan_error');
+
+      if (!res.ok || scanResult?.error) {
+        throw new Error(scanResult.error || 'server_error');
       }
 
-      // Compat pièces seules
-      if (Array.isArray(scanResult?.pieces)) {
+      /* ===== PATCH IMPORTANT ===== */
+      const hasCabinet =
+        scanResult?.cabinet?.width &&
+        scanResult?.cabinet?.height &&
+        scanResult?.cabinet?.depth;
+
+      // Compat ancien flow (pieces seules)
+      if (Array.isArray(scanResult?.pieces) && !hasCabinet) {
         onPiecesDetected(scanResult.pieces);
         return;
       }
 
-      const normalized = interpretScan(scanResult);
-      const model = buildCabinetModel(normalized);
+      /* ===== NOUVEAU FLOW MEUBLE ===== */
+      const normalizedScan = interpretScan(scanResult);
+      const nextCabinetModel = buildCabinetModel(normalizedScan);
 
-      if (!model?.dimensions?.width || !model?.dimensions?.height || !model?.dimensions?.depth) {
-        throw new Error('dimensions_invalides');
+      if (
+        !nextCabinetModel?.dimensions?.width ||
+        !nextCabinetModel?.dimensions?.height ||
+        !nextCabinetModel?.dimensions?.depth
+      ) {
+        setErrorMsg('Dimensions incomplètes détectées');
+        setStatus('error');
+        return;
       }
 
-      setCabinetModel(model);
+      setCabinetModel(nextCabinetModel);
       setStatus('cabinet-preview');
 
-    } catch (e) {
-      console.error(e);
+    } catch (err) {
+      console.error(err);
       setErrorMsg('Erreur lors du scan');
       setStatus('error');
     }
   };
 
-  /* ===================== PIECES ===================== */
-
-  const generatePieces = () => {
+  /* =========================
+     CONFIRMATION MEUBLE
+  ========================= */
+  const confirmCabinetModel = () => {
     if (!cabinetModel) return;
 
-    const generated = generatePiecesFromModel(cabinetModel);
-    setPieces(generated);
-    setSelected(new Set(generated.map((_, i) => i)));
+    const generatedPieces = generatePiecesFromModel(cabinetModel);
+
+    if (!generatedPieces.length) {
+      setErrorMsg('Aucune pièce générée');
+      setStatus('error');
+      return;
+    }
+
+    setPieces(generatedPieces);
+    setSelected(new Set(generatedPieces.map((_, i) => i)));
     setStatus('done');
   };
 
-  const confirmPieces = () => {
+  const togglePiece = (i) => {
+    setSelected((s) => {
+      const n = new Set(s);
+      n.has(i) ? n.delete(i) : n.add(i);
+      return n;
+    });
+  };
+
+  const confirm = () => {
     const confirmed = pieces.filter((_, i) => selected.has(i));
     onPiecesDetected(confirmed);
   };
@@ -114,95 +158,99 @@ export default function Scanner({ t, onPiecesDetected, onClose }) {
   const reset = () => {
     setStatus('idle');
     setPreview(null);
-    setCabinetModel(null);
     setPieces([]);
     setSelected(new Set());
+    setCabinetModel(null);
     setErrorMsg('');
   };
 
-  /* ===================== UI ===================== */
-
+  /* =========================
+     RENDER
+  ========================= */
   return (
     <div className="scanner-overlay">
       <div className="scanner-modal">
 
         <div className="scanner-header">
-          <span>📷 Scanner un plan</span>
-          <button onClick={onClose}>✕</button>
+          <span className="scanner-title">📷 Scanner un plan</span>
+          <button className="scanner-close" onClick={onClose}>✕</button>
         </div>
 
         {status === 'idle' && (
           <div className="scanner-body">
-            <div className="drop-zone" onClick={() => inputRef.current.click()}>
-              📄 Choisir une image
+            <div className="drop-zone" onClick={() => inputRef.current?.click()}>
+              <div className="drop-icon">📄</div>
+              <div className="drop-text">Prendre une photo ou choisir un fichier</div>
             </div>
             <input
               ref={inputRef}
               type="file"
               accept="image/*"
-              hidden
-              onChange={e => handleFile(e.target.files[0])}
+              capture="environment"
+              style={{ display: 'none' }}
+              onChange={(e) => handleFile(e.target.files?.[0])}
             />
           </div>
         )}
 
         {status === 'preview' && (
           <div className="scanner-body">
-            <img src={preview} className="scan-preview" />
-            <button onClick={scan}>🔍 Analyser</button>
-            <button onClick={reset}>↩ Reprendre</button>
+            <img src={preview} alt="Plan" className="scan-preview" />
+            <div className="scanner-btns">
+              <button className="btn btn--ghost" onClick={reset}>↩ Reprendre</button>
+              <button className="btn btn--primary" onClick={scan}>🔍 Analyser</button>
+            </div>
           </div>
         )}
 
         {status === 'scanning' && (
-          <div className="scanner-body">Analyse en cours…</div>
+          <div className="scanner-body scanner-body--center">
+            <div className="scan-spinner" />
+            <div>Analyse du plan…</div>
+          </div>
+        )}
+
+        {status === 'error' && (
+          <div className="scanner-body scanner-body--center">
+            <div>⚠️ {errorMsg}</div>
+            <button className="btn btn--ghost" onClick={reset}>↩ Réessayer</button>
+          </div>
         )}
 
         {status === 'cabinet-preview' && cabinetModel && (
           <div className="scanner-body">
+            <h3>Validation des dimensions</h3>
+
             <CabinetPreview3D model={cabinetModel} />
             <CabinetPlan2D model={cabinetModel} />
 
             <div className="scanner-btns">
-              <button onClick={reset}>↩ Rescanner</button>
-              <button onClick={generatePieces}>✓ Générer les pièces</button>
+              <button className="btn btn--ghost" onClick={reset}>↩ Rescanner</button>
+              <button className="btn btn--primary" onClick={confirmCabinetModel}>
+                ✓ Générer les pièces
+              </button>
             </div>
           </div>
         )}
 
         {status === 'done' && (
           <div className="scanner-body">
+            {pieces.map((p, i) => (
+              <div
+                key={i}
+                className={`scan-piece-row ${selected.has(i) ? 'selected' : ''}`}
+                onClick={() => togglePiece(i)}
+              >
+                {selected.has(i) ? '☑' : '☐'} {p.name} — {p.length} × {p.height} cm × {p.qty}
+              </div>
+            ))}
 
-            {/* ✅ ON GARDE LES PLANS */}
-            <CabinetPreview3D model={cabinetModel} />
-            <CabinetPlan2D model={cabinetModel} />
-
-            <button onClick={() => setStatus('cabinet-preview')}>
-              ← Retour aux plans
-            </button>
-
-            <div className="scan-pieces-list">
-              {pieces.map((p, i) => (
-                <div key={i} onClick={() => {
-                  const n = new Set(selected);
-                  n.has(i) ? n.delete(i) : n.add(i);
-                  setSelected(n);
-                }}>
-                  {selected.has(i) ? '☑' : '☐'} {p.name} — {p.length} × {p.height} × {p.qty}
-                </div>
-              ))}
+            <div className="scanner-btns">
+              <button className="btn btn--ghost" onClick={reset}>↩ Rescanner</button>
+              <button className="btn btn--primary" onClick={confirm}>
+                ✓ Ajouter les pièces
+              </button>
             </div>
-
-            <button disabled={!selected.size} onClick={confirmPieces}>
-              ✓ Ajouter les pièces
-            </button>
-          </div>
-        )}
-
-        {status === 'error' && (
-          <div className="scanner-body">
-            ⚠️ {errorMsg}
-            <button onClick={reset}>↩ Recommencer</button>
           </div>
         )}
 
