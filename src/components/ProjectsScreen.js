@@ -19,9 +19,10 @@ export default function ProjectsScreen({ onLoad, onNew, user, onScanComplete }) 
   // Pipeline : scan brut -> modèle meuble -> plan 2D/3D
   const cabinetModel = useMemo(() => {
     if (!lastResult) return null;
-    // Si le scan retourne un format meuble structuré (width/height/depth)
-    if (lastResult.width || lastResult.height || lastResult.cabinet) {
-      const normalized = interpretScan(lastResult);
+    // Le serveur retourne { pieces, cabinet } — on utilise cabinet directement
+    const source = lastResult.cabinet || lastResult;
+    if (source.width > 0 || source.height > 0) {
+      const normalized = interpretScan(source);
       return buildCabinetModel(normalized);
     }
     return null;
@@ -60,9 +61,10 @@ export default function ProjectsScreen({ onLoad, onNew, user, onScanComplete }) 
     setShowUpload(false);
     setView3D(false);
     // Si le scan retourne un format meuble, on génère les pièces via le pipeline
-    if (result.width || result.height || result.cabinet) {
+    const cabinetSource = result.cabinet || result;
+    if (cabinetSource.width > 0 || cabinetSource.height > 0) {
       try {
-        const normalized = interpretScan(result);
+        const normalized = interpretScan(cabinetSource);
         const model = buildCabinetModel(normalized);
         const pieces = generatePiecesFromModel(model);
         if (pieces.length > 0 && onScanComplete) {
