@@ -225,7 +225,36 @@ export default function Results({ t, results, project }) {
   const [tab, setTab] = useState('resume');
   const colorMap = {};
 
-  const panel       = results.panels[currentPanel];
+  // Guard: if results or panels are missing/invalid, show an error state instead of crashing
+  if (!results || !results.panels || !Array.isArray(results.panels) || results.panels.length === 0) {
+    return (
+      <div className="min-h-screen bg-[#050505] text-slate-200 flex items-center justify-center p-8">
+        <div className="text-center space-y-4">
+          <div className="text-4xl">⚠️</div>
+          <h2 className="text-lg font-bold text-white">Résultats indisponibles</h2>
+          <p className="text-slate-400 text-sm max-w-xs">Les données de résultats sont manquantes ou corrompues. Veuillez relancer l'optimisation.</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Clamp currentPanel to valid range in case of stale state
+  const safeCurrentPanel = Math.min(currentPanel, results.panels.length - 1);
+  const panel = results.panels[safeCurrentPanel];
+
+  // Guard: panel itself could be malformed
+  if (!panel || typeof panel.utilizationPct === 'undefined') {
+    return (
+      <div className="min-h-screen bg-[#050505] text-slate-200 flex items-center justify-center p-8">
+        <div className="text-center space-y-4">
+          <div className="text-4xl">⚠️</div>
+          <h2 className="text-lg font-bold text-white">Panneau invalide</h2>
+          <p className="text-slate-400 text-sm max-w-xs">Les données du panneau {safeCurrentPanel + 1} sont incomplètes. Veuillez relancer l'optimisation.</p>
+        </div>
+      </div>
+    );
+  }
+
   const panelW      = Math.round(project.panel.w * 10);
   const panelH      = Math.round(project.panel.h * 10);
   const kerf        = Math.round((project.kerf ?? 3) * 10);
@@ -243,12 +272,12 @@ export default function Results({ t, results, project }) {
 
   const PanelNav = () => (
     <div className="flex items-center justify-between bg-[#111] p-2 rounded-xl border border-white/5 mb-4">
-      <button onClick={prevPanel} disabled={currentPanel === 0} className="p-3 rounded-lg hover:bg-white/5 text-slate-400 disabled:opacity-30 transition-colors"><ChevronLeft className="w-5 h-5" /></button>
+      <button onClick={prevPanel} disabled={safeCurrentPanel === 0} className="p-3 rounded-lg hover:bg-white/5 text-slate-400 disabled:opacity-30 transition-colors"><ChevronLeft className="w-5 h-5" /></button>
       <div className="text-center">
-        <div className="text-sm font-bold text-white">Panneau {currentPanel + 1} <span className="text-slate-500">/ {results.panels.length}</span></div>
+        <div className="text-sm font-bold text-white">Panneau {safeCurrentPanel + 1} <span className="text-slate-500">/ {results.panels.length}</span></div>
         <div className={`text-xs font-bold ${utilization >= 80 ? 'text-green-400' : utilization >= 60 ? 'text-yellow-400' : 'text-red-400'}`}>{utilization}% efficacité</div>
       </div>
-      <button onClick={nextPanel} disabled={currentPanel === results.panels.length - 1} className="p-3 rounded-lg hover:bg-white/5 text-slate-400 disabled:opacity-30 transition-colors"><ChevronRight className="w-5 h-5" /></button>
+      <button onClick={nextPanel} disabled={safeCurrentPanel === results.panels.length - 1} className="p-3 rounded-lg hover:bg-white/5 text-slate-400 disabled:opacity-30 transition-colors"><ChevronRight className="w-5 h-5" /></button>
     </div>
   );
 
@@ -321,7 +350,7 @@ export default function Results({ t, results, project }) {
             <div className="flex justify-center gap-2">
               {results.panels.map((_, i) => (
                 <button key={i} onClick={() => setCurrentPanel(i)}
-                  className={`w-3 h-3 rounded-full transition-all duration-300 ${i === currentPanel ? 'bg-orange-500 scale-125 shadow-[0_0_10px_rgba(249,115,22,0.6)]' : 'bg-[#333] hover:bg-slate-500'}`} />
+                  className={`w-3 h-3 rounded-full transition-all duration-300 ${i === safeCurrentPanel ? 'bg-orange-500 scale-125 shadow-[0_0_10px_rgba(249,115,22,0.6)]' : 'bg-[#333] hover:bg-slate-500'}`} />
               ))}
             </div>
           </div>
