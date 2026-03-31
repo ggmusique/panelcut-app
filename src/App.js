@@ -13,7 +13,7 @@ import { ChevronLeft, ChevronRight, LogOut, Disc } from 'lucide-react';
 import './App.css';
 
 const SCREENS = { AUTH: 'auth', PROJECTS: 'projects', FORM: 'form', PIECES: 'pieces', RESULTS: 'results', SCAN: 'scan', PLANS: 'plans' };
-const DEFAULT_PROJECT = { name: '', client: '', company: '', panel: { w: 244, h: 122 }, kerf: 3, tolerance: 10, pricePerPanel: 39.8, pieces: [], furniture: [], devisNum: '', supabaseId: null };
+const DEFAULT_PROJECT = { name: '', client: '', company: '', panel: { w: 244, h: 122 }, kerf: 3, tolerance: 10, pricePerPanel: 39.8, pieces: [], furniture: [], devisNum: '', supabaseId: null, furnitureHeight: 220, furnitureDepth: 60 };
 
 const APP_VERSION = process.env.REACT_APP_VERSION || '1.0.0';
 const GIT_HASH   = process.env.REACT_APP_GIT_HASH  || 'dev';

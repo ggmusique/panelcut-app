@@ -38,7 +38,13 @@
     panelType: "Type de panneau",
     info: "Informations",
     plansTitle: "Plans sauvegardés",
-    backToProjects: "Retour projets"
+    backToProjects: "Retour projets",
+    furniture3D: "Dimensions meuble (vue 3D)",
+    furnitureHeight: "Hauteur (cm)",
+    furnitureDepth: "Profondeur (cm)",
+    furniture3DNote: "Utilisées uniquement pour la prévisualisation 3D",
+    preview3D: "Prévisualisation 3D du meuble",
+    preview3DHint: "Glissez pour faire tourner · Scroll pour zoomer"
   },
   en: {
     appName: "PanelCut Pro",
@@ -79,7 +85,13 @@
     panelType: "Panel Type",
     info: "Information",
     plansTitle: "Saved plans",
-    backToProjects: "Back to projects"
+    backToProjects: "Back to projects",
+    furniture3D: "Cabinet dimensions (3D view)",
+    furnitureHeight: "Height (cm)",
+    furnitureDepth: "Depth (cm)",
+    furniture3DNote: "Used only for 3D preview",
+    preview3D: "3D Cabinet Preview",
+    preview3DHint: "Drag to rotate · Scroll to zoom"
   }
 };
 
