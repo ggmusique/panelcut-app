@@ -1,6 +1,7 @@
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 
 const clampPositive = (value) => Math.max(0, Number(value) || 0);
+const f1 = (value) => Number(value || 0).toFixed(1);
 
 const projectIso = (x, y, z, originX, originY, scale, depthTilt) => {
   const sx = originX + (x - z) * scale;
@@ -8,9 +9,11 @@ const projectIso = (x, y, z, originX, originY, scale, depthTilt) => {
   return [sx, sy];
 };
 
-const pointsToSvg = (points) => points.map(([x, y]) => `${x},${y}`).join(' ');
+const pointsToSvg = (points) => points.map(([x, y]) => `${f1(x)},${f1(y)}`).join(' ');
 
-export default function CabinetPreview3D({ model }) {
+export default function CabinetPreview3D({ model, onSave }) {
+  const svgRef = useRef(null);
+
   const view = useMemo(() => {
     if (!model) return null;
 
@@ -66,25 +69,85 @@ export default function CabinetPreview3D({ model }) {
       frontFace: [p000, pW00, pWH0, p0H0],
       sideFace: [pW00, pW0D, pWHD, pWH0],
       topFace: [p0H0, pWH0, pWHD, p0HD],
+      leftFace: [p000, p00D, p0HD, p0H0],
+      bottomFace: [p000, pW00, pW0D, p00D],
+      shadowCenter: projectIso(width / 2, 0, depth / 2, originX, originY, scale, depthTilt),
+      shadowRx: Math.max(60, (width + depth) * scale * 0.42),
+      shadowRy: Math.max(18, (width + depth) * scale * 0.1),
       edges: [
-        [p000, p00D],
-        [p00D, pW0D],
+        [p000, pW00],
+        [pW00, pWH0],
+        [pWH0, p0H0],
+        [p0H0, p000],
+        [pW00, pW0D],
         [pW0D, pWHD],
-        [p0HD, pWHD],
+        [pWHD, pWH0],
+        [p000, p00D],
         [p00D, p0HD],
+        [p0HD, p0H0],
       ],
       separators,
     };
   }, [model]);
 
+  const handleSave = () => {
+    if (!onSave || !svgRef.current || !view) return;
+    onSave({
+      svgData: svgRef.current.outerHTML,
+      title: `Vue 3D ${view.width}x${view.height}x${view.depth}`,
+      type: '3d',
+      metadata: {
+        dimensions: { width: view.width, height: view.height, depth: view.depth },
+      },
+    });
+  };
+
+  const handleDownloadSvg = () => {
+    if (!svgRef.current || !view) return;
+    const svgData = svgRef.current.outerHTML;
+    const blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `plan-3d-${view.width}x${view.height}x${view.depth}.svg`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   if (!view) return null;
 
   return (
     <div className="rounded-xl border border-white/10 bg-slate-950 p-3">
-      <svg viewBox="0 0 560 340" className="w-full rounded-lg bg-slate-900/80">
-        <polygon points={pointsToSvg(view.topFace)} fill="#334155" opacity="0.95" />
-        <polygon points={pointsToSvg(view.sideFace)} fill="#475569" opacity="0.95" />
-        <polygon points={pointsToSvg(view.frontFace)} fill="#64748b" opacity="0.95" />
+      <svg ref={svgRef} viewBox="0 0 560 340" className="w-full rounded-lg bg-slate-900/80">
+        <defs>
+          <linearGradient id="cab-top" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#64748b" />
+            <stop offset="100%" stopColor="#334155" />
+          </linearGradient>
+          <linearGradient id="cab-side" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#64748b" />
+            <stop offset="100%" stopColor="#1e293b" />
+          </linearGradient>
+          <linearGradient id="cab-front" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="#94a3b8" />
+            <stop offset="100%" stopColor="#475569" />
+          </linearGradient>
+        </defs>
+
+        <ellipse
+          cx={f1(view.shadowCenter[0])}
+          cy={f1(view.shadowCenter[1] + 30)}
+          rx={f1(view.shadowRx)}
+          ry={f1(view.shadowRy)}
+          fill="#020617"
+          opacity="0.55"
+        />
+
+        <polygon points={pointsToSvg(view.bottomFace)} fill="#0f172a" opacity="0.6" />
+        <polygon points={pointsToSvg(view.leftFace)} fill="#1e293b" opacity="0.75" />
+        <polygon points={pointsToSvg(view.topFace)} fill="url(#cab-top)" opacity="0.95" />
+        <polygon points={pointsToSvg(view.sideFace)} fill="url(#cab-side)" opacity="0.95" />
+        <polygon points={pointsToSvg(view.frontFace)} fill="url(#cab-front)" opacity="0.95" />
 
         {view.separators.map((separator, index) => (
           <g key={`sep-${index}`}>
@@ -96,15 +159,34 @@ export default function CabinetPreview3D({ model }) {
         {view.edges.map((line, index) => (
           <line
             key={`edge-${index}`}
-            x1={line[0][0]}
-            y1={line[0][1]}
-            x2={line[1][0]}
-            y2={line[1][1]}
+            x1={f1(line[0][0])}
+            y1={f1(line[0][1])}
+            x2={f1(line[1][0])}
+            y2={f1(line[1][1])}
             stroke="#cbd5e1"
             strokeWidth="1.4"
           />
         ))}
       </svg>
+
+      {onSave && (
+        <div className="mt-3 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleSave}
+            className="rounded-lg bg-orange-600 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-orange-500"
+          >
+            Sauvegarder le plan
+          </button>
+          <button
+            type="button"
+            onClick={handleDownloadSvg}
+            className="rounded-lg border border-white/10 bg-slate-900/80 px-3 py-2 text-xs font-bold text-slate-200 transition-colors hover:bg-slate-800"
+          >
+            ↓ SVG
+          </button>
+        </div>
+      )}
 
       <svg viewBox="0 0 560 120" className="mt-3 w-full rounded-lg bg-slate-900/80">
         <line x1="60" y1="35" x2="500" y2="35" stroke="#f59e0b" strokeWidth="2" />
