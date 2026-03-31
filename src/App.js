@@ -7,10 +7,12 @@ import PiecesList from './components/PiecesList';
 import Results from './components/Results';
 import AuthScreen from './components/AuthScreen';
 import ProjectsScreen from './components/ProjectsScreen';
+import Scanner from './components/Scanner';
+import PlansScreen from './components/PlansScreen';
 import { ChevronLeft, ChevronRight, LogOut, Disc } from 'lucide-react';
 import './App.css';
 
-const SCREENS = { AUTH: 'auth', PROJECTS: 'projects', FORM: 'form', PIECES: 'pieces', RESULTS: 'results' };
+const SCREENS = { AUTH: 'auth', PROJECTS: 'projects', FORM: 'form', PIECES: 'pieces', RESULTS: 'results', SCAN: 'scan', PLANS: 'plans' };
 const DEFAULT_PROJECT = { name: '', client: '', company: '', panel: { w: 244, h: 122 }, kerf: 3, tolerance: 10, pricePerPanel: 39.8, pieces: [], furniture: [], devisNum: '', supabaseId: null };
 
 const APP_VERSION = process.env.REACT_APP_VERSION || '1.0.0';
@@ -155,11 +157,13 @@ export default function App() {
   const toggleLang = () => setLangOverride(l => l === 'fr' ? 'en' : 'fr');
   const [devisNum] = useState(() => 'DV-' + new Date().getFullYear() + '-' + String(Math.floor(Math.random() * 9000) + 1000));
 
-  const showBack = [SCREENS.FORM, SCREENS.PIECES, SCREENS.RESULTS].includes(screen);
+  const showBack = [SCREENS.FORM, SCREENS.PIECES, SCREENS.RESULTS, SCREENS.SCAN, SCREENS.PLANS].includes(screen);
   const showSave = user && [SCREENS.PIECES, SCREENS.RESULTS].includes(screen);
 
   let headerTitle = 'PanelCut Pro', headerSubtitle = '', steps = [];
   if (screen === SCREENS.PROJECTS) { headerTitle = 'Dashboard'; headerSubtitle = user?.email || 'Guest'; }
+  else if (screen === SCREENS.SCAN)    { headerTitle = tr.scan || 'Scanner'; }
+  else if (screen === SCREENS.PLANS)   { headerTitle = tr.plansTitle || 'Plans sauvegardés'; }
   else if (screen === SCREENS.FORM)    { headerTitle = tr.newProject || 'Nouveau projet'; steps = [{ label: tr.panel, active: true }, { label: tr.pieces, active: false }, { label: tr.results, active: false }]; }
   else if (screen === SCREENS.PIECES)  { headerTitle = project.name || tr.newProject;    steps = [{ label: tr.panel, active: true }, { label: tr.pieces, active: true  }, { label: tr.results, active: false }]; }
   else if (screen === SCREENS.RESULTS) { headerTitle = tr.results || 'Resultats';         steps = [{ label: tr.panel, active: true }, { label: tr.pieces, active: true  }, { label: tr.results, active: true  }]; }
@@ -252,10 +256,58 @@ export default function App() {
 
       <main className={'w-full px-4 md:px-8 mb-20 ' + (hasHeader ? 'mt-4' : 'mt-0')}>
         {screen === SCREENS.AUTH     && <AuthScreen onSkip={() => setScreen(SCREENS.PROJECTS)} />}
-        {screen === SCREENS.PROJECTS && <ProjectsScreen user={user} onNew={() => startNew(devisNum)} onLoad={handleLoadProject} onScanComplete={handleScanComplete} />}
+        {screen === SCREENS.PROJECTS && (
+          <ProjectsScreen
+            user={user}
+            onNew={() => startNew(devisNum)}
+            onLoad={handleLoadProject}
+            onScanComplete={handleScanComplete}
+            onPlans={() => setScreen(SCREENS.PLANS)}
+          />
+        )}
+        {screen === SCREENS.SCAN     && (
+          <Scanner
+            t={tr}
+            onClose={() => setScreen(SCREENS.PROJECTS)}
+            onPiecesDetected={(pieces) => {
+              const projectName = 'Plan du ' + new Date().toLocaleDateString('fr-FR');
+              const dNum = 'DV-' + new Date().getFullYear() + '-' + String(Math.floor(Math.random() * 9000) + 1000);
+              setProject({ ...DEFAULT_PROJECT, name: projectName, devisNum: dNum, pieces });
+              setResults(null);
+              setScreen(SCREENS.PIECES);
+            }}
+          />
+        )}
+        {screen === SCREENS.PLANS    && (
+          <PlansScreen
+            project={project}
+            session={{ user }}
+            supabase={supabase}
+            t={tr}
+            onBack={() => setScreen(SCREENS.PROJECTS)}
+            onScan={() => setScreen(SCREENS.SCAN)}
+          />
+        )}
         {screen === SCREENS.FORM     && <ProjectForm t={tr} project={project} onChange={setProject} onNext={() => setScreen(SCREENS.PIECES)} />}
         {screen === SCREENS.PIECES   && <PiecesList t={tr} project={project} onChange={setProject} onOptimize={handleOptimize} computing={computing} />}
-        {screen === SCREENS.RESULTS  && results && <Results t={tr} results={results} project={project} />}
+        {screen === SCREENS.RESULTS  && results && (
+          <Results
+            t={tr}
+            results={results}
+            project={project}
+            onSave={({ svgData, title, type, metadata }) => {
+              if (!project?.id || !user?.id) return;
+              supabase.from('plans').insert({
+                project_id: project?.id,
+                user_id: user?.id,
+                svg_data: svgData,
+                title,
+                type,
+                metadata,
+              });
+            }}
+          />
+        )}
       </main>
     </div>
   );

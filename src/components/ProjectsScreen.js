@@ -8,7 +8,7 @@ import { interpretScan } from '../interpretation/interpretScan';
 import { buildCabinetModel } from '../interpretation/buildCabinetModel';
 import { generatePiecesFromModel } from '../interpretation/generatePiecesFromModel';
 
-export default function ProjectsScreen({ onLoad, onNew, user, onScanComplete }) {
+export default function ProjectsScreen({ onLoad, onNew, user, onScanComplete, onPlans }) {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading]   = useState(true);
   const [deleting, setDeleting] = useState(null);
@@ -125,6 +125,13 @@ export default function ProjectsScreen({ onLoad, onNew, user, onScanComplete }) 
             >
               <Plus className="w-6 h-6" />
               <span>Nouveau Manuel</span>
+            </button>
+            <button
+              onClick={onPlans}
+              className="group relative inline-flex items-center justify-center gap-3 bg-orange-600 hover:bg-orange-500 text-white font-bold py-4 px-8 rounded-xl transition-all duration-300 border border-orange-500/40 transform hover:-translate-y-1"
+            >
+              <FolderOpen className="w-6 h-6" />
+              <span>Plans</span>
             </button>
           </div>
         </div>
