@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { exportPDF } from '../pdfExport';
-import { Download, Scissors, RotateCw, Layers, ChevronLeft, ChevronRight, Maximize2, BarChart2 } from 'lucide-react';
+import { Download, Scissors, RotateCw, Layers, ChevronLeft, ChevronRight, Maximize2, BarChart2, Box } from 'lucide-react';
+import CabinetPreview3D from './CabinetPreview3D';
 
 const PIECE_COLORS = [
   { fill: 'rgba(245,158,11,0.25)',  stroke: '#f59e0b', glow: 'rgba(245,158,11,0.4)' },
@@ -87,8 +88,6 @@ function PanelSVG({ panel, panelW, panelH, kerf, colorMap }) {
   const sx = SVG_W / panelW;
   const sy = SVG_H / panelH;
 
-  const hCuts = panel.cuts.filter(c => c.type === 'bande' && c.orientation === 'horizontal');
-  const vCuts = panel.cuts.filter(c => c.type === 'bande' && c.orientation === 'vertical');
   const wasteZones = computeWasteZones(panel.placed, panelW, panelH, kerf);
 
   return (
@@ -160,7 +159,6 @@ function PanelSVG({ panel, panelW, panelH, kerf, colorMap }) {
 
         {/* Coupes HORIZONTALES — badge discret orange */}
         {(() => {
-          // Numérotation synchronisée avec CutList : H1, V2, V3, H4...
           const allBands = panel.cuts.filter(c => c.type === 'bande');
           const hBands = allBands.filter(c => c.orientation === 'horizontal').sort((a,b) => (a.pos||0)-(b.pos||0));
           let num = 1;
@@ -205,14 +203,12 @@ function PanelSVG({ panel, panelW, panelH, kerf, colorMap }) {
 
 
 function CutList({ panel }) {
-  // Reconstruit l ordre reel : pour chaque coupe H, on liste les V qui lui appartiennent
   const bandCuts = panel.cuts.filter(c => c.type === 'bande');
   const hCuts = bandCuts.filter(c => c.orientation === 'horizontal').sort((a, b) => (a.pos || 0) - (b.pos || 0));
 
   const allCuts = [];
   let num = 1;
 
-  // Les cotes sont maintenant relatives depuis le bord (calculees dans engine.js)
   for (const h of hCuts) {
     const hPieces = panel.cuts.filter(pc =>
       pc.type === 'piece' && pc.bandKey === h.bandKey
@@ -273,6 +269,7 @@ function TabBar({ active, onChange }) {
     { id: 'resume', label: 'Résumé', icon: <BarChart2 className="w-4 h-4" /> },
     { id: 'visual', label: 'Visuel',  icon: <Maximize2 className="w-4 h-4" /> },
     { id: 'cuts',   label: 'Coupes',  icon: <Scissors  className="w-4 h-4" /> },
+    { id: '3d',     label: '3D',      icon: <Box       className="w-4 h-4" /> },
   ];
   return (
     <div className="flex bg-[#111] border border-white/5 rounded-xl p-1 gap-1">
@@ -296,12 +293,29 @@ export default function Results({ t, results, project }) {
   const panel      = results.panels[currentPanel];
   const panelW     = Math.round(project.panel.w * 10);
   const panelH     = Math.round(project.panel.h * 10);
-  const kerf       = Math.round((project.kerf ?? 3) * 10); // kerf en dixiemes de mm (mm -> *10)
+  const kerf       = Math.round((project.kerf ?? 3) * 10);
   const totalCost  = (results.summary.totalPanels * (project.pricePerPanel || 0)).toFixed(2);
   const utilization = panel.utilizationPct;
 
   const allNames = [...new Set(results.panels.flatMap(p => p.placed.map(pc => pc.name)))];
   allNames.forEach(n => getColor(n, colorMap));
+
+  // Construction du modèle 3D à partir des données projet
+  const model3D = {
+    dimensions: {
+      width:  project.panel?.w ?? 244,
+      height: project.furnitureHeight ?? 220,
+      depth:  project.furnitureDepth  ?? 60,
+    },
+    material: {
+      panelThickness: 1.8,
+    },
+    structure: {
+      modules: project.pieces
+        ? [...new Set(project.pieces.map(p => p.length))].map(w => ({ width: w }))
+        : [],
+    },
+  };
 
   const nextPanel = () => setCurrentPanel(p => Math.min(results.panels.length - 1, p + 1));
   const prevPanel = () => setCurrentPanel(p => Math.max(0, p - 1));
@@ -386,6 +400,10 @@ export default function Results({ t, results, project }) {
               className="w-full py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm font-bold text-slate-300 flex items-center justify-center gap-2 transition-colors">
               <Scissors className="w-4 h-4" /> Voir la séquence de coupes →
             </button>
+            <button onClick={() => setTab('3d')}
+              className="w-full py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm font-bold text-slate-300 flex items-center justify-center gap-2 transition-colors">
+              <Box className="w-4 h-4" /> Voir la prévisualisation 3D →
+            </button>
           </div>
         )}
 
@@ -443,7 +461,7 @@ export default function Results({ t, results, project }) {
                                   </span>
                                 )}
                               </div>
-                            </div>
+            </div>
                           ))}
                         </div>
                       )}
@@ -453,6 +471,38 @@ export default function Results({ t, results, project }) {
                 {panel.cuts.filter(c => c.type === 'bande').length === 0 && (
                   <div className="text-center text-slate-500 py-10">Aucune coupe requise.</div>
                 )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 3D */}
+        {tab === '3d' && (
+          <div className="space-y-4">
+            <div className="bg-[#111] border border-white/5 rounded-xl p-4">
+              <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
+                <Box className="w-4 h-4 text-teal-400" /> Prévisualisation 3D du meuble
+              </h3>
+              <CabinetPreview3D model={model3D} />
+              <p className="text-xs text-slate-500 mt-3 text-center">
+                Glissez pour faire tourner · Scroll pour zoomer
+              </p>
+            </div>
+            <div className="bg-[#111] border border-white/5 rounded-xl p-4">
+              <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Dimensions utilisées</h4>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="text-center">
+                  <div className="text-lg font-black text-white">{model3D.dimensions.width}</div>
+                  <div className="text-[10px] text-slate-500 uppercase">Largeur cm</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-lg font-black text-white">{model3D.dimensions.height}</div>
+                  <div className="text-[10px] text-slate-500 uppercase">Hauteur cm</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-lg font-black text-white">{model3D.dimensions.depth}</div>
+                  <div className="text-[10px] text-slate-500 uppercase">Profondeur cm</div>
+                </div>
               </div>
             </div>
           </div>
