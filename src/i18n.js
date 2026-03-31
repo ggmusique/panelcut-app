@@ -36,7 +36,9 @@
     companyPlaceholder: "Votre entreprise",
     cutOptions: "Options de coupe",
     panelType: "Type de panneau",
-    info: "Informations"
+    info: "Informations",
+    plansTitle: "Plans sauvegardés",
+    backToProjects: "Retour projets"
   },
   en: {
     appName: "PanelCut Pro",
@@ -75,7 +77,9 @@
     companyPlaceholder: "Your Company",
     cutOptions: "Cut Options",
     panelType: "Panel Type",
-    info: "Information"
+    info: "Information",
+    plansTitle: "Saved plans",
+    backToProjects: "Back to projects"
   }
 };
 
