@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { exportPDF } from '../pdfExport';
-import { Download, Scissors, RotateCw, Layers, ChevronLeft, ChevronRight, Maximize2, BarChart2 } from 'lucide-react';
+import { Download, Scissors, RotateCw, Layers, ChevronLeft, ChevronRight, Maximize2, BarChart2, Box } from 'lucide-react';
+import CabinetPreview3D from './CabinetPreview3D';
 
 const PIECE_COLORS = [
   { fill: 'rgba(245,158,11,0.25)',  stroke: '#f59e0b', glow: 'rgba(245,158,11,0.4)' },
@@ -273,6 +274,7 @@ function TabBar({ active, onChange }) {
     { id: 'resume', label: 'Résumé', icon: <BarChart2 className="w-4 h-4" /> },
     { id: 'visual', label: 'Visuel',  icon: <Maximize2 className="w-4 h-4" /> },
     { id: 'cuts',   label: 'Coupes',  icon: <Scissors  className="w-4 h-4" /> },
+    { id: '3d', label: '3D', icon: <Box className="w-4 h-4" /> },
   ];
   return (
     <div className="flex bg-[#111] border border-white/5 rounded-xl p-1 gap-1">
@@ -302,6 +304,22 @@ export default function Results({ t, results, project }) {
 
   const allNames = [...new Set(results.panels.flatMap(p => p.placed.map(pc => pc.name)))];
   allNames.forEach(n => getColor(n, colorMap));
+  const model3D = {
+    dimensions: {
+      width:  project.panel?.w ?? 244,
+      height: project.furnitureHeight ?? 220,
+      depth:  project.furnitureDepth  ?? 60,
+    },
+    material: {
+      panelThickness: 1.8,
+    },
+    structure: {
+      modules: project.pieces
+        ? [...new Set(project.pieces.map(p => p.length))].map(w => ({ width: w }))
+        : [],
+    },
+  };
+
 
   const nextPanel = () => setCurrentPanel(p => Math.min(results.panels.length - 1, p + 1));
   const prevPanel = () => setCurrentPanel(p => Math.max(0, p - 1));
@@ -400,6 +418,22 @@ export default function Results({ t, results, project }) {
                 <button key={i} onClick={() => setCurrentPanel(i)}
                   className={`w-3 h-3 rounded-full transition-all duration-300 ${i === currentPanel ? 'bg-orange-500 scale-125 shadow-[0_0_10px_rgba(249,115,22,0.6)]' : 'bg-[#333] hover:bg-slate-500'}`} />
               ))}
+            </div>
+          </div>
+        )}
+
+
+        {/* ONGLET 3D */}
+        {tab === '3d' && (
+          <div className="space-y-4">
+            <div className="bg- border border-white/5 rounded-xl p-4">
+              <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
+                <Box className="w-4 h-4 text-teal-400" /> {t.preview3D || 'Prévisualisation 3D du meuble'}
+              </h3>
+              <CabinetPreview3D model={model3D} />
+              <p className="text-xs text-slate-500 mt-3 text-center">
+                {t.preview3DHint || 'Glissez pour faire tourner · Scroll pour zoomer'}
+              </p>
             </div>
           </div>
         )}

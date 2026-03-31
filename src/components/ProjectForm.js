@@ -1,5 +1,5 @@
 import PanelSelector from './PanelSelector';
-import { FolderOpen, User, Building, FileText, Settings, ChevronRight, Ruler, Maximize2 } from 'lucide-react';
+import { FolderOpen, User, Building, FileText, Settings, ChevronRight, Ruler, Maximize2, Box } from 'lucide-react';
 
 export default function ProjectForm({ t, project, onChange, onNext }) {
   const update = (key, val) => onChange({ ...project, [key]: val });
@@ -125,6 +125,44 @@ export default function ProjectForm({ t, project, onChange, onNext }) {
                       className="w-full bg-[#0a0a0a] border border-white/10 rounded-xl px-4 py-3.5 text-white font-mono font-bold text-lg focus:border-orange-500 outline-none"
                       value={project.tolerance}
                       onChange={e => update('tolerance', parseFloat(e.target.value) || 10)}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* CARTE 4: DIMENSIONS MEUBLE 3D */}
+            <div className="bg- border border-white/5 rounded-2xl p-6 shadow-xl relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-teal-600/5 rounded-full blur-3xl -mr-16 -mt-16"></div>
+              <div className="relative z-10">
+                <h2 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
+                  <Box className="w-5 h-5 text-teal-400" />
+                  {t.furniture3D || 'Dimensions meuble (vue 3D)'}
+                </h2>
+                <p className="text-xs text-slate-500 mb-5">{t.furniture3DNote || 'Utilisées uniquement pour la prévisualisation 3D'}</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs uppercase tracking-wider text-slate-500 font-bold mb-2 flex items-center gap-2">
+                      <Ruler className="w-3.5 h-3.5" />
+                      {t.furnitureHeight || 'Hauteur (cm)'}
+                    </label>
+                    <input
+                      type="number"
+                      className="w-full bg-[#0a0a0a] border border-white/10 rounded-xl px-4 py-3.5 text-white font-mono font-bold text-lg focus:border-teal-500 outline-none"
+                      value={project.furnitureHeight ?? 220}
+                      onChange={e => update('furnitureHeight', parseFloat(e.target.value) || 220)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs uppercase tracking-wider text-slate-500 font-bold mb-2 flex items-center gap-2">
+                      <Ruler className="w-3.5 h-3.5" />
+                      {t.furnitureDepth || 'Profondeur (cm)'}
+                    </label>
+                    <input
+                      type="number"
+                      className="w-full bg-[#0a0a0a] border border-white/10 rounded-xl px-4 py-3.5 text-white font-mono font-bold text-lg focus:border-teal-500 outline-none"
+                      value={project.furnitureDepth ?? 60}
+                      onChange={e => update('furnitureDepth', parseFloat(e.target.value) || 60)}
                     />
                   </div>
                 </div>
