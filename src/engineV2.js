@@ -179,6 +179,15 @@ export function optimise(pieces, panel, opts = {}) {
   const allStrategies = [horizontalStrict, horizontalRelaxed, verticalStrict, verticalRelaxed];
   const best = pickBestResult(allStrategies);
 
+  // Guard : si aucune strategie n a place de pieces, retourne un resultat vide valide
+  if (!best || !best.panels || best.panels.length === 0) {
+    return {
+      panels: [],
+      summary: { totalPanels: 0, totalPieces: 0, utilizationPct: '0', wastePct: '0' },
+      version: 'v2-bands-bidirectional',
+    };
+  }
+
   return {
     ...best,
     version: 'v2-bands-bidirectional',
