@@ -160,7 +160,6 @@ function CutList({ panel }) {
   );
 }
 
-// ── Sous-onglets Plans 2D / 3D ───────────────────────────────────────────────
 function PlanSubTabs({ active, onChange }) {
   return (
     <div className="flex bg-[#0a0a0a] border border-white/5 rounded-lg p-0.5 gap-0.5 mb-4">
@@ -242,7 +241,7 @@ export default function Results({ t, results, project }) {
 
       <div className="px-4 py-4 max-w-7xl mx-auto">
 
-        {/* ── RÉSUMÉ ─────────────────────────────────────────────────────── */}
+        {/* ── RÉSUMÉ */}
         {tab === 'resume' && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
@@ -308,7 +307,7 @@ export default function Results({ t, results, project }) {
           </div>
         )}
 
-        {/* ── VISUEL ─────────────────────────────────────────────────────── */}
+        {/* ── VISUEL */}
         {tab === 'visual' && (
           <div className="space-y-4">
             <PanelNav />
@@ -323,7 +322,7 @@ export default function Results({ t, results, project }) {
           </div>
         )}
 
-        {/* ── COUPES ─────────────────────────────────────────────────────── */}
+        {/* ── COUPES */}
         {tab === 'cuts' && (
           <div className="space-y-4">
             <PanelNav />
@@ -347,68 +346,72 @@ export default function Results({ t, results, project }) {
           </div>
         )}
 
-        {/* ── PLANCHES ───────────────────────────────────────────────────── */}
+        {/* ── PLANCHES */}
         {tab === 'boards' && <BoardList results={results} project={project} />}
 
-        {/* ── PLANS 2D / 3D ──────────────────────────────────────────────── */}
+        {/* ── PLANS 2D / 3D
+             IMPORTANT : on monte les DEUX vues dès que tab==='plans' et hasCabinet,
+             on les affiche/cache via CSS (visibility + height) et NON via un
+             conditionnel React. Cela évite le unmount/remount du canvas WebGL
+             qui provoque offsetWidth=0 et la disparition de la scène au zoom.
+        */}
         {tab === 'plans' && (
           <div className="space-y-4">
             {hasCabinet ? (
               <>
                 <PlanSubTabs active={planView} onChange={setPlanView} />
 
-                {planView === '2d' && (
-                  <>
-                    <div className="flex items-center gap-2 text-xs text-slate-500 px-1">
-                      <Map className="w-3 h-3" />
-                      <span>Plan orthogonal : face + côté + dessus — cotations en cm</span>
+                {/* Vue 2D — masquée mais montée quand planView !== '2d' */}
+                <div style={planView !== '2d' ? { display: 'none' } : {}}>
+                  <div className="flex items-center gap-2 text-xs text-slate-500 px-1 mb-3">
+                    <Map className="w-3 h-3" />
+                    <span>Plan orthogonal : face + côté + dessus — cotations en cm</span>
+                  </div>
+                  <CabinetPlan2D cabinet={cabinet} name={project.name} />
+                  <div className="bg-[#111] border border-white/5 rounded-xl p-4 text-xs text-slate-500 space-y-1 mt-3">
+                    <p className="font-bold text-slate-400">Légende</p>
+                    <div className="flex flex-wrap gap-3">
+                      {[
+                        { color: '#94a3b8', label: 'Montant / Côté' },
+                        { color: '#38bdf8', label: 'Tablette / Fond bas / Dessus' },
+                        { color: '#f97316', label: 'Porte' },
+                        { color: '#7dd3fc', label: 'Séparation' },
+                        { color: '#a855f7', label: 'Tiroir' },
+                        { color: '#475569', label: 'Fond arrière' },
+                      ].map(({ color, label }) => (
+                        <div key={label} className="flex items-center gap-1.5">
+                          <div className="w-3 h-3 rounded-sm" style={{ background: color }} />
+                          <span>{label}</span>
+                        </div>
+                      ))}
                     </div>
-                    <CabinetPlan2D cabinet={cabinet} name={project.name} />
-                    <div className="bg-[#111] border border-white/5 rounded-xl p-4 text-xs text-slate-500 space-y-1">
-                      <p className="font-bold text-slate-400">Légende</p>
-                      <div className="flex flex-wrap gap-3">
-                        {[
-                          { color: '#94a3b8', label: 'Montant / Côté' },
-                          { color: '#38bdf8', label: 'Tablette / Fond bas / Dessus' },
-                          { color: '#f97316', label: 'Porte' },
-                          { color: '#7dd3fc', label: 'Séparation' },
-                          { color: '#a855f7', label: 'Tiroir' },
-                          { color: '#475569', label: 'Fond arrière' },
-                        ].map(({ color, label }) => (
-                          <div key={label} className="flex items-center gap-1.5">
-                            <div className="w-3 h-3 rounded-sm" style={{ background: color }} />
-                            <span>{label}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </>
-                )}
+                  </div>
+                </div>
 
-                {planView === '3d' && (
-                  <>
-                    <div className="flex items-center gap-2 text-xs text-slate-500 px-1">
-                      <Box className="w-3 h-3" />
-                      <span>Vue isométrique — projection 30° — cotations L×H×P</span>
+                {/* Vue 3D — toujours montée, cachée si planView !== '3d'
+                    Le canvas WebGL ne doit jamais être démonté sinon il perd sa taille. */}
+                <div style={planView !== '3d' ? { display: 'none' } : {}}>
+                  <div className="flex items-center gap-2 text-xs text-slate-500 px-1 mb-3">
+                    <Box className="w-3 h-3" />
+                    <span>Vue isométrique — cliquer-glisser pour tourner — molette pour zoomer</span>
+                  </div>
+                  <CabinetPlan3D cabinet={cabinet} name={project.name} />
+                  <div className="bg-[#111] border border-white/5 rounded-xl p-4 text-xs text-slate-500 space-y-1 mt-3">
+                    <p className="font-bold text-slate-400">Légende panneaux</p>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { c: '#475569', l: 'Montant/Côté' }, { c: '#7dd3fc', l: 'Dessus' },
+                        { c: '#38bdf8', l: 'Tablette' },   { c: '#f97316', l: 'Porte' },
+                        { c: '#a855f7', l: 'Tiroir' },      { c: '#1e3a5f', l: 'Fond arrière' },
+                      ].map(({ c, l }) => (
+                        <div key={l} className="flex items-center gap-1">
+                          <div className="w-2.5 h-2.5 rounded-sm" style={{ background: c }} />
+                          <span className="text-slate-400">{l}</span>
+                        </div>
+                      ))}
                     </div>
-                    <CabinetPlan3D cabinet={cabinet} name={project.name} />
-                    <div className="bg-[#111] border border-white/5 rounded-xl p-4 text-xs text-slate-500 space-y-1">
-                      <p className="font-bold text-slate-400">Légende axes</p>
-                      <div className="flex flex-wrap gap-4">
-                        {[
-                          { color: '#ef4444', label: 'X = Largeur (gauche → droite)' },
-                          { color: '#22c55e', label: 'Y = Profondeur (avant → arrière)' },
-                          { color: '#60a5fa', label: 'Z = Hauteur (bas → haut)' },
-                        ].map(({ color, label }) => (
-                          <div key={label} className="flex items-center gap-1.5">
-                            <div className="w-2 h-2 rounded-full" style={{ background: color }} />
-                            <span>{label}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </>
-                )}
+                  </div>
+                </div>
               </>
             ) : (
               <div className="flex flex-col items-center justify-center py-16 gap-4 text-center">
