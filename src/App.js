@@ -11,7 +11,7 @@ import { ChevronLeft, ChevronRight, LogOut, Disc } from 'lucide-react';
 import './App.css';
 
 const SCREENS = { AUTH: 'auth', PROJECTS: 'projects', FORM: 'form', PIECES: 'pieces', RESULTS: 'results' };
-const DEFAULT_PROJECT = { name: '', client: '', company: '', panel: { w: 244, h: 122 }, kerf: 3, tolerance: 10, pricePerPanel: 39.8, pieces: [], furniture: [], devisNum: '', supabaseId: null };
+const DEFAULT_PROJECT = { name: '', client: '', company: '', panel: { w: 244, h: 122 }, kerf: 3, tolerance: 10, pricePerPanel: 39.8, pieces: [], furniture: [], devisNum: '', supabaseId: null, cabinet: null };
 
 const APP_VERSION = process.env.REACT_APP_VERSION || '1.0.0';
 const GIT_HASH   = process.env.REACT_APP_GIT_HASH  || 'dev';
@@ -122,16 +122,22 @@ export default function App() {
     else setScreen(SCREENS.PIECES);
   };
 
+  // FIX : le serveur retourne les dimensions en cm, pas en mm.
+  // On les stocke telles quelles dans project.cabinet (cm).
+  // On les stocke dans project.pieces telles quelles (cm) pour l'engine.
   const handleScanComplete = (scanResult) => {
     const pieces = (scanResult.pieces || []).map(p => ({
-      name: p.name || 'Piece',
-      length: parseFloat(p.length) || 0,
-      height: parseFloat(p.height) || 0,
-      qty: parseInt(p.qty, 10) || 1,
-    }));
+      name:   String(p.name   || 'Pièce').trim(),
+      length: Math.abs(parseFloat(p.length) || 0),  // déjà en cm
+      height: Math.abs(parseFloat(p.height) || 0),  // déjà en cm
+      qty:    Math.max(1, parseInt(p.qty, 10) || 1),
+    })).filter(p => p.length > 0 && p.height > 0);
+
+    const cabinet = scanResult.cabinet || null;
+
     const projectName = 'Plan du ' + new Date().toLocaleDateString('fr-FR');
     const dNum = 'DV-' + new Date().getFullYear() + '-' + String(Math.floor(Math.random() * 9000) + 1000);
-    setProject({ ...DEFAULT_PROJECT, name: projectName, devisNum: dNum, pieces });
+    setProject({ ...DEFAULT_PROJECT, name: projectName, devisNum: dNum, pieces, cabinet });
     setResults(null);
     setScreen(SCREENS.PIECES);
   };
@@ -171,15 +177,12 @@ export default function App() {
     <div className="app min-h-screen bg-[#0f1620] text-slate-200 font-sans">
       {hasHeader && (
         <header className="sticky top-0 z-40 bg-[#0f1620]/95 backdrop-blur-md border-b border-white/10 shadow-lg h-16 flex items-center justify-between px-4 md:px-8 gap-2">
-
-          {/* LEFT: ‹ title › */}
           <div className="flex items-center gap-1 flex-shrink-0">
             {showBack && (
               <button onClick={goBack} className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors">
                 <ChevronLeft className="w-5 h-5" />
               </button>
             )}
-
             <div className="flex flex-col mx-1">
               <h1 className={'font-bold text-white ' + (hasSteps ? 'hidden md:block text-sm md:text-base' : 'text-sm md:text-base')}>
                 {headerTitle}
@@ -188,8 +191,6 @@ export default function App() {
                 v{APP_VERSION} · {GIT_HASH}
               </span>
             </div>
-
-            {/* Bouton NEXT — toujours visible, orange si actif, gris clair si pas encore possible */}
             {showNext && (
               <button
                 onClick={canGoNext ? goNext : undefined}
@@ -201,11 +202,9 @@ export default function App() {
                 <ChevronRight className="w-5 h-5" />
               </button>
             )}
-
             {headerSubtitle && <p className="text-[10px] text-slate-500 uppercase truncate hidden sm:block ml-1">{headerSubtitle}</p>}
           </div>
 
-          {/* CENTER: stepper */}
           {hasSteps && (
             <div className="flex items-center gap-1 flex-1 justify-center">
               {steps.map((s, i) => (
@@ -230,7 +229,6 @@ export default function App() {
             </div>
           )}
 
-          {/* RIGHT: save + lang + logout */}
           <div className="flex items-center gap-1.5 flex-shrink-0">
             {(saveMsg || saving) && <span className="text-[11px] text-green-400 font-medium">{saving ? '...' : saveMsg}</span>}
             {showSave && !saving && (
@@ -255,7 +253,23 @@ export default function App() {
         {screen === SCREENS.PROJECTS && <ProjectsScreen user={user} onNew={() => startNew(devisNum)} onLoad={handleLoadProject} onScanComplete={handleScanComplete} />}
         {screen === SCREENS.FORM     && <ProjectForm t={tr} project={project} onChange={setProject} onNext={() => setScreen(SCREENS.PIECES)} />}
         {screen === SCREENS.PIECES   && <PiecesList t={tr} project={project} onChange={setProject} onOptimize={handleOptimize} computing={computing} />}
-        {screen === SCREENS.RESULTS  && results && <Results t={tr} results={results} project={project} />}
+        {screen === SCREENS.RESULTS  && results && results.panels && results.panels.length > 0
+          ? <Results t={tr} results={results} project={project} />
+          : screen === SCREENS.RESULTS && (
+            <div className="flex flex-col items-center justify-center min-h-[60vh] gap-6 p-8">
+              <div className="text-5xl">⚠️</div>
+              <div className="text-center">
+                <p className="text-lg font-bold text-white mb-1">Résultats indisponibles</p>
+                <p className="text-sm text-slate-400">Les données de résultats sont manquantes ou corrompues.</p>
+              </div>
+              <button
+                onClick={() => setScreen(SCREENS.PIECES)}
+                className="px-6 py-3 bg-orange-600 hover:bg-orange-500 text-white rounded-xl font-bold transition-colors shadow-lg">
+                ↺ Relancer l'optimisation
+              </button>
+            </div>
+          )
+        }
       </main>
     </div>
   );
