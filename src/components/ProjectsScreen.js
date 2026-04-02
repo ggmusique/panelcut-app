@@ -11,10 +11,9 @@ export default function ProjectsScreen({ onLoad, onNew, user, onScanComplete }) 
   const [showUpload,  setShowUpload]  = useState(false);
   const [showEditor,  setShowEditor]  = useState(false);
   const [lastResult,  setLastResult]  = useState(null);
-  const [scanImage,   setScanImage]   = useState(null);   // base64 PNG du croquis
-  const [scanResult,  setScanResult]  = useState(null);   // résultat brut Claude
+  const [scanImage,   setScanImage]   = useState(null);
+  const [scanResult,  setScanResult]  = useState(null);
 
-  // Récupérer la clé API depuis l'env ou depuis ImageUpload
   const [apiKey, setApiKey] = useState(
     process.env.REACT_APP_ANTHROPIC_KEY || ''
   );
@@ -39,27 +38,26 @@ export default function ProjectsScreen({ onLoad, onNew, user, onScanComplete }) 
   const formatDate = (dateStr) =>
     new Date(dateStr).toLocaleDateString('fr-BE', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
-  // ─── Flux Scan → Éditeur ───────────────────────────────────────────────
-  // ImageUpload appelle ce callback avec (result, imageBase64)
+  // ImageUpload → (result, imageBase64)
   const handleScanReady = (result, imageBase64) => {
     setScanResult(result);
     setScanImage(imageBase64 || null);
-    setApiKey(result?._apiKey || apiKey);  // ImageUpload peut passer la clé via résultat
+    setApiKey(result?._apiKey || apiKey);
     setShowUpload(false);
-    setShowEditor(true);   // → ouvrir l'éditeur
+    setShowEditor(true);
   };
 
-  // ScanWithEditor appelle onComplete avec le résultat final (initial ou raffiné)
+  // ScanWithEditor → résultat final corrigé (ou initial)
+  // On transmet AUSSI l'image base64 pour que l'éditeur de croquis soit disponible
   const handleEditorComplete = (finalResult) => {
     setShowEditor(false);
     setLastResult(finalResult);
-    if (onScanComplete) onScanComplete(finalResult);
+    if (onScanComplete) onScanComplete(finalResult, scanImage);
   };
 
   return (
     <div className="min-h-screen bg-[#050505] text-slate-200 pb-20 relative font-sans selection:bg-orange-500 selection:text-white">
 
-      {/* ─ Overlay Scan ImageUpload ─ */}
       {showUpload && (
         <ImageUpload
           onScanComplete={handleScanReady}
@@ -67,7 +65,6 @@ export default function ProjectsScreen({ onLoad, onNew, user, onScanComplete }) 
         />
       )}
 
-      {/* ─ Overlay Éditeur ScanWithEditor ─ */}
       {showEditor && (
         <div className="fixed inset-0 z-50 bg-[#060b14] overflow-y-auto">
           <div className="max-w-4xl mx-auto px-4 py-6">
