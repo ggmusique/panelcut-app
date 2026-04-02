@@ -55,7 +55,6 @@ export default function CabinetPlan2D({ model }) {
   const view = useMemo(() => {
     if (!model) return null;
 
-    // Support du modèle actuel ({ dimensions/material/structure }) et du format plat documenté.
     const widthCm = readNumber(model?.dimensions?.width, readNumber(model?.width));
     const heightCm = readNumber(model?.dimensions?.height, readNumber(model?.height));
     const depthCm = readNumber(model?.dimensions?.depth, readNumber(model?.depth));
@@ -76,8 +75,12 @@ export default function CabinetPlan2D({ model }) {
     const w = widthCm * scale;
     const h = heightCm * scale;
     const t = Math.max(1.2, thicknessCm * scale);
+    const svgW = Math.max(680, originX + w + 210);
+    const svgH = Math.max(420, originY + 90);
+    const title = model?.name || 'Meuble';
+    const internalHeight = Math.max(0, heightCm - plinthCm - thicknessCm * 2);
 
-    return { widthCm, heightCm, modules, scale, originX, originY, w, h, t };
+    return { widthCm, heightCm, depthCm, plinthCm, thicknessCm, modules, scale, originX, originY, w, h, t, svgW, svgH, title, internalHeight };
   }, [model]);
 
   if (!view) return null;
@@ -85,11 +88,11 @@ export default function CabinetPlan2D({ model }) {
   let moduleCursorCm = view.t / view.scale;
 
   return (
-    <div className="rounded-xl border border-slate-400 bg-white p-3 text-slate-900">
-      <svg viewBox="0 0 640 380" className="w-full cabinet-plan-svg" role="img" aria-label="Plan atelier 2D coté du meuble">
+    <div className="rounded-xl border border-slate-400 bg-white p-3 text-slate-900 shadow-sm">
+      <svg viewBox={`0 0 ${view.svgW} ${view.svgH}`} className="w-full cabinet-plan-svg" role="img" aria-label="Plan atelier 2D coté du meuble">
         <text x={view.originX} y={24} fontSize="12" fontWeight="700">Plan atelier — vue de face</text>
+        <text x={view.originX} y={40} fontSize="9" fill="#64748b">Façade cotée avec modules et dimensions utiles</text>
 
-        {/* Contour extérieur du meuble */}
         <rect
           x={view.originX}
           y={view.originY - view.h}
@@ -100,13 +103,11 @@ export default function CabinetPlan2D({ model }) {
           strokeWidth="2"
         />
 
-        {/* Épaisseurs panneaux (côtés + dessus/dessous) */}
         <line x1={view.originX + view.t} y1={view.originY - view.h} x2={view.originX + view.t} y2={view.originY} stroke="#475569" strokeWidth="1.2" />
         <line x1={view.originX + view.w - view.t} y1={view.originY - view.h} x2={view.originX + view.w - view.t} y2={view.originY} stroke="#475569" strokeWidth="1.2" />
         <line x1={view.originX} y1={view.originY - view.h + view.t} x2={view.originX + view.w} y2={view.originY - view.h + view.t} stroke="#475569" strokeWidth="1.2" />
         <line x1={view.originX} y1={view.originY - view.t} x2={view.originX + view.w} y2={view.originY - view.t} stroke="#475569" strokeWidth="1.2" />
 
-        {/* Séparations verticales et tablettes éventuelles issues des modules */}
         {view.modules.slice(0, -1).map((module, index) => {
           moduleCursorCm += module.width;
           const x = view.originX + moduleCursorCm * view.scale;
@@ -139,21 +140,11 @@ export default function CabinetPlan2D({ model }) {
           });
         })}
 
-        {/* Cotes principales déterministes */}
-        <HorizontalDim
-          x1={view.originX}
-          x2={view.originX + view.w}
-          y={view.originY + 26}
-          label={`Largeur totale ${mm(view.widthCm)} mm`}
-        />
-        <VerticalDim
-          x={view.originX - 26}
-          y1={view.originY - view.h}
-          y2={view.originY}
-          label={`Hauteur totale ${mm(view.heightCm)} mm`}
-        />
+        <HorizontalDim x1={view.originX} x2={view.originX + view.w} y={view.originY + 26} label={`Largeur totale ${mm(view.widthCm)} mm`} />
+        <VerticalDim x={view.originX - 26} y1={view.originY - view.h} y2={view.originY} label={`Hauteur totale ${mm(view.heightCm)} mm`} />
+        <VerticalDim x={view.originX + view.w + 30} y1={view.originY - view.h + view.t} y2={view.originY - view.t} label={`Hauteur utile ${mm(view.internalHeight)} mm`} />
+        <HorizontalDim x1={view.originX + view.w + 20} x2={view.originX + view.w + 20 + view.depthCm * view.scale * 0.6} y={view.originY - view.h + 36} label={`Prof. ${mm(view.depthCm)} mm`} />
 
-        {/* Cotes de largeur de chaque module */}
         {(() => {
           let cursor = view.originX + view.t;
           return view.modules.map((module, index) => {
@@ -173,6 +164,16 @@ export default function CabinetPlan2D({ model }) {
             );
           });
         })()}
+
+        <rect x={view.svgW - 185} y={view.svgH - 64} width={170} height={48} fill="#f8fafc" stroke="#0f172a" strokeWidth="1" />
+        <line x1={view.svgW - 185} y1={view.svgH - 46} x2={view.svgW - 15} y2={view.svgH - 46} stroke="#0f172a" strokeWidth="1" />
+        <line x1={view.svgW - 120} y1={view.svgH - 64} x2={view.svgW - 120} y2={view.svgH - 16} stroke="#0f172a" strokeWidth="1" />
+        <text x={view.svgW - 177} y={view.svgH - 52} fontSize="8" fill="#64748b">PROJET</text>
+        <text x={view.svgW - 177} y={view.svgH - 33} fontSize="10" fontWeight="700" fill="#0f172a">{view.title}</text>
+        <text x={view.svgW - 112} y={view.svgH - 52} fontSize="8" fill="#64748b">ÉCHELLE</text>
+        <text x={view.svgW - 112} y={view.svgH - 33} fontSize="10" fontWeight="700" fill="#0f172a">1:{Math.max(1, Math.round(100 / view.scale))}</text>
+        <text x={view.svgW - 70} y={view.svgH - 52} fontSize="8" fill="#64748b">DATE</text>
+        <text x={view.svgW - 70} y={view.svgH - 33} fontSize="9" fontWeight="700" fill="#0f172a">{new Date().toLocaleDateString('fr-FR')}</text>
       </svg>
     </div>
   );
