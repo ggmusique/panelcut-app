@@ -1,7 +1,12 @@
 /**
  * CabinetPlan3D.js — Vue 3D interactive Three.js
- * Fix zoom: radius clamp = [minR, maxR] calculé depuis les dims réelles du meuble.
- * Near plane adaptatif = maxDim * 0.001 pour éviter le clipping lors du zoom.
+ *
+ * FIXES ZOOM (plan qui disparaît) :
+ *  1. near plane = radius * 0.01 (dynamique) → recalculé à chaque frame, évite le clipping
+ *  2. wheel delta normalisé → même comportement souris et trackpad
+ *  3. renderer.setSize sans le flag false (par défaut true) → canvas CSS toujours sync
+ *  4. minR = maxDim * 0.4 (était 0.25) → empêche la caméra d'entrer dans la géométrie
+ *  5. ResizeObserver corrige la taille après display:none → visible
  */
 import { useRef, useEffect, useState, useCallback } from 'react';
 
@@ -46,8 +51,8 @@ export default function CabinetPlan3D({ cabinet, name = 'Meuble' }) {
   const camRef    = useRef(null);
   const frameRef  = useRef(null);
   const builtRef  = useRef(false);
-  // minR/maxR calculés depuis les dims réelles, partagés entre buildScene et les handlers
-  const zoomBoundsRef = useRef({ minR: 0.1, maxR: 10 });
+  const maxDimRef = useRef(1);
+  const zoomBoundsRef = useRef({ minR: 0.4, maxR: 10 });
   const orbitRef  = useRef({
     theta: 0.6, phi: 1.1, radius: 2.2,
     dragging: false, lastX: 0, lastY: 0, target: null,
@@ -75,11 +80,14 @@ export default function CabinetPlan3D({ cabinet, name = 'Meuble' }) {
     const m = v => v / 100;  // cm → m
     const W = m(cab.width), H = m(cab.height), D = m(cab.depth), T = m(cab.thickness);
     const maxDim = Math.max(W, H, D);
+    maxDimRef.current = maxDim;
 
     // ─ Renderer ──────────────────────────────────────────────────────
+    // NE PAS passer false en 3e arg de setSize → sinon le canvas CSS reste à 0px
+    // après un display:none → visible (bug disparition au zoom)
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setSize(W_PX, H_PX, false);
+    renderer.setSize(W_PX, H_PX);  // ← pas de false ici
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     rendRef.current = renderer;
@@ -89,19 +97,22 @@ export default function CabinetPlan3D({ cabinet, name = 'Meuble' }) {
     scene.background = new THREE.Color(0x04090f);
     sceneRef.current = scene;
 
-    // ─ Caméra — near plane = maxDim*0.001 pour éviter clipping au zoom ───────────
-    const near   = maxDim * 0.001;  // ex : meuble 2m → near = 0.002
+    // ─ Caméra — near plane DYNAMIQUE recalculé à chaque frame ─────────
+    // On met un near très petit ici ; il sera mis à jour dans la boucle render
+    // en fonction du radius courant pour ne jamais clipper.
     const far    = maxDim * 80;
+    const near   = maxDim * 0.005;  // valeur initiale conservative
     const camera = new THREE.PerspectiveCamera(45, W_PX / H_PX, near, far);
     camRef.current = camera;
 
-    // Orbit initial : radius + cibles de zoom
+    // Orbit initial
     const initR = maxDim * 2.8;
-    const minR  = maxDim * 0.25;   // peut zoomer jusqu'à 25% de la plus grande dim
-    const maxR  = maxDim * 10;     // dézoom max
+    // FIX: minR = 0.4 * maxDim (était 0.25) pour que la caméra ne pénètre jamais dans le meuble
+    const minR  = maxDim * 0.40;
+    const maxR  = maxDim * 10;
     orbitRef.current.radius = initR;
     orbitRef.current.target = new THREE.Vector3(0, H / 2, 0);
-    zoomBoundsRef.current   = { minR, maxR };  // partagé avec le handler wheel
+    zoomBoundsRef.current   = { minR, maxR };
 
     // ─ Grille + lumières ────────────────────────────────────────────────
     const grid = new THREE.GridHelper(maxDim * 4, 40, 0x0f2040, 0x0a1830);
@@ -173,7 +184,6 @@ export default function CabinetPlan3D({ cabinet, name = 'Meuble' }) {
           addPanel(pw, ph, T, px + pw / 2, py + ph / 2, D / 2, role);
       }
     } else {
-      // Fallback filaire
       const geo   = new THREE.BoxGeometry(W, H, D);
       const solid = new THREE.Mesh(geo, new THREE.MeshPhongMaterial({
         color: 0x1e3a5f, emissive: 0x0a1628, transparent: true, opacity: 0.12, side: THREE.DoubleSide,
@@ -191,27 +201,43 @@ export default function CabinetPlan3D({ cabinet, name = 'Meuble' }) {
     setStatus('ok');
   }, [cabinet]);
 
-  // ─ Boucle de rendu ─────────────────────────────────────────────
+  // ─ Boucle de rendu — near plane dynamique ──────────────────────────
+  // FIX CLIPPING : on recalcule near = radius * 0.01 à chaque frame.
+  // Ainsi quand l'utilisateur zoome (radius diminue), near diminue aussi
+  // → la caméra ne clippe jamais la géométrie quelle que soit la distance.
   const loop = useCallback(() => {
     frameRef.current = requestAnimationFrame(loop);
-    if (!rendRef.current || !sceneRef.current || !camRef.current) return;
+    const ren = rendRef.current;
+    const sc  = sceneRef.current;
+    const cam = camRef.current;
+    if (!ren || !sc || !cam) return;
+
     const o = orbitRef.current;
     const t = o.target || { x: 0, y: 0, z: 0 };
     const r = o.radius;
-    camRef.current.position.set(
+
+    // Near plan dynamique : toujours proportionnel à la distance caméra
+    const newNear = r * 0.01;
+    if (Math.abs(cam.near - newNear) > newNear * 0.1) {
+      cam.near = newNear;
+      cam.updateProjectionMatrix();
+    }
+
+    cam.position.set(
       t.x + r * Math.sin(o.phi) * Math.sin(o.theta),
       t.y + r * Math.cos(o.phi),
       t.z + r * Math.sin(o.phi) * Math.cos(o.theta)
     );
-    camRef.current.lookAt(t.x, t.y, t.z);
-    rendRef.current.render(sceneRef.current, camRef.current);
+    cam.lookAt(t.x, t.y, t.z);
+    ren.render(sc, cam);
   }, []);
 
-  // ─ Init + ResizeObserver ─────────────────────────────────────────────
+  // ─ Init + ResizeObserver (corrige display:none → visible) ───────────
   useEffect(() => {
     if (!cabinet?.width || !cabinet?.height) { setStatus('nodims'); return; }
     let alive = true;
     let ro = null;
+
     const tryInit = (THREE) => {
       if (!alive || builtRef.current) return;
       const wrap = wrapRef.current;
@@ -219,19 +245,34 @@ export default function CabinetPlan3D({ cabinet, name = 'Meuble' }) {
       buildScene(THREE);
       if (alive) loop();
     };
+
+    // ResizeObserver permanent : corrige la taille quand le parent passe
+    // de display:none → visible (offsetWidth revient à > 0)
+    const setupRO = (THREE) => {
+      if (!wrapRef.current) return;
+      ro = new ResizeObserver(() => {
+        // Cas 1 : scène pas encore construite
+        if (!builtRef.current) { tryInit(THREE); return; }
+        // Cas 2 : scène construite mais canvas à resize (retour de display:none)
+        const wrap = wrapRef.current;
+        if (!wrap || !rendRef.current || !camRef.current) return;
+        const w = wrap.offsetWidth, h = wrap.offsetHeight;
+        if (!w || !h) return;
+        camRef.current.aspect = w / h;
+        camRef.current.updateProjectionMatrix();
+        rendRef.current.setSize(w, h);  // ← pas de false
+      });
+      ro.observe(wrapRef.current);
+    };
+
     loadThree()
       .then(THREE => {
         if (!alive) return;
-        tryInit(THREE);
-        if (!builtRef.current && wrapRef.current) {
-          ro = new ResizeObserver(() => {
-            tryInit(THREE);
-            if (builtRef.current && ro) { ro.disconnect(); ro = null; }
-          });
-          ro.observe(wrapRef.current);
-        }
+        tryInit(THREE);   // tente immédiatement
+        setupRO(THREE);   // observe en permanence pour les resize + display:none → visible
       })
       .catch(e => { if (alive) { setStatus('error'); setErrMsg(e.message); } });
+
     return () => {
       alive = false;
       if (ro) ro.disconnect();
@@ -241,7 +282,7 @@ export default function CabinetPlan3D({ cabinet, name = 'Meuble' }) {
     };
   }, [cabinet, buildScene, loop]);
 
-  // ─ Resize fenêtre ───────────────────────────────────────────────
+  // ─ Resize fenêtre ────────────────────────────────────────────────────
   useEffect(() => {
     const fn = () => {
       const wrap = wrapRef.current;
@@ -250,13 +291,13 @@ export default function CabinetPlan3D({ cabinet, name = 'Meuble' }) {
       if (!w || !h) return;
       camRef.current.aspect = w / h;
       camRef.current.updateProjectionMatrix();
-      rendRef.current.setSize(w, h, false);
+      rendRef.current.setSize(w, h);
     };
     window.addEventListener('resize', fn);
     return () => window.removeEventListener('resize', fn);
   }, []);
 
-  // ─ Contrôles souris + touch — clamp radius depuis zoomBoundsRef ──────────
+  // ─ Contrôles souris + touch ──────────────────────────────────────────
   useEffect(() => {
     const el = canvasRef.current;
     if (!el) return;
@@ -276,12 +317,20 @@ export default function CabinetPlan3D({ cabinet, name = 'Meuble' }) {
       o.phi    = Math.max(0.08, Math.min(Math.PI - 0.08, o.phi + (e.clientY - o.lastY) * 0.008));
       o.lastX  = e.clientX; o.lastY = e.clientY;
     };
+
+    // FIX WHEEL : normalisation du delta pour souris et trackpad
+    // deltaMode 0 = pixels (trackpad), 1 = lignes (souris), 2 = pages
+    // On ramène tout en un delta "lignes" puis on applique 3% du radius par ligne.
     const wheel = e => {
       e.preventDefault();
-      // Sensibilité proportionnelle au radius actuel pour un zoom naturel
-      const factor = o.radius * 0.001;
-      o.radius = clampR(o.radius + e.deltaY * factor);
+      let lines;
+      if (e.deltaMode === 1) lines = e.deltaY;            // souris : déjà en lignes
+      else if (e.deltaMode === 2) lines = e.deltaY * 10;  // pages
+      else lines = e.deltaY / 16;                         // pixels trackpad → ~lignes
+      // 3% du radius courant par ligne → zoom naturel et linéaire
+      o.radius = clampR(o.radius * (1 + lines * 0.03));
     };
+
     const tstart = e => {
       if (e.touches.length === 1) {
         o.dragging = true; o.lastX = e.touches[0].clientX; o.lastY = e.touches[0].clientY;
@@ -343,7 +392,6 @@ export default function CabinetPlan3D({ cabinet, name = 'Meuble' }) {
 
   return (
     <div className="flex flex-col gap-3">
-      {/* Canvas */}
       <div
         className="relative rounded-xl overflow-hidden border border-white/10 shadow-2xl bg-[#04090f]"
         style={{ width: '100%', height: '360px' }}
@@ -374,21 +422,20 @@ export default function CabinetPlan3D({ cabinet, name = 'Meuble' }) {
             </div>
             <div className="absolute top-3 right-3 bg-black/60 backdrop-blur-sm px-3 py-1 rounded-full border border-white/10 pointer-events-none">
               <span className="text-[10px] font-mono text-slate-300">
-                {cabinet.width}×{cabinet.height}×{cabinet.depth || 60} cm
+                {cabinet.width}×{cabinet.height}×{cabinet.depth || 60} cm
               </span>
             </div>
           </>
         )}
       </div>
 
-      {/* Vues rapides */}
       <div className="grid grid-cols-5 gap-1.5">
         {[
-          { label: '🔄 Face',    t: Math.PI,   p: Math.PI / 2 },
-          { label: '↗ Iso',     t: 0.6,       p: 1.1 },
-          { label: '⬆ Dessus',  t: 0.6,       p: 0.05 },
+          { label: '🔄 Face',    t: Math.PI,     p: Math.PI / 2 },
+          { label: '↗ Iso',     t: 0.6,         p: 1.1 },
+          { label: '⬆ Dessus',  t: 0.6,         p: 0.05 },
           { label: '➡ Côté',    t: Math.PI / 2, p: Math.PI / 2 },
-          { label: '↙ Arrière', t: 0,         p: 1.1 },
+          { label: '↙ Arrière', t: 0,           p: 1.1 },
         ].map(v => (
           <button key={v.label} onClick={() => snap(v.t, v.p)}
             className="py-2 text-[10px] font-bold text-slate-400 hover:text-white bg-[#0a0f1a] hover:bg-[#111827] border border-white/5 rounded-lg transition-all">
@@ -397,7 +444,6 @@ export default function CabinetPlan3D({ cabinet, name = 'Meuble' }) {
         ))}
       </div>
 
-      {/* Aide + légende */}
       <div className="bg-[#04090f] border border-white/5 rounded-xl p-3 space-y-2">
         <div className="flex flex-wrap gap-x-4 gap-y-1">
           <span className="text-[10px] text-slate-500">🖱️ <b className="text-slate-400">Glisser</b> = rotation</span>
