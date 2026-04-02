@@ -1,6 +1,7 @@
 /**
- * CabinetPlan3D.js — Vue 3D interactive Three.js (orbit souris + touch)
- * Fix: canvas size via ResizeObserver (offsetWidth/Height) car clientWidth=0 au mount.
+ * CabinetPlan3D.js — Vue 3D interactive Three.js
+ * Fix zoom: radius clamp = [minR, maxR] calculé depuis les dims réelles du meuble.
+ * Near plane adaptatif = maxDim * 0.001 pour éviter le clipping lors du zoom.
  */
 import { useRef, useEffect, useState, useCallback } from 'react';
 
@@ -23,7 +24,6 @@ const EDGE_COLOR = {
 const matFor  = r => ROLE_MAT[r]  || ROLE_MAT.default;
 const edgeFor = r => EDGE_COLOR[r] || EDGE_COLOR.default;
 
-// ─ Charge Three.js depuis CDN une seule fois ──────────────────────────────────
 let threeP = null;
 function loadThree() {
   if (threeP) return threeP;
@@ -32,26 +32,29 @@ function loadThree() {
     const s = document.createElement('script');
     s.src = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
     s.onload  = () => resolve(window.THREE);
-    s.onerror = () => reject(new Error('Three.js CDN unreachable'));
+    s.onerror = () => reject(new Error('Three.js CDN indisponible'));
     document.head.appendChild(s);
   });
   return threeP;
 }
 
 export default function CabinetPlan3D({ cabinet, name = 'Meuble' }) {
-  const wrapRef   = useRef(null);   // div conteneur (pour mesurer les dimensions)
+  const wrapRef   = useRef(null);
   const canvasRef = useRef(null);
   const rendRef   = useRef(null);
   const sceneRef  = useRef(null);
   const camRef    = useRef(null);
   const frameRef  = useRef(null);
   const builtRef  = useRef(false);
-  const orbitRef  = useRef({ theta: 0.6, phi: 1.1, radius: 2.2,
-                             dragging: false, lastX: 0, lastY: 0, target: null });
-  const [status, setStatus] = useState('loading'); // 'loading' | 'ok' | 'error' | 'nodims'
+  // minR/maxR calculés depuis les dims réelles, partagés entre buildScene et les handlers
+  const zoomBoundsRef = useRef({ minR: 0.1, maxR: 10 });
+  const orbitRef  = useRef({
+    theta: 0.6, phi: 1.1, radius: 2.2,
+    dragging: false, lastX: 0, lastY: 0, target: null,
+  });
+  const [status, setStatus] = useState('loading');
   const [errMsg, setErrMsg] = useState('');
 
-  // ─ Construit la scène THREE une seule fois ────────────────────────────────
   const buildScene = useCallback((THREE) => {
     if (builtRef.current) return;
     const canvas = canvasRef.current;
@@ -67,13 +70,13 @@ export default function CabinetPlan3D({ cabinet, name = 'Meuble' }) {
       height:    cabinet.height,
       depth:     cabinet.depth     || 60,
       thickness: cabinet.thickness || 1.8,
-      plinth:    cabinet.plinth    || 0,
       panels:    cabinet.panels    || [],
     };
     const m = v => v / 100;  // cm → m
     const W = m(cab.width), H = m(cab.height), D = m(cab.depth), T = m(cab.thickness);
+    const maxDim = Math.max(W, H, D);
 
-    // Renderer
+    // ─ Renderer ──────────────────────────────────────────────────────
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(W_PX, H_PX, false);
@@ -81,66 +84,68 @@ export default function CabinetPlan3D({ cabinet, name = 'Meuble' }) {
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     rendRef.current = renderer;
 
-    // Scène
+    // ─ Scène ───────────────────────────────────────────────────────────
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x04090f);
     sceneRef.current = scene;
 
-    // Caméra
-    const camera = new THREE.PerspectiveCamera(45, W_PX / H_PX, 0.01, 100);
+    // ─ Caméra — near plane = maxDim*0.001 pour éviter clipping au zoom ───────────
+    const near   = maxDim * 0.001;  // ex : meuble 2m → near = 0.002
+    const far    = maxDim * 80;
+    const camera = new THREE.PerspectiveCamera(45, W_PX / H_PX, near, far);
     camRef.current = camera;
-    const maxDim = Math.max(W, H, D);
-    orbitRef.current.radius = maxDim * 2.8;
-    orbitRef.current.target = new THREE.Vector3(0, H / 2, 0);
 
-    // Grille sol
-    const grid = new THREE.GridHelper(4, 40, 0x0f2040, 0x0a1830);
+    // Orbit initial : radius + cibles de zoom
+    const initR = maxDim * 2.8;
+    const minR  = maxDim * 0.25;   // peut zoomer jusqu'à 25% de la plus grande dim
+    const maxR  = maxDim * 10;     // dézoom max
+    orbitRef.current.radius = initR;
+    orbitRef.current.target = new THREE.Vector3(0, H / 2, 0);
+    zoomBoundsRef.current   = { minR, maxR };  // partagé avec le handler wheel
+
+    // ─ Grille + lumières ────────────────────────────────────────────────
+    const grid = new THREE.GridHelper(maxDim * 4, 40, 0x0f2040, 0x0a1830);
     grid.position.y = -0.001;
     scene.add(grid);
 
-    // Lumières
     scene.add(new THREE.AmbientLight(0x8ab4d4, 0.45));
     const dir = new THREE.DirectionalLight(0xffffff, 1.3);
-    dir.position.set(3, 5, 4);
+    dir.position.set(maxDim * 3, maxDim * 5, maxDim * 4);
     dir.castShadow = true;
     dir.shadow.mapSize.set(1024, 1024);
+    dir.shadow.camera.near = near;
+    dir.shadow.camera.far  = far;
     scene.add(dir);
     const fill = new THREE.DirectionalLight(0x3b82f6, 0.35);
-    fill.position.set(-4, 2, -2);
+    fill.position.set(-maxDim * 4, maxDim * 2, -maxDim * 2);
     scene.add(fill);
     const rim = new THREE.DirectionalLight(0xf97316, 0.2);
-    rim.position.set(0, -3, -4);
+    rim.position.set(0, -maxDim * 3, -maxDim * 4);
     scene.add(rim);
 
-    // Sol recevant ombres
     const floor = new THREE.Mesh(
-      new THREE.PlaneGeometry(10, 10),
+      new THREE.PlaneGeometry(maxDim * 10, maxDim * 10),
       new THREE.MeshPhongMaterial({ color: 0x050a14, transparent: true, opacity: 0.85 })
     );
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     scene.add(floor);
 
-    // ─ Ajout des panneaux ─────────────────────────────────────────────────
+    // ─ Panneaux ──────────────────────────────────────────────────────────
     const addPanel = (bw, bh, bd, bx, by, bz, role) => {
       const mat  = matFor(role);
       const geo  = new THREE.BoxGeometry(
-        Math.max(bw, 0.001),
-        Math.max(bh, 0.001),
-        Math.max(bd, 0.001)
+        Math.max(bw, 0.001), Math.max(bh, 0.001), Math.max(bd, 0.001)
       );
       const mesh = new THREE.Mesh(geo, new THREE.MeshPhongMaterial({
-        color:       mat.color,
-        emissive:    mat.emissive,
-        specular:    0x224466,
-        shininess:   40,
-        transparent: mat.opacity < 1,
-        opacity:     mat.opacity,
-        depthWrite:  mat.opacity >= 0.9,
-        side:        mat.opacity < 1 ? THREE.DoubleSide : THREE.FrontSide,
+        color: mat.color, emissive: mat.emissive,
+        specular: 0x224466, shininess: 40,
+        transparent: mat.opacity < 1, opacity: mat.opacity,
+        depthWrite: mat.opacity >= 0.9,
+        side: mat.opacity < 1 ? THREE.DoubleSide : THREE.FrontSide,
       }));
-      mesh.position.set(bx - W/2, by, bz - D/2);
-      mesh.castShadow    = true;
+      mesh.position.set(bx - W / 2, by, bz - D / 2);
+      mesh.castShadow = true;
       mesh.receiveShadow = true;
       scene.add(mesh);
       const edges = new THREE.LineSegments(
@@ -154,48 +159,39 @@ export default function CabinetPlan3D({ cabinet, name = 'Meuble' }) {
     if (cab.panels.length > 0) {
       for (const p of cab.panels) {
         const role = p.role || 'default';
-        const px   = m(p.x ?? 0);
-        const py   = m(p.y ?? 0);
-        const pw   = m(p.w ?? cab.width);
-        const ph   = m(p.h ?? cab.height);
-
-        if (['side','divider'].includes(role)) {
-          // Panneau vertical : épaisseur sur X, pleine profondeur
-          addPanel(T, ph, D, px + T/2, py + ph/2, D/2, role);
-        } else if (['top','bottom','shelf'].includes(role)) {
-          // Panneau horizontal : pleine largeur, épaisseur sur Y
-          addPanel(pw, T, D, px + pw/2, py + T/2, D/2, role);
-        } else if (role === 'back') {
-          // Fond arrière : épaisseur sur Z
-          addPanel(pw, ph, T, px + pw/2, py + ph/2, D - T/2, role);
-        } else if (['door','drawer_front'].includes(role)) {
-          // Porte / tiroir : plan avant, épaisseur sur Z
-          addPanel(pw, ph, T, px + pw/2, py + ph/2, T/2, role);
-        } else {
-          // Fallback générique
-          addPanel(pw, ph, T, px + pw/2, py + ph/2, D/2, role);
-        }
+        const px = m(p.x ?? 0), py = m(p.y ?? 0);
+        const pw = m(p.w ?? cab.width), ph = m(p.h ?? cab.height);
+        if (['side', 'divider'].includes(role))
+          addPanel(T, ph, D, px + T / 2, py + ph / 2, D / 2, role);
+        else if (['top', 'bottom', 'shelf'].includes(role))
+          addPanel(pw, T, D, px + pw / 2, py + T / 2, D / 2, role);
+        else if (role === 'back')
+          addPanel(pw, ph, T, px + pw / 2, py + ph / 2, D - T / 2, role);
+        else if (['door', 'drawer_front'].includes(role))
+          addPanel(pw, ph, T, px + pw / 2, py + ph / 2, T / 2, role);
+        else
+          addPanel(pw, ph, T, px + pw / 2, py + ph / 2, D / 2, role);
       }
     } else {
-      // Fallback : boîte filaire si pas de panels
+      // Fallback filaire
       const geo   = new THREE.BoxGeometry(W, H, D);
       const solid = new THREE.Mesh(geo, new THREE.MeshPhongMaterial({
         color: 0x1e3a5f, emissive: 0x0a1628, transparent: true, opacity: 0.12, side: THREE.DoubleSide,
       }));
-      solid.position.set(0, H/2, 0);
+      solid.position.set(0, H / 2, 0);
       scene.add(solid);
       const edges = new THREE.LineSegments(
         new THREE.EdgesGeometry(geo),
         new THREE.LineBasicMaterial({ color: 0x60a5fa })
       );
-      edges.position.set(0, H/2, 0);
+      edges.position.set(0, H / 2, 0);
       scene.add(edges);
     }
 
     setStatus('ok');
   }, [cabinet]);
 
-  // ─ Boucle de rendu ────────────────────────────────────────────────────────
+  // ─ Boucle de rendu ─────────────────────────────────────────────
   const loop = useCallback(() => {
     frameRef.current = requestAnimationFrame(loop);
     if (!rendRef.current || !sceneRef.current || !camRef.current) return;
@@ -211,33 +207,31 @@ export default function CabinetPlan3D({ cabinet, name = 'Meuble' }) {
     rendRef.current.render(sceneRef.current, camRef.current);
   }, []);
 
-  // ─ Init : attend que le wrapper soit dimensionné (ResizeObserver) ──────────────
+  // ─ Init + ResizeObserver ─────────────────────────────────────────────
   useEffect(() => {
     if (!cabinet?.width || !cabinet?.height) { setStatus('nodims'); return; }
     let alive = true;
     let ro = null;
-
     const tryInit = (THREE) => {
       if (!alive || builtRef.current) return;
       const wrap = wrapRef.current;
-      if (!wrap || wrap.offsetWidth === 0) return; // pas encore layout
+      if (!wrap || wrap.offsetWidth === 0) return;
       buildScene(THREE);
       if (alive) loop();
     };
-
     loadThree()
       .then(THREE => {
         if (!alive) return;
-        // Essai immédiat
         tryInit(THREE);
-        // Fallback : ResizeObserver sur le wrapper
         if (!builtRef.current && wrapRef.current) {
-          ro = new ResizeObserver(() => { tryInit(THREE); if (builtRef.current && ro) { ro.disconnect(); ro = null; } });
+          ro = new ResizeObserver(() => {
+            tryInit(THREE);
+            if (builtRef.current && ro) { ro.disconnect(); ro = null; }
+          });
           ro.observe(wrapRef.current);
         }
       })
       .catch(e => { if (alive) { setStatus('error'); setErrMsg(e.message); } });
-
     return () => {
       alive = false;
       if (ro) ro.disconnect();
@@ -247,13 +241,13 @@ export default function CabinetPlan3D({ cabinet, name = 'Meuble' }) {
     };
   }, [cabinet, buildScene, loop]);
 
-  // ─ Resize fenêtre ───────────────────────────────────────────────────────
+  // ─ Resize fenêtre ───────────────────────────────────────────────
   useEffect(() => {
     const fn = () => {
       const wrap = wrapRef.current;
       if (!wrap || !rendRef.current || !camRef.current) return;
       const w = wrap.offsetWidth, h = wrap.offsetHeight;
-      if (w === 0 || h === 0) return;
+      if (!w || !h) return;
       camRef.current.aspect = w / h;
       camRef.current.updateProjectionMatrix();
       rendRef.current.setSize(w, h, false);
@@ -262,12 +256,17 @@ export default function CabinetPlan3D({ cabinet, name = 'Meuble' }) {
     return () => window.removeEventListener('resize', fn);
   }, []);
 
-  // ─ Contrôles souris + touch ─────────────────────────────────────────────
+  // ─ Contrôles souris + touch — clamp radius depuis zoomBoundsRef ──────────
   useEffect(() => {
     const el = canvasRef.current;
     if (!el) return;
     const o = orbitRef.current;
     let lastDist = null;
+
+    const clampR = r => {
+      const { minR, maxR } = zoomBoundsRef.current;
+      return Math.max(minR, Math.min(maxR, r));
+    };
 
     const down  = e => { o.dragging = true;  o.lastX = e.clientX; o.lastY = e.clientY; };
     const up    = ()  => { o.dragging = false; };
@@ -279,10 +278,14 @@ export default function CabinetPlan3D({ cabinet, name = 'Meuble' }) {
     };
     const wheel = e => {
       e.preventDefault();
-      o.radius = Math.max(0.2, Math.min(10, o.radius + e.deltaY * 0.002));
+      // Sensibilité proportionnelle au radius actuel pour un zoom naturel
+      const factor = o.radius * 0.001;
+      o.radius = clampR(o.radius + e.deltaY * factor);
     };
     const tstart = e => {
-      if (e.touches.length === 1) { o.dragging = true; o.lastX = e.touches[0].clientX; o.lastY = e.touches[0].clientY; }
+      if (e.touches.length === 1) {
+        o.dragging = true; o.lastX = e.touches[0].clientX; o.lastY = e.touches[0].clientY;
+      }
       if (e.touches.length === 2) {
         const dx = e.touches[0].clientX - e.touches[1].clientX;
         const dy = e.touches[0].clientY - e.touches[1].clientY;
@@ -301,7 +304,7 @@ export default function CabinetPlan3D({ cabinet, name = 'Meuble' }) {
         const dx = e.touches[0].clientX - e.touches[1].clientX;
         const dy = e.touches[0].clientY - e.touches[1].clientY;
         const d  = Math.hypot(dx, dy);
-        o.radius = Math.max(0.2, Math.min(10, o.radius * (lastDist / d)));
+        o.radius = clampR(o.radius * (lastDist / d));
         lastDist = d;
       }
     };
@@ -313,7 +316,7 @@ export default function CabinetPlan3D({ cabinet, name = 'Meuble' }) {
     el.addEventListener('wheel',      wheel, { passive: false });
     el.addEventListener('touchstart', tstart, { passive: false });
     el.addEventListener('touchend',   tend);
-    el.addEventListener('touchmove',  tmove,  { passive: false });
+    el.addEventListener('touchmove',  tmove, { passive: false });
     return () => {
       el.removeEventListener('mousedown',  down);
       el.removeEventListener('mouseup',    up);
@@ -328,21 +331,21 @@ export default function CabinetPlan3D({ cabinet, name = 'Meuble' }) {
 
   const snap = (theta, phi) => { orbitRef.current.theta = theta; orbitRef.current.phi = phi; };
 
-  // ─ Cas : pas de dimensions ──────────────────────────────────────────────────
   if (!cabinet?.width || !cabinet?.height) {
     return (
       <div className="flex flex-col items-center justify-center py-16 gap-4 text-center">
         <div className="text-4xl">📦</div>
         <p className="text-white font-bold">Vue 3D non disponible</p>
-        <p className="text-sm text-slate-400 max-w-xs">Les dimensions du meuble sont introuvables. Relancez un scan IA pour les obtenir.</p>
+        <p className="text-sm text-slate-400 max-w-xs">Dimensions manquantes — relancez un scan IA.</p>
       </div>
     );
   }
 
   return (
     <div className="flex flex-col gap-3">
-      {/* Conteneur canvas — hauteur fixe pour que offsetWidth/Height soient non-zéro */}
-      <div className="relative rounded-xl overflow-hidden border border-white/10 shadow-2xl bg-[#04090f]"
+      {/* Canvas */}
+      <div
+        className="relative rounded-xl overflow-hidden border border-white/10 shadow-2xl bg-[#04090f]"
         style={{ width: '100%', height: '360px' }}
         ref={wrapRef}
       >
@@ -352,44 +355,39 @@ export default function CabinetPlan3D({ cabinet, name = 'Meuble' }) {
                    cursor: status === 'ok' ? 'grab' : 'default' }}
         />
 
-        {/* Loading */}
         {status === 'loading' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[#04090f]">
             <div className="w-10 h-10 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
             <p className="text-slate-400 text-sm">Chargement Three.js…</p>
           </div>
         )}
-
-        {/* Erreur */}
         {status === 'error' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[#04090f]">
             <p className="text-red-400 font-bold">⚠️ Erreur 3D</p>
             <p className="text-slate-500 text-xs max-w-xs text-center">{errMsg}</p>
           </div>
         )}
-
-        {/* Badges */}
         {status === 'ok' && (
           <>
             <div className="absolute top-3 left-3 bg-black/60 backdrop-blur-sm px-3 py-1 rounded-full border border-white/10 pointer-events-none">
-              <span className="text-[10px] font-bold text-orange-400 tracking-widest">VUE 3D • {(name||'MEUBLE').toUpperCase()}</span>
+              <span className="text-[10px] font-bold text-orange-400 tracking-widest">VUE 3D • {(name || 'MEUBLE').toUpperCase()}</span>
             </div>
             <div className="absolute top-3 right-3 bg-black/60 backdrop-blur-sm px-3 py-1 rounded-full border border-white/10 pointer-events-none">
               <span className="text-[10px] font-mono text-slate-300">
-                {cabinet.width}×{cabinet.height}×{cabinet.depth||60} cm
+                {cabinet.width}×{cabinet.height}×{cabinet.depth || 60} cm
               </span>
             </div>
           </>
         )}
       </div>
 
-      {/* Boutons vues rapides */}
+      {/* Vues rapides */}
       <div className="grid grid-cols-5 gap-1.5">
         {[
-          { label: '🔄 Face',    t: Math.PI,   p: Math.PI/2 },
+          { label: '🔄 Face',    t: Math.PI,   p: Math.PI / 2 },
           { label: '↗ Iso',     t: 0.6,       p: 1.1 },
           { label: '⬆ Dessus',  t: 0.6,       p: 0.05 },
-          { label: '➡ Côté',    t: Math.PI/2, p: Math.PI/2 },
+          { label: '➡ Côté',    t: Math.PI / 2, p: Math.PI / 2 },
           { label: '↙ Arrière', t: 0,         p: 1.1 },
         ].map(v => (
           <button key={v.label} onClick={() => snap(v.t, v.p)}
