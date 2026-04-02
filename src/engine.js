@@ -62,7 +62,7 @@ function cut(rect, pieces, kerf, tol, depth, panelId) {
     let bestGroup = null, bestSel = [], bestUtil = -1;
     for (const g of groups) {
       if (g.bandH > H - usedH) continue;
-      const sel = knapsack1D(g.pieces.map(p => p.l), W - kerf, kerf);
+      const sel = knapsack1D(g.pieces.map(p => p.l), W + kerf, kerf);
       if (!sel.length) continue;
       const used = sel.reduce((s, i) => s + g.pieces[i].l, 0);
       if (used > bestUtil) { bestUtil = used; bestGroup = g; bestSel = sel; }
@@ -226,8 +226,9 @@ export function optimise(pieces, panel, opts = {}) {
 
   let all = [], id = 1;
   for (const p of pieces)
-    for (let i = 0; i < (p.qty || 1); i++)
-      all.push({ id: id++, name: p.name, length: cm(p.length), height: cm(p.height) });
+    if (p.length > 0 && p.height > 0)
+      for (let i = 0; i < (p.qty || 1); i++)
+        all.push({ id: id++, name: p.name, length: cm(p.length), height: cm(p.height) });
 
   const W = cm(panel.w), H = cm(panel.h);
   const panelArea = W * H;
