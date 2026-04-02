@@ -45,3 +45,4 @@
 
 ## Correctif appliqué dans cette révision
 - Ajout de la fonction `createProject` dans `src/supabase.js` pour aligner le contrat attendu par `ProjectsScreen`.
+.
