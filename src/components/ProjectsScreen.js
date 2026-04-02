@@ -15,6 +15,8 @@ export default function ProjectsScreen({ onLoad, onNew, user, onScanComplete, on
   const [showUpload, setShowUpload] = useState(false);
   const [lastResult, setLastResult] = useState(null);
   const [view3D, setView3D] = useState(false);
+  const [savingPlan, setSavingPlan] = useState(false);
+  const [savedPlanMsg, setSavedPlanMsg] = useState('');
 
   // Pipeline : scan brut -> modèle meuble -> plan 2D/3D
   const cabinetModel = useMemo(() => {
@@ -40,6 +42,30 @@ export default function ProjectsScreen({ onLoad, onNew, user, onScanComplete, on
     const { data } = await loadProjects();
     setProjects(data || []);
     setLoading(false);
+  };
+
+  const savePlan = async (type, svgData, title) => {
+    if (!user) return;
+    setSavingPlan(true);
+    try {
+      const { supabase: sb } = await import('../supabase');
+      const { data: { user: u } } = await sb.auth.getUser();
+      if (!u) throw new Error('not_authenticated');
+      await sb.from('plans').insert({
+        user_id: u.id,
+        project_id: null,
+        title: title || 'Plan sans titre',
+        type,
+        svg_data: svgData,
+        metadata: {},
+      });
+      setSavedPlanMsg('Plan sauvegardé !');
+      setTimeout(() => setSavedPlanMsg(''), 3000);
+    } catch (e) {
+      setSavedPlanMsg('Erreur sauvegarde');
+      setTimeout(() => setSavedPlanMsg(''), 3000);
+    }
+    setSavingPlan(false);
   };
 
   const handleDelete = async (id) => {
@@ -156,9 +182,9 @@ export default function ProjectsScreen({ onLoad, onNew, user, onScanComplete, on
               </button>
             </div>
 
-            {/* Toggle 2D / 3D si modèle meuble disponible */}
+            {/* Toggle 2D / 3D + bouton sauvegarder */}
             {cabinetModel && (
-              <div className="flex gap-2 mb-4">
+              <div className="flex flex-wrap gap-2 mb-4 items-center">
                 <button
                   onClick={() => setView3D(false)}
                   className={"px-4 py-2 rounded-lg text-sm font-bold transition-colors " + (!view3D ? 'bg-orange-500 text-white' : 'bg-white/5 text-slate-400 hover:text-white')}
@@ -171,6 +197,20 @@ export default function ProjectsScreen({ onLoad, onNew, user, onScanComplete, on
                 >
                   Vue 3D
                 </button>
+                <div className="ml-auto flex items-center gap-2">
+                  {savedPlanMsg && <span className="text-xs text-green-400 font-medium">{savedPlanMsg}</span>}
+                  <button
+                    onClick={() => {
+                      const svgEl = document.querySelector('.cabinet-plan-svg');
+                      const svgData = svgEl ? svgEl.outerHTML : '';
+                      savePlan(view3D ? '3d' : '2d', svgData, 'Plan du ' + new Date().toLocaleDateString('fr-FR'));
+                    }}
+                    disabled={savingPlan || !user}
+                    className="px-3 py-2 rounded-lg text-xs font-bold bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10 disabled:opacity-40 transition-colors"
+                  >
+                    {savingPlan ? '...' : '💾 Sauvegarder'}
+                  </button>
+                </div>
               </div>
             )}
 
