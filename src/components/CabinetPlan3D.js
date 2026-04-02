@@ -42,7 +42,7 @@ function depthOf(x, y, z, th, ph, sc, ox, oy) {
 }
 
 // ────────────────────────────────────────────────────────────────────────────────
-function buildDimFace(W, H, th, ph, sc, ox, oy) {
+function buildDimFace(W, H, DEP, th, ph, sc, ox, oy) {
   const yBase = -0.02;
   const p0w   = iso(0,       yBase,       0, th, ph, sc, ox, oy);
   const p1w   = iso(W,       yBase,       0, th, ph, sc, ox, oy);
@@ -51,7 +51,10 @@ function buildDimFace(W, H, th, ph, sc, ox, oy) {
   const p0h   = iso(xBase,   0,           0, th, ph, sc, ox, oy);
   const p1h   = iso(xBase,   H,           0, th, ph, sc, ox, oy);
   const midH  = iso(xBase - 0.04, H / 2,  0, th, ph, sc, ox, oy);
-  return { p0w, p1w, midW, p0h, p1h, midH };
+  const p0d   = iso(W,        yBase,        0,       th, ph, sc, ox, oy);
+  const p1d   = iso(W,        yBase,        DEP,     th, ph, sc, ox, oy);
+  const midD  = iso(W + 0.04, yBase - 0.04, DEP / 2, th, ph, sc, ox, oy);
+  return { p0w, p1w, midW, p0h, p1h, midH, p0d, p1d, midD };
 }
 
 function buildGrid(W, D, th, ph, sc, ox, oy) {
@@ -297,7 +300,7 @@ export default function CabinetPlan3D({ model, cabinet: cabinetProp, pieces = []
   allFaces.sort((a, b) => a.depth - b.depth);
 
   const gridPath = buildGrid(W * 2.2, DEP * 2.2, th, ph, sc, OX, OY);
-  const dimsFace = buildDimFace(W, H, th, ph, sc, OX, OY);
+  const dimsFace = buildDimFace(W, H, DEP, th, ph, sc, OX, OY);
 
   // Nom d'affichage
   const displayName = model?.name || name || 'MEUBLE';
@@ -384,6 +387,14 @@ export default function CabinetPlan3D({ model, cabinet: cabinetProp, pieces = []
           <text x={dimsFace.midH.sx} y={dimsFace.midH.sy} textAnchor="middle"
             fontSize="9" fill="#22c55e" fontFamily="monospace" opacity="0.9">
             {dims.height} cm
+          </text>
+          {/* Cote profondeur */}
+          <line x1={dimsFace.p0d.sx} y1={dimsFace.p0d.sy}
+                x2={dimsFace.p1d.sx} y2={dimsFace.p1d.sy}
+            stroke="#3b82f6" strokeWidth="0.8" strokeDasharray="4 2" opacity="0.7" />
+          <text x={dimsFace.midD.sx} y={dimsFace.midD.sy} textAnchor="middle"
+            fontSize="9" fill="#3b82f6" fontFamily="monospace" opacity="0.9">
+            {Math.round(DEP * 100)} cm
           </text>
 
           {/* Axes XYZ */}
