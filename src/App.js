@@ -93,9 +93,16 @@ export default function App() {
 
   const handleOptimize = useCallback(() => {
     if (!project.pieces.length) return;
+    // Guard: s assurer que le panneau a des dimensions valides
+    const panel = {
+      w: parseFloat(project.panel?.w) || 244,
+      h: parseFloat(project.panel?.h) || 122,
+    };
+    const pieces = project.pieces.filter(p => p.length > 0 && p.height > 0);
+    if (!pieces.length) return;
     setComputing(true);
     setTimeout(async () => {
-      const res = optimise(project.pieces, project.panel, { kerf: project.kerf, tolerance: project.tolerance });
+      const res = optimise(pieces, panel, { kerf: project.kerf || 3, tolerance: project.tolerance || 10 });
       setResults(res); setComputing(false); setScreen(SCREENS.RESULTS);
       if (user) {
         setSaving(true);
