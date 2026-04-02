@@ -1,14 +1,23 @@
 import { useState, useEffect } from 'react';
 import { loadProjects, deleteProject } from '../supabase';
 import { Plus, Trash2, FolderOpen, User, Calendar, FileText, Layers, CheckCircle, X, Ruler, Activity } from 'lucide-react';
-import ImageUpload from './ImageUpload';
+import ImageUpload    from './ImageUpload';
+import ScanWithEditor from './ScanWithEditor';
 
 export default function ProjectsScreen({ onLoad, onNew, user, onScanComplete }) {
-  const [projects, setProjects] = useState([]);
-  const [loading, setLoading]   = useState(true);
-  const [deleting, setDeleting] = useState(null);
-  const [showUpload, setShowUpload] = useState(false);
-  const [lastResult, setLastResult] = useState(null);
+  const [projects,    setProjects]    = useState([]);
+  const [loading,     setLoading]     = useState(true);
+  const [deleting,    setDeleting]    = useState(null);
+  const [showUpload,  setShowUpload]  = useState(false);
+  const [showEditor,  setShowEditor]  = useState(false);
+  const [lastResult,  setLastResult]  = useState(null);
+  const [scanImage,   setScanImage]   = useState(null);   // base64 PNG du croquis
+  const [scanResult,  setScanResult]  = useState(null);   // résultat brut Claude
+
+  // Récupérer la clé API depuis l'env ou depuis ImageUpload
+  const [apiKey, setApiKey] = useState(
+    process.env.REACT_APP_ANTHROPIC_KEY || ''
+  );
 
   useEffect(() => { fetchProjects(); }, []);
 
@@ -27,33 +36,65 @@ export default function ProjectsScreen({ onLoad, onNew, user, onScanComplete }) 
     setDeleting(null);
   };
 
-  const formatDate = (dateStr) => {
-    return new Date(dateStr).toLocaleDateString('fr-BE', {
-      day: '2-digit', month: '2-digit', year: 'numeric'
-    });
+  const formatDate = (dateStr) =>
+    new Date(dateStr).toLocaleDateString('fr-BE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+  // ─── Flux Scan → Éditeur ───────────────────────────────────────────────
+  // ImageUpload appelle ce callback avec (result, imageBase64)
+  const handleScanReady = (result, imageBase64) => {
+    setScanResult(result);
+    setScanImage(imageBase64 || null);
+    setApiKey(result?._apiKey || apiKey);  // ImageUpload peut passer la clé via résultat
+    setShowUpload(false);
+    setShowEditor(true);   // → ouvrir l'éditeur
   };
 
-  const handleScanComplete = (result) => {
-    setLastResult(result);
-    setShowUpload(false);
-    if (onScanComplete) onScanComplete(result);
+  // ScanWithEditor appelle onComplete avec le résultat final (initial ou raffiné)
+  const handleEditorComplete = (finalResult) => {
+    setShowEditor(false);
+    setLastResult(finalResult);
+    if (onScanComplete) onScanComplete(finalResult);
   };
 
   return (
     <div className="min-h-screen bg-[#050505] text-slate-200 pb-20 relative font-sans selection:bg-orange-500 selection:text-white">
-      
+
+      {/* ─ Overlay Scan ImageUpload ─ */}
       {showUpload && (
-        <ImageUpload 
-          onScanComplete={handleScanComplete} 
-          onCancel={() => setShowUpload(false)} 
+        <ImageUpload
+          onScanComplete={handleScanReady}
+          onCancel={() => setShowUpload(false)}
         />
+      )}
+
+      {/* ─ Overlay Éditeur ScanWithEditor ─ */}
+      {showEditor && (
+        <div className="fixed inset-0 z-50 bg-[#060b14] overflow-y-auto">
+          <div className="max-w-4xl mx-auto px-4 py-6">
+            <div className="flex items-center gap-3 mb-4">
+              <button
+                onClick={() => setShowEditor(false)}
+                className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+              >
+                ←
+              </button>
+              <h1 className="text-white font-bold text-lg">Correction du croquis</h1>
+            </div>
+            <ScanWithEditor
+              initialScanResult={scanResult}
+              scanImage={scanImage}
+              apiKey={apiKey}
+              onComplete={handleEditorComplete}
+              onBackToScan={() => { setShowEditor(false); setShowUpload(true); }}
+            />
+          </div>
+        </div>
       )}
 
       {/* HEADER */}
       <header className="bg-gradient-to-b from-[#1a1a1a] to-[#050505] pt-10 pb-32 px-6 relative overflow-hidden border-b border-white/5">
-        <div className="absolute top-0 right-0 w-96 h-96 bg-orange-600/10 rounded-full mix-blend-screen filter blur-[100px] opacity-50"></div>
-        <div className="absolute bottom-0 left-0 w-96 h-96 bg-blue-600/10 rounded-full mix-blend-screen filter blur-[100px] opacity-30"></div>
-
+        <div className="absolute top-0 right-0 w-96 h-96 bg-orange-600/10 rounded-full mix-blend-screen filter blur-[100px] opacity-50" />
+        <div className="absolute bottom-0 left-0 w-96 h-96 bg-blue-600/10 rounded-full mix-blend-screen filter blur-[100px] opacity-30" />
         <div className="relative z-10 max-w-6xl mx-auto">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
             <div>
@@ -62,25 +103,23 @@ export default function ProjectsScreen({ onLoad, onNew, user, onScanComplete }) 
               </h1>
               <p className="text-slate-500 font-medium">Optimiseur de découpe intelligent</p>
             </div>
-            
             <div className="flex items-center gap-3 bg-white/5 backdrop-blur-md px-4 py-2 rounded-full border border-white/10 shadow-lg">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(34,197,94,0.5)]"></div>
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(34,197,94,0.5)]" />
               <span className="text-sm font-medium text-slate-300">{user?.email || 'Invité'}</span>
               <div className="w-8 h-8 bg-gradient-to-tr from-orange-500 to-red-500 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-lg">
                 {user?.email ? user.email[0].toUpperCase() : 'U'}
               </div>
             </div>
           </div>
-
           <div className="flex flex-col sm:flex-row gap-3">
-            <button 
+            <button
               onClick={() => setShowUpload(true)}
               className="group relative inline-flex items-center justify-center gap-3 bg-white text-black hover:bg-orange-500 hover:text-white font-bold py-4 px-8 rounded-xl transition-all duration-300 shadow-[0_0_20px_rgba(255,255,255,0.1)] hover:shadow-[0_0_30px_rgba(249,115,22,0.4)] transform hover:-translate-y-1"
             >
               <Plus className="w-6 h-6 transition-transform group-hover:rotate-90" />
               <span>Nouveau Projet (Scan IA)</span>
             </button>
-            <button 
+            <button
               onClick={onNew}
               className="group relative inline-flex items-center justify-center gap-3 bg-white/10 hover:bg-white/20 text-white font-bold py-4 px-8 rounded-xl transition-all duration-300 border border-white/10 hover:border-white/30 transform hover:-translate-y-1"
             >
@@ -91,18 +130,25 @@ export default function ProjectsScreen({ onLoad, onNew, user, onScanComplete }) 
         </div>
       </header>
 
-      {/* MAIN CONTENT */}
+      {/* MAIN */}
       <main className="max-w-6xl mx-auto px-6 -mt-20 relative z-20">
-        
+
         {lastResult && (
           <div className="mb-10 bg-gradient-to-br from-[#111] to-[#0a0a0a] border border-white/10 rounded-2xl p-6 shadow-2xl relative overflow-hidden animate-fade-in-up">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-green-500/10 rounded-full blur-3xl"></div>
+            <div className="absolute top-0 right-0 w-32 h-32 bg-green-500/10 rounded-full blur-3xl" />
             <div className="flex items-center justify-between mb-6 relative z-10">
               <div className="flex items-center gap-3 text-green-400">
                 <div className="p-2 bg-green-500/10 rounded-lg">
                   <CheckCircle className="w-6 h-6" />
                 </div>
-                <h3 className="font-bold text-lg text-white">Analyse Réussie</h3>
+                <div>
+                  <h3 className="font-bold text-lg text-white">Analyse Terminée</h3>
+                  {lastResult.corrections_applied?.length > 0 && (
+                    <p className="text-xs text-green-400 mt-0.5">
+                      ✓ {lastResult.corrections_applied.length} correction(s) appliquée(s)
+                    </p>
+                  )}
+                </div>
               </div>
               <button onClick={() => setLastResult(null)} className="text-slate-500 hover:text-white transition-colors">
                 <X className="w-5 h-5" />
@@ -113,20 +159,29 @@ export default function ProjectsScreen({ onLoad, onNew, user, onScanComplete }) 
                 <div className="text-3xl font-bold text-white mb-1">{lastResult.pieces?.length || 0}</div>
                 <div className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Pièces Détectées</div>
               </div>
-              <div className="bg-white/5 backdrop-blur-sm border border-white/5 p-4 rounded-xl text-center hover:bg-white/10 transition-colors col-span-1 md:col-span-3 flex flex-col justify-center">
-                <div className="text-sm text-slate-300 mb-2 flex items-center justify-center gap-2">
-                  <Activity className="w-4 h-4 text-orange-500" />
-                  Prêt à être intégré au chantier
+              {lastResult.cabinet && (
+                <>
+                  <div className="bg-white/5 backdrop-blur-sm border border-white/5 p-4 rounded-xl text-center hover:bg-white/10 transition-colors">
+                    <div className="text-xl font-bold text-orange-400 mb-1">{lastResult.cabinet.width}×{lastResult.cabinet.height}</div>
+                    <div className="text-xs text-slate-400 uppercase tracking-wider font-semibold">L×H (cm)</div>
+                  </div>
+                  <div className="bg-white/5 backdrop-blur-sm border border-white/5 p-4 rounded-xl text-center hover:bg-white/10 transition-colors">
+                    <div className="text-xl font-bold text-sky-400 mb-1">P {lastResult.cabinet.depth ?? '?'} cm</div>
+                    <div className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Profondeur</div>
+                  </div>
+                </>
+              )}
+              <div className="bg-white/5 backdrop-blur-sm border border-white/5 p-4 rounded-xl text-center hover:bg-white/10 transition-colors">
+                <div className="text-3xl font-bold text-green-400 mb-1">
+                  {lastResult.confidence ? Math.round(lastResult.confidence * 100) + '%' : '—'}
                 </div>
-                <div className="w-full bg-white/10 h-1.5 rounded-full overflow-hidden">
-                  <div className="bg-gradient-to-r from-orange-500 to-red-500 h-full w-full animate-pulse"></div>
-                </div>
+                <div className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Confiance IA</div>
               </div>
             </div>
           </div>
         )}
 
-        {/* LISTE DES PROJETS */}
+        {/* LISTE PROJETS */}
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-bold text-white flex items-center gap-2">
             <FolderOpen className="w-6 h-6 text-orange-500" />
@@ -141,7 +196,7 @@ export default function ProjectsScreen({ onLoad, onNew, user, onScanComplete }) 
 
         {loading && (
           <div className="flex flex-col items-center justify-center py-20 text-slate-500">
-            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-orange-500 mb-4"></div>
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-orange-500 mb-4" />
             <p className="text-sm font-medium">Chargement des données...</p>
           </div>
         )}
@@ -157,16 +212,14 @@ export default function ProjectsScreen({ onLoad, onNew, user, onScanComplete }) 
           </div>
         )}
 
-        {/* GRILLE RESPONSIVE */}
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {projects.map(p => (
-            <div 
-              key={p.id} 
+            <div
+              key={p.id}
               className="group relative bg-[#111] hover:bg-[#161616] rounded-2xl p-6 border border-white/5 hover:border-orange-500/30 transition-all duration-300 cursor-pointer shadow-lg hover:shadow-[0_10px_40px_-10px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col justify-between"
               onClick={() => onLoad(p.id)}
             >
-              <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-orange-500 to-red-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-              
+              <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-orange-500 to-red-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
               <div className="flex justify-between items-start pl-2">
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2 flex-wrap">
@@ -179,14 +232,12 @@ export default function ProjectsScreen({ onLoad, onNew, user, onScanComplete }) 
                       </span>
                     )}
                   </div>
-                  
                   {p.client && (
                     <div className="flex items-center gap-2 text-slate-400 text-sm mb-4">
                       <User className="w-4 h-4" />
                       <span>{p.client}</span>
                     </div>
                   )}
-
                   <div className="flex flex-wrap gap-2 mt-3">
                     <div className="flex items-center gap-1.5 bg-white/5 px-3 py-1.5 rounded-lg border border-white/5 text-xs text-slate-400">
                       <Calendar className="w-3.5 h-3.5" />
@@ -206,18 +257,15 @@ export default function ProjectsScreen({ onLoad, onNew, user, onScanComplete }) 
                     )}
                   </div>
                 </div>
-                
                 <button
                   onClick={(e) => { e.stopPropagation(); handleDelete(p.id); }}
                   disabled={deleting === p.id}
                   className="opacity-0 group-hover:opacity-100 p-3 text-slate-600 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all disabled:opacity-50"
                   title="Supprimer"
                 >
-                  {deleting === p.id ? (
-                    <div className="w-5 h-5 border-2 border-red-500 border-t-transparent rounded-full animate-spin"></div>
-                  ) : (
-                    <Trash2 className="w-5 h-5" />
-                  )}
+                  {deleting === p.id
+                    ? <div className="w-5 h-5 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
+                    : <Trash2 className="w-5 h-5" />}
                 </button>
               </div>
             </div>
