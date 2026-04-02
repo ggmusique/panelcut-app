@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { exportPDF } from '../pdfExport';
-import { Download, Scissors, RotateCw, Layers, ChevronLeft, ChevronRight, Maximize2, BarChart2, Map, List } from 'lucide-react';
+import { Download, Scissors, RotateCw, Layers, ChevronLeft, ChevronRight, Maximize2, BarChart2, Map, List, Box } from 'lucide-react';
 import CabinetPlan2D from './CabinetPlan2D';
+import CabinetPlan3D from './CabinetPlan3D';
 import BoardList from './BoardList';
 
 const PIECE_COLORS = [
@@ -60,7 +61,6 @@ function PanelSVG({ panel, panelW, panelH, kerf, colorMap }) {
   const sx = SVG_W / panelW;
   const sy = SVG_H / panelH;
   const wasteZones = computeWasteZones(panel.placed, panelW, panelH, kerf);
-  const hCuts = panel.cuts.filter(c => c.type === 'bande' && c.orientation === 'horizontal');
 
   return (
     <div className="relative group">
@@ -77,58 +77,43 @@ function PanelSVG({ panel, panelW, panelH, kerf, colorMap }) {
           <pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
             <line x1="0" y1="0" x2="0" y2="6" stroke="rgba(239,68,68,0.25)" strokeWidth="2" />
           </pattern>
-          <marker id="cutArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-            <path d="M2 1L8 5L2 9" fill="none" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-          </marker>
         </defs>
         <rect x={0} y={0} width={SVG_W} height={SVG_H} fill="url(#grid)" />
         {wasteZones.map((z, i) => {
-          const zx = z.x * sx; const zy = z.y * sy; const zw = z.w * sx; const zh = z.h * sy;
-          const cx = zx + zw / 2; const cy = zy + zh / 2;
+          const zx = z.x * sx, zy = z.y * sy, zw = z.w * sx, zh = z.h * sy;
+          const cx = zx + zw / 2, cy = zy + zh / 2;
           return (
             <g key={`waste-${i}`}>
               <rect x={zx.toFixed(1)} y={zy.toFixed(1)} width={zw.toFixed(1)} height={zh.toFixed(1)} fill="url(#hatch)" stroke="rgba(239,68,68,0.4)" strokeWidth="1" rx="2" />
-              {zw > 30 && zh > 16 && (
-                <>
-                  <text x={cx.toFixed(1)} y={(cy - 4).toFixed(1)} textAnchor="middle" fontSize="9" fontWeight="bold" fill="#ef4444" fontFamily="monospace">{z.wCm}×{z.hCm}cm</text>
-                  <text x={cx.toFixed(1)} y={(cy + 8).toFixed(1)} textAnchor="middle" fontSize="7" fill="rgba(239,68,68,0.7)" fontFamily="sans-serif">CHUTE</text>
-                </>
-              )}
+              {zw > 30 && zh > 16 && (<><text x={cx.toFixed(1)} y={(cy-4).toFixed(1)} textAnchor="middle" fontSize="9" fontWeight="bold" fill="#ef4444" fontFamily="monospace">{z.wCm}×{z.hCm}cm</text><text x={cx.toFixed(1)} y={(cy+8).toFixed(1)} textAnchor="middle" fontSize="7" fill="rgba(239,68,68,0.7)" fontFamily="sans-serif">CHUTE</text></>)}
             </g>
           );
         })}
         {panel.placed.map((p, i) => {
           const c  = getColor(p.name, colorMap);
-          const px = (p.x  || 0) * sx; const py = (p.bandY || 0) * sy;
-          const pw = p.l * sx - 1;     const ph = p.h * sy - 1;
+          const px = (p.x || 0) * sx, py = (p.bandY || 0) * sy;
+          const pw = p.l * sx - 1, ph = p.h * sy - 1;
           return (
             <g key={i}>
               <rect x={(px+1).toFixed(1)} y={(py+1).toFixed(1)} width={Math.max(pw-2,0).toFixed(1)} height={Math.max(ph-2,0).toFixed(1)} fill={c.glow} filter="blur(4px)" opacity="0.5" />
               <rect x={px.toFixed(1)} y={py.toFixed(1)} width={Math.max(pw,1).toFixed(1)} height={Math.max(ph,1).toFixed(1)} fill={c.fill} stroke={c.stroke} strokeWidth="1.5" rx="2" />
-              {pw > 40 && ph > 20 && (
-                <g>
-                  <text x={(px+pw/2).toFixed(1)} y={(py+ph/2+4).toFixed(1)} textAnchor="middle" fontSize="10" fontWeight="700" fill="#ffffff" fontFamily="monospace">{fmtCm(p.l)}×{fmtCm(p.h)}</text>
-                  <text x={(px+pw/2).toFixed(1)} y={(py+ph/2+14).toFixed(1)} textAnchor="middle" fontSize="8" fill="#cbd5e1" fontFamily="sans-serif">{p.name.substring(0,10)}{p.name.length>10?'...':''}</text>
-                </g>
-              )}
+              {pw > 40 && ph > 20 && (<g><text x={(px+pw/2).toFixed(1)} y={(py+ph/2+4).toFixed(1)} textAnchor="middle" fontSize="10" fontWeight="700" fill="#ffffff" fontFamily="monospace">{fmtCm(p.l)}×{fmtCm(p.h)}</text><text x={(px+pw/2).toFixed(1)} y={(py+ph/2+14).toFixed(1)} textAnchor="middle" fontSize="8" fill="#cbd5e1" fontFamily="sans-serif">{p.name.substring(0,10)}{p.name.length>10?'...':''}</text></g>)}
             </g>
           );
         })}
         {(() => {
           const allBands = panel.cuts.filter(c => c.type === 'bande');
           const hBands = allBands.filter(c => c.orientation === 'horizontal').sort((a,b) => (a.pos||0)-(b.pos||0));
-          let num = 1;
-          const svgItems = [];
+          let num = 1; const items = [];
           for (const h of hBands) {
-            const cy = h.pos * sy; const n = num++;
-            svgItems.push(<g key={`h-${n}`}><line x1={0} y1={cy.toFixed(1)} x2={SVG_W} y2={cy.toFixed(1)} stroke="#f59e0b" strokeWidth="1.5" strokeDasharray="6,3" /><line x1={SVG_W+2} y1={cy.toFixed(1)} x2={SVG_W+10} y2={cy.toFixed(1)} stroke="#f59e0b" strokeWidth="1" /><text x={SVG_W+14} y={(cy+4).toFixed(1)} fontSize="9" fontWeight="bold" fill="#f59e0b" fontFamily="monospace">{h.posCm}</text><rect x={0} y={(cy-9).toFixed(1)} width="18" height="14" rx="3" fill="#f59e0b" /><text x="9" y={(cy+3).toFixed(1)} textAnchor="middle" fontSize="9" fontWeight="bold" fill="#000" fontFamily="sans-serif">{n}</text></g>);
-            const vBands = allBands.filter(c => c.orientation === 'vertical' && c.bandKey === h.bandKey).sort((a,b) => (a.pos||0)-(b.pos||0));
-            for (const v of vBands) {
-              const cx = v.pos * sx; const top = (v.bandY || 0) * sy; const bot = top + (v.bandH || 0) * sy; const nv = num++;
-              svgItems.push(<g key={`v-${nv}`}><line x1={cx.toFixed(1)} y1={top.toFixed(1)} x2={cx.toFixed(1)} y2={bot.toFixed(1)} stroke="#3b82f6" strokeWidth="1.5" strokeDasharray="5,3" opacity="0.8" /><rect x={(cx-9).toFixed(1)} y={top.toFixed(1)} width="18" height="14" rx="3" fill="#3b82f6" /><text x={cx.toFixed(1)} y={(top+10).toFixed(1)} textAnchor="middle" fontSize="9" fontWeight="bold" fill="#fff" fontFamily="sans-serif">{nv}</text></g>);
+            const cy = h.pos * sy, n = num++;
+            items.push(<g key={`h-${n}`}><line x1={0} y1={cy.toFixed(1)} x2={SVG_W} y2={cy.toFixed(1)} stroke="#f59e0b" strokeWidth="1.5" strokeDasharray="6,3" /><line x1={SVG_W+2} y1={cy.toFixed(1)} x2={SVG_W+10} y2={cy.toFixed(1)} stroke="#f59e0b" strokeWidth="1" /><text x={SVG_W+14} y={(cy+4).toFixed(1)} fontSize="9" fontWeight="bold" fill="#f59e0b" fontFamily="monospace">{h.posCm}</text><rect x={0} y={(cy-9).toFixed(1)} width="18" height="14" rx="3" fill="#f59e0b" /><text x="9" y={(cy+3).toFixed(1)} textAnchor="middle" fontSize="9" fontWeight="bold" fill="#000">{n}</text></g>);
+            for (const v of allBands.filter(c => c.orientation === 'vertical' && c.bandKey === h.bandKey).sort((a,b) => (a.pos||0)-(b.pos||0))) {
+              const cx = v.pos * sx, top = (v.bandY||0)*sy, nv = num++;
+              items.push(<g key={`v-${nv}`}><line x1={cx.toFixed(1)} y1={top.toFixed(1)} x2={cx.toFixed(1)} y2={(top+(v.bandH||0)*sy).toFixed(1)} stroke="#3b82f6" strokeWidth="1.5" strokeDasharray="5,3" opacity="0.8" /><rect x={(cx-9).toFixed(1)} y={top.toFixed(1)} width="18" height="14" rx="3" fill="#3b82f6" /><text x={cx.toFixed(1)} y={(top+10).toFixed(1)} textAnchor="middle" fontSize="9" fontWeight="bold" fill="#fff">{nv}</text></g>);
             }
           }
-          return svgItems;
+          return items;
         })()}
         <text x={SVG_W/2} y={SVG_H-4} textAnchor="middle" fontSize="10" fill="#64748b" fontWeight="bold">{panelW/10} cm</text>
         <text x="8" y={SVG_H/2} transform={`rotate(-90 8 ${SVG_H/2})`} textAnchor="middle" fontSize="10" fill="#64748b" fontWeight="bold">{panelH/10} cm</text>
@@ -139,16 +124,13 @@ function PanelSVG({ panel, panelW, panelH, kerf, colorMap }) {
 
 function CutList({ panel }) {
   const bandCuts = panel.cuts.filter(c => c.type === 'bande');
-  const hCuts = bandCuts.filter(c => c.orientation === 'horizontal').sort((a, b) => (a.pos || 0) - (b.pos || 0));
-  const allCuts = [];
-  let num = 1;
+  const hCuts = bandCuts.filter(c => c.orientation === 'horizontal').sort((a, b) => (a.pos||0)-(b.pos||0));
+  const allCuts = []; let num = 1;
   for (const h of hCuts) {
     const hPieces = panel.cuts.filter(pc => pc.type === 'piece' && pc.bandKey === h.bandKey);
-    allCuts.push({ num: num++, type: 'horizontal', posCm: h.posCm, depth: h.depth || 0, pieces: hPieces });
-    const vInBand = bandCuts.filter(c => c.orientation === 'vertical' && c.bandKey === h.bandKey).sort((a, b) => (a.pos || 0) - (b.pos || 0));
-    for (const v of vInBand) {
-      const vPieces = panel.cuts.filter(pc => pc.type === 'piece' && pc.bandKey === v.bandKey && (pc.x || 0) >= (v.pos || 0));
-      allCuts.push({ num: num++, type: 'vertical', posCm: v.posCm, depth: v.depth || 0, pieces: vPieces });
+    allCuts.push({ num: num++, type: 'horizontal', posCm: h.posCm, depth: h.depth||0, pieces: hPieces });
+    for (const v of bandCuts.filter(c => c.orientation === 'vertical' && c.bandKey === h.bandKey).sort((a,b)=>(a.pos||0)-(b.pos||0))) {
+      allCuts.push({ num: num++, type: 'vertical', posCm: v.posCm, depth: v.depth||0, pieces: panel.cuts.filter(pc => pc.type==='piece' && pc.bandKey===v.bandKey && (pc.x||0)>=(v.pos||0)) });
     }
   }
   return (
@@ -157,23 +139,17 @@ function CutList({ panel }) {
       {allCuts.map((cut) => {
         const isH = cut.type === 'horizontal';
         const accent = isH ? '#f59e0b' : '#3b82f6';
-        const bg = isH ? 'rgba(245,158,11,0.08)' : 'rgba(59,130,246,0.08)';
-        const border = isH ? 'rgba(245,158,11,0.2)' : 'rgba(59,130,246,0.2)';
         return (
-          <div key={cut.num} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, background: bg, border: `1px solid ${border}`, borderRadius: 8, padding: '8px 10px' }}>
-            <div style={{ width: 24, height: 24, borderRadius: '50%', background: accent, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: isH ? '#000' : '#fff', flexShrink: 0 }}>{cut.num}</div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: cut.pieces.length ? 4 : 0 }}>
-                <span style={{ color: accent, fontWeight: 700, fontSize: 12 }}>{isH ? '→' : '↓'} Coupe {isH ? 'horizontale' : 'verticale'} à <strong style={{ color: '#fff' }}>{cut.posCm} cm</strong></span>
-                {cut.depth > 0 && <span style={{ fontSize: 10, color: '#475569', background: 'rgba(255,255,255,0.05)', padding: '1px 6px', borderRadius: 4 }}>chute niv.{cut.depth}</span>}
+          <div key={cut.num} style={{ display:'flex', alignItems:'flex-start', gap:10, background: isH?'rgba(245,158,11,0.08)':'rgba(59,130,246,0.08)', border:`1px solid ${isH?'rgba(245,158,11,0.2)':'rgba(59,130,246,0.2)'}`, borderRadius:8, padding:'8px 10px' }}>
+            <div style={{ width:24,height:24,borderRadius:'50%',background:accent,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,color:isH?'#000':'#fff',flexShrink:0 }}>{cut.num}</div>
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:cut.pieces.length?4:0 }}>
+                <span style={{ color:accent, fontWeight:700, fontSize:12 }}>{isH?'→':'↓'} Coupe {isH?'horizontale':'verticale'} à <strong style={{color:'#fff'}}>{cut.posCm} cm</strong></span>
+                {cut.depth>0 && <span style={{fontSize:10,color:'#475569',background:'rgba(255,255,255,0.05)',padding:'1px 6px',borderRadius:4}}>chute niv.{cut.depth}</span>}
               </div>
               {cut.pieces.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                  {cut.pieces.map((pc, pi) => (
-                    <span key={pi} style={{ fontSize: 10, color: '#94a3b8', background: 'rgba(255,255,255,0.05)', padding: '2px 6px', borderRadius: 4, fontFamily: 'monospace' }}>
-                      {pc.name} {pc.lCm}×{pc.hCm}cm{pc.rotated ? ' ↺' : ''}
-                    </span>
-                  ))}
+                <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
+                  {cut.pieces.map((pc, pi) => <span key={pi} style={{fontSize:10,color:'#94a3b8',background:'rgba(255,255,255,0.05)',padding:'2px 6px',borderRadius:4,fontFamily:'monospace'}}>{pc.name} {pc.lCm}×{pc.hCm}cm{pc.rotated?' ↺':''}</span>)}
                 </div>
               )}
             </div>
@@ -184,12 +160,31 @@ function CutList({ panel }) {
   );
 }
 
+// ── Sous-onglets Plans 2D / 3D ───────────────────────────────────────────────
+function PlanSubTabs({ active, onChange }) {
+  return (
+    <div className="flex bg-[#0a0a0a] border border-white/5 rounded-lg p-0.5 gap-0.5 mb-4">
+      {[
+        { id: '2d', label: '📐 Vue 2D — 3 vues ortho' },
+        { id: '3d', label: '📦 Vue 3D — Isométrique' },
+      ].map(t => (
+        <button key={t.id} onClick={() => onChange(t.id)}
+          className={'flex-1 py-2 rounded-md text-xs font-bold transition-all ' +
+            (active === t.id ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white')}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function TabBar({ active, onChange, hasCabinet }) {
   const tabs = [
     { id: 'resume', label: 'Résumé',  icon: <BarChart2 className="w-4 h-4" /> },
-    { id: 'visual', label: 'Visuel',   icon: <Maximize2 className="w-4 h-4" /> },
-    { id: 'cuts',   label: 'Coupes',   icon: <Scissors  className="w-4 h-4" /> },
-    { id: 'boards', label: 'Planches', icon: <List      className="w-4 h-4" /> },
+    { id: 'visual', label: 'Visuel',  icon: <Maximize2 className="w-4 h-4" /> },
+    { id: 'cuts',   label: 'Coupes',  icon: <Scissors  className="w-4 h-4" /> },
+    { id: 'boards', label: 'Planches',icon: <List      className="w-4 h-4" /> },
     ...(hasCabinet ? [{ id: 'plans', label: 'Plans', icon: <Map className="w-4 h-4" /> }] : []),
   ];
   return (
@@ -209,6 +204,7 @@ function TabBar({ active, onChange, hasCabinet }) {
 export default function Results({ t, results, project }) {
   const [currentPanel, setCurrentPanel] = useState(0);
   const [tab, setTab] = useState('resume');
+  const [planView, setPlanView] = useState('2d');
   const colorMap = {};
 
   const cabinet    = project.cabinet || null;
@@ -229,12 +225,12 @@ export default function Results({ t, results, project }) {
 
   const PanelNav = () => (
     <div className="flex items-center justify-between bg-[#111] p-2 rounded-xl border border-white/5 mb-4">
-      <button onClick={prevPanel} disabled={currentPanel === 0} className="p-3 rounded-lg hover:bg-white/5 text-slate-400 disabled:opacity-30 transition-colors"><ChevronLeft className="w-5 h-5" /></button>
+      <button onClick={prevPanel} disabled={currentPanel===0} className="p-3 rounded-lg hover:bg-white/5 text-slate-400 disabled:opacity-30 transition-colors"><ChevronLeft className="w-5 h-5" /></button>
       <div className="text-center">
-        <div className="text-sm font-bold text-white">Panneau {currentPanel + 1} <span className="text-slate-500">/ {results.panels.length}</span></div>
-        <div className={`text-xs font-bold ${utilization >= 80 ? 'text-green-400' : utilization >= 60 ? 'text-yellow-400' : 'text-red-400'}`}>{utilization}% efficacité</div>
+        <div className="text-sm font-bold text-white">Panneau {currentPanel+1} <span className="text-slate-500">/ {results.panels.length}</span></div>
+        <div className={`text-xs font-bold ${utilization>=80?'text-green-400':utilization>=60?'text-yellow-400':'text-red-400'}`}>{utilization}% efficacité</div>
       </div>
-      <button onClick={nextPanel} disabled={currentPanel === results.panels.length - 1} className="p-3 rounded-lg hover:bg-white/5 text-slate-400 disabled:opacity-30 transition-colors"><ChevronRight className="w-5 h-5" /></button>
+      <button onClick={nextPanel} disabled={currentPanel===results.panels.length-1} className="p-3 rounded-lg hover:bg-white/5 text-slate-400 disabled:opacity-30 transition-colors"><ChevronRight className="w-5 h-5" /></button>
     </div>
   );
 
@@ -246,15 +242,12 @@ export default function Results({ t, results, project }) {
 
       <div className="px-4 py-4 max-w-7xl mx-auto">
 
-        {/* RESUME */}
+        {/* ── RÉSUMÉ ─────────────────────────────────────────────────────── */}
         {tab === 'resume' && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                <Layers className="w-5 h-5 text-orange-500" /> Résultats
-              </h2>
-              <button onClick={() => exportPDF(results, project)}
-                className="flex items-center gap-2 bg-orange-600 hover:bg-orange-500 text-white px-4 py-2.5 rounded-xl text-sm font-bold transition-colors shadow-lg shadow-orange-900/30">
+              <h2 className="text-lg font-bold text-white flex items-center gap-2"><Layers className="w-5 h-5 text-orange-500" /> Résultats</h2>
+              <button onClick={() => exportPDF(results, project)} className="flex items-center gap-2 bg-orange-600 hover:bg-orange-500 text-white px-4 py-2.5 rounded-xl text-sm font-bold transition-colors shadow-lg shadow-orange-900/30">
                 <Download className="w-4 h-4" /> PDF
               </button>
             </div>
@@ -266,9 +259,9 @@ export default function Results({ t, results, project }) {
               </div>
               <div className="bg-[#111] border border-white/5 p-4 rounded-xl flex flex-col items-center">
                 <div className="text-[10px] text-slate-400 uppercase font-bold mb-2">Utilisation</div>
-                <div className={`text-3xl font-black ${utilization >= 80 ? 'text-green-400' : utilization >= 60 ? 'text-yellow-400' : 'text-red-400'}`}>{utilization}%</div>
+                <div className={`text-3xl font-black ${utilization>=80?'text-green-400':utilization>=60?'text-yellow-400':'text-red-400'}`}>{utilization}%</div>
                 <div className="w-full bg-white/10 h-1 rounded-full mt-2 overflow-hidden">
-                  <div className={`h-full rounded-full ${utilization >= 80 ? 'bg-green-500' : utilization >= 60 ? 'bg-yellow-500' : 'bg-red-500'}`} style={{ width: `${utilization}%` }} />
+                  <div className={`h-full rounded-full ${utilization>=80?'bg-green-500':utilization>=60?'bg-yellow-500':'bg-red-500'}`} style={{width:`${utilization}%`}} />
                 </div>
               </div>
               <div className="bg-[#111] border border-white/5 p-4 rounded-xl flex flex-col items-center">
@@ -287,7 +280,7 @@ export default function Results({ t, results, project }) {
               <div className="flex flex-wrap gap-2">
                 {Object.entries(colorMap).map(([name, c]) => (
                   <div key={name} className="flex items-center gap-2 bg-[#0a0a0a] px-3 py-1.5 rounded-lg border border-white/5">
-                    <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ background: c.fill, border: `1px solid ${c.stroke}`, boxShadow: `0 0 6px ${c.glow}` }} />
+                    <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ background:c.fill, border:`1px solid ${c.stroke}`, boxShadow:`0 0 6px ${c.glow}` }} />
                     <span className="text-sm text-slate-300 font-medium">{name}</span>
                   </div>
                 ))}
@@ -295,10 +288,10 @@ export default function Results({ t, results, project }) {
             </div>
             {hasCabinet && (
               <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-3 flex items-center gap-3">
-                <Map className="w-4 h-4 text-blue-400 flex-shrink-0" />
+                <Box className="w-4 h-4 text-blue-400 flex-shrink-0" />
                 <div>
-                  <p className="text-sm font-bold text-blue-300">Plan industriel disponible</p>
-                  <p className="text-xs text-slate-400">Vue face + côté + dessus générés depuis le scan.</p>
+                  <p className="text-sm font-bold text-blue-300">Plans 2D + 3D disponibles</p>
+                  <p className="text-xs text-slate-400">{cabinet.width}×{cabinet.height}×{cabinet.depth} cm — {(cabinet.panels||[]).length} panneaux structurels</p>
                 </div>
                 <button onClick={() => setTab('plans')} className="ml-auto text-xs font-bold text-blue-400 hover:text-blue-300 whitespace-nowrap">Voir →</button>
               </div>
@@ -315,7 +308,7 @@ export default function Results({ t, results, project }) {
           </div>
         )}
 
-        {/* VISUEL */}
+        {/* ── VISUEL ─────────────────────────────────────────────────────── */}
         {tab === 'visual' && (
           <div className="space-y-4">
             <PanelNav />
@@ -324,48 +317,28 @@ export default function Results({ t, results, project }) {
             <div className="flex justify-center gap-2">
               {results.panels.map((_, i) => (
                 <button key={i} onClick={() => setCurrentPanel(i)}
-                  className={`w-3 h-3 rounded-full transition-all duration-300 ${i === currentPanel ? 'bg-orange-500 scale-125 shadow-[0_0_10px_rgba(249,115,22,0.6)]' : 'bg-[#333] hover:bg-slate-500'}`} />
+                  className={`w-3 h-3 rounded-full transition-all duration-300 ${i===currentPanel?'bg-orange-500 scale-125 shadow-[0_0_10px_rgba(249,115,22,0.6)]':'bg-[#333] hover:bg-slate-500'}`} />
               ))}
             </div>
           </div>
         )}
 
-        {/* COUPES */}
+        {/* ── COUPES ─────────────────────────────────────────────────────── */}
         {tab === 'cuts' && (
           <div className="space-y-4">
             <PanelNav />
             <div className="bg-[#111] border border-white/5 rounded-xl p-4">
-              <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
-                <Scissors className="w-4 h-4 text-orange-500" /> Séquence de découpe
-              </h3>
+              <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2"><Scissors className="w-4 h-4 text-orange-500" /> Séquence de découpe</h3>
               <div className="space-y-2">
-                {panel.cuts.filter(c => c.type === 'bande').map((band, bi) => {
-                  const piecesInBand = panel.cuts.filter(c => c.type === 'piece' && c.bandKey === band.bandKey && c.panelId === band.panelId);
+                {panel.cuts.filter(c => c.type==='bande').map((band, bi) => {
+                  const piecesInBand = panel.cuts.filter(c => c.type==='piece' && c.bandKey===band.bandKey && c.panelId===band.panelId);
                   return (
                     <div key={bi} className="border-l-2 border-orange-500/30 pl-3 py-2">
                       <div className="flex items-center gap-2 text-slate-300 mb-2">
                         <span className="text-orange-500 font-bold">✂</span>
-                        <span className="text-sm">
-                          {band.orientation === 'vertical' ? 'Verticale' : 'Horizontale'} à <strong className="text-white">{band.posCm}cm</strong>
-                          {band.depth > 0 && <span className="text-xs text-slate-500 ml-1">(Niv.{band.depth})</span>}
-                        </span>
+                        <span className="text-sm">{band.orientation==='vertical'?'Verticale':'Horizontale'} à <strong className="text-white">{band.posCm}cm</strong>{band.depth>0&&<span className="text-xs text-slate-500 ml-1">(Niv.{band.depth})</span>}</span>
                       </div>
-                      {piecesInBand.length > 0 && (
-                        <div className="space-y-1">
-                          {piecesInBand.map((pc, pi) => (
-                            <div key={pi} className="flex items-center justify-between bg-[#0a0a0a] p-2 rounded border border-white/5 text-sm">
-                              <div className="flex items-center gap-2">
-                                <span className="text-slate-500">→</span>
-                                <span className="text-white font-medium">{pc.name}</span>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <span className="font-mono text-slate-400 text-xs">{pc.lCm}×{pc.hCm}cm</span>
-                                {pc.rotated && <span className="flex items-center gap-1 text-[10px] bg-purple-500/10 text-purple-400 px-1.5 py-0.5 rounded border border-purple-500/20"><RotateCw className="w-2.5 h-2.5" />↺</span>}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                      {piecesInBand.length>0&&(<div className="space-y-1">{piecesInBand.map((pc,pi)=>(<div key={pi} className="flex items-center justify-between bg-[#0a0a0a] p-2 rounded border border-white/5 text-sm"><div className="flex items-center gap-2"><span className="text-slate-500">→</span><span className="text-white font-medium">{pc.name}</span></div><div className="flex items-center gap-2"><span className="font-mono text-slate-400 text-xs">{pc.lCm}×{pc.hCm}cm</span>{pc.rotated&&<span className="flex items-center gap-1 text-[10px] bg-purple-500/10 text-purple-400 px-1.5 py-0.5 rounded border border-purple-500/20"><RotateCw className="w-2.5 h-2.5" />↺</span>}</div></div>))}</div>)}
                     </div>
                   );
                 })}
@@ -374,48 +347,74 @@ export default function Results({ t, results, project }) {
           </div>
         )}
 
-        {/* PLANCHES */}
-        {tab === 'boards' && (
-          <BoardList results={results} project={project} />
-        )}
+        {/* ── PLANCHES ───────────────────────────────────────────────────── */}
+        {tab === 'boards' && <BoardList results={results} project={project} />}
 
-        {/* PLANS 2D */}
+        {/* ── PLANS 2D / 3D ──────────────────────────────────────────────── */}
         {tab === 'plans' && (
           <div className="space-y-4">
             {hasCabinet ? (
               <>
-                <div className="flex items-center gap-2 text-xs text-slate-500 px-1">
-                  <Map className="w-3 h-3" />
-                  <span>Plan technique généré depuis le scan IA — 3 vues orthogonales</span>
-                </div>
-                <CabinetPlan2D cabinet={cabinet} name={project.name} />
-                <div className="bg-[#111] border border-white/5 rounded-xl p-4 text-xs text-slate-500 space-y-1">
-                  <p className="font-bold text-slate-400">Légende</p>
-                  <div className="flex flex-wrap gap-3">
-                    {[
-                      { color: '#94a3b8', label: 'Montant / Côté' },
-                      { color: '#38bdf8', label: 'Tablette / Fond bas / Dessus' },
-                      { color: '#f97316', label: 'Porte' },
-                      { color: '#7dd3fc', label: 'Séparation' },
-                      { color: '#a855f7', label: 'Tiroir' },
-                      { color: '#475569', label: 'Fond arrière' },
-                    ].map(({ color, label }) => (
-                      <div key={label} className="flex items-center gap-1.5">
-                        <div className="w-3 h-3 rounded-sm" style={{ background: color }} />
-                        <span>{label}</span>
+                <PlanSubTabs active={planView} onChange={setPlanView} />
+
+                {planView === '2d' && (
+                  <>
+                    <div className="flex items-center gap-2 text-xs text-slate-500 px-1">
+                      <Map className="w-3 h-3" />
+                      <span>Plan orthogonal : face + côté + dessus — cotations en cm</span>
+                    </div>
+                    <CabinetPlan2D cabinet={cabinet} name={project.name} />
+                    <div className="bg-[#111] border border-white/5 rounded-xl p-4 text-xs text-slate-500 space-y-1">
+                      <p className="font-bold text-slate-400">Légende</p>
+                      <div className="flex flex-wrap gap-3">
+                        {[
+                          { color: '#94a3b8', label: 'Montant / Côté' },
+                          { color: '#38bdf8', label: 'Tablette / Fond bas / Dessus' },
+                          { color: '#f97316', label: 'Porte' },
+                          { color: '#7dd3fc', label: 'Séparation' },
+                          { color: '#a855f7', label: 'Tiroir' },
+                          { color: '#475569', label: 'Fond arrière' },
+                        ].map(({ color, label }) => (
+                          <div key={label} className="flex items-center gap-1.5">
+                            <div className="w-3 h-3 rounded-sm" style={{ background: color }} />
+                            <span>{label}</span>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                </div>
+                    </div>
+                  </>
+                )}
+
+                {planView === '3d' && (
+                  <>
+                    <div className="flex items-center gap-2 text-xs text-slate-500 px-1">
+                      <Box className="w-3 h-3" />
+                      <span>Vue isométrique — projection 30° — cotations L×H×P</span>
+                    </div>
+                    <CabinetPlan3D cabinet={cabinet} name={project.name} />
+                    <div className="bg-[#111] border border-white/5 rounded-xl p-4 text-xs text-slate-500 space-y-1">
+                      <p className="font-bold text-slate-400">Légende axes</p>
+                      <div className="flex flex-wrap gap-4">
+                        {[
+                          { color: '#ef4444', label: 'X = Largeur (gauche → droite)' },
+                          { color: '#22c55e', label: 'Y = Profondeur (avant → arrière)' },
+                          { color: '#60a5fa', label: 'Z = Hauteur (bas → haut)' },
+                        ].map(({ color, label }) => (
+                          <div key={label} className="flex items-center gap-1.5">
+                            <div className="w-2 h-2 rounded-full" style={{ background: color }} />
+                            <span>{label}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
               </>
             ) : (
               <div className="flex flex-col items-center justify-center py-16 gap-4 text-center">
                 <div className="text-4xl">📐</div>
-                <p className="text-white font-bold">Plan non disponible</p>
-                <p className="text-sm text-slate-400 max-w-xs">
-                  Le plan industriel est généré uniquement depuis un scan IA.
-                  Lancez un nouveau scan pour obtenir les 3 vues.
-                </p>
+                <p className="text-white font-bold">Plans non disponibles</p>
+                <p className="text-sm text-slate-400 max-w-xs">Les plans sont générés uniquement depuis un scan IA. Lancez un nouveau scan pour obtenir les vues 2D et 3D.</p>
               </div>
             )}
           </div>
