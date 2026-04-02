@@ -7,11 +7,27 @@ import PiecesList from './components/PiecesList';
 import Results from './components/Results';
 import AuthScreen from './components/AuthScreen';
 import ProjectsScreen from './components/ProjectsScreen';
+import SketchEditor from './components/SketchEditor';
 import { ChevronLeft, ChevronRight, LogOut, Disc } from 'lucide-react';
 import './App.css';
 
-const SCREENS = { AUTH: 'auth', PROJECTS: 'projects', FORM: 'form', PIECES: 'pieces', RESULTS: 'results' };
-const DEFAULT_PROJECT = { name: '', client: '', company: '', panel: { w: 244, h: 122 }, kerf: 3, tolerance: 10, pricePerPanel: 39.8, pieces: [], furniture: [], devisNum: '', supabaseId: null, cabinet: null };
+const SCREENS = {
+  AUTH: 'auth',
+  PROJECTS: 'projects',
+  FORM: 'form',
+  PIECES: 'pieces',
+  RESULTS: 'results',
+  SKETCH: 'sketch',   // ← nouvel écran
+};
+
+const DEFAULT_PROJECT = {
+  name: '', client: '', company: '',
+  panel: { w: 244, h: 122 }, kerf: 3, tolerance: 10,
+  pricePerPanel: 39.8, pieces: [], furniture: [],
+  devisNum: '', supabaseId: null, cabinet: null,
+  scanImage: null,   // ← image base64 du scan d'origine (pour l'éditeur)
+  scanResult: null,  // ← résultat brut du premier Claude Vision
+};
 
 const APP_VERSION = process.env.REACT_APP_VERSION || '1.0.0';
 const GIT_HASH   = process.env.REACT_APP_GIT_HASH  || 'dev';
@@ -44,6 +60,11 @@ export default function App() {
   const [computing, setComputing] = useState(false);
   const [saving,    setSaving]    = useState(false);
   const [saveMsg,   setSaveMsg]   = useState('');
+
+  // Clé API Anthropic — lue depuis .env ou prompt
+  const [apiKey, setApiKey] = useState(
+    process.env.REACT_APP_ANTHROPIC_KEY || lsGet('pc_apikey', '')
+  );
 
   const setScreen  = (s) => { setScreenRaw(s);  lsSet(LS_SCREEN,  s); };
   const setProject = (p) => { setProjectRaw(p); lsSet(LS_PROJECT, p); };
@@ -83,9 +104,10 @@ export default function App() {
   };
 
   const goBack = () => {
-    if (screen === SCREENS.RESULTS) setScreen(SCREENS.PIECES);
-    else if (screen === SCREENS.PIECES) setScreen(SCREENS.FORM);
-    else if (screen === SCREENS.FORM) setScreen(user ? SCREENS.PROJECTS : SCREENS.AUTH);
+    if (screen === SCREENS.SKETCH)  setScreen(SCREENS.PROJECTS);
+    else if (screen === SCREENS.RESULTS) setScreen(SCREENS.PIECES);
+    else if (screen === SCREENS.PIECES)  setScreen(SCREENS.FORM);
+    else if (screen === SCREENS.FORM)    setScreen(user ? SCREENS.PROJECTS : SCREENS.AUTH);
     else setScreen(SCREENS.AUTH);
   };
 
@@ -122,23 +144,43 @@ export default function App() {
     else setScreen(SCREENS.PIECES);
   };
 
-  // FIX : le serveur retourne les dimensions en cm, pas en mm.
-  // On les stocke telles quelles dans project.cabinet (cm).
-  // On les stocke dans project.pieces telles quelles (cm) pour l'engine.
-  const handleScanComplete = (scanResult) => {
+  // Scan initial Claude Vision → stocke image + résultat pour l'éditeur
+  const handleScanComplete = (scanResult, scanImageBase64) => {
     const pieces = (scanResult.pieces || []).map(p => ({
       name:   String(p.name   || 'Pièce').trim(),
-      length: Math.abs(parseFloat(p.length) || 0),  // déjà en cm
-      height: Math.abs(parseFloat(p.height) || 0),  // déjà en cm
+      length: Math.abs(parseFloat(p.length) || 0),
+      height: Math.abs(parseFloat(p.height) || 0),
       qty:    Math.max(1, parseInt(p.qty, 10) || 1),
     })).filter(p => p.length > 0 && p.height > 0);
 
     const cabinet = scanResult.cabinet || null;
-
     const projectName = 'Plan du ' + new Date().toLocaleDateString('fr-FR');
     const dNum = 'DV-' + new Date().getFullYear() + '-' + String(Math.floor(Math.random() * 9000) + 1000);
-    setProject({ ...DEFAULT_PROJECT, name: projectName, devisNum: dNum, pieces, cabinet });
+
+    setProject({
+      ...DEFAULT_PROJECT,
+      name: projectName,
+      devisNum: dNum,
+      pieces,
+      cabinet,
+      scanImage:  scanImageBase64 || null,
+      scanResult: scanResult,
+    });
     setResults(null);
+    setScreen(SCREENS.PIECES);
+  };
+
+  // Relance Claude Vision avec image annotée → met à jour les pièces
+  const handleRefinementComplete = (newScanResult) => {
+    const pieces = (newScanResult.pieces || []).map(p => ({
+      name:   String(p.name   || 'Pièce').trim(),
+      length: Math.abs(parseFloat(p.length) || 0),
+      height: Math.abs(parseFloat(p.height) || 0),
+      qty:    Math.max(1, parseInt(p.qty, 10) || 1),
+    })).filter(p => p.length > 0 && p.height > 0);
+
+    const cabinet = newScanResult.cabinet || project.cabinet;
+    setProject(p => ({ ...p, pieces, cabinet, scanResult: newScanResult }));
     setScreen(SCREENS.PIECES);
   };
 
@@ -164,113 +206,150 @@ export default function App() {
   const showBack = [SCREENS.FORM, SCREENS.PIECES, SCREENS.RESULTS].includes(screen);
   const showSave = user && [SCREENS.PIECES, SCREENS.RESULTS].includes(screen);
 
+  // Bouton "Annoter" : visible sur PIECES si un scan existe
+  const canAnnotate = screen === SCREENS.PIECES && !!project.scanImage;
+
   let headerTitle = 'PanelCut Pro', headerSubtitle = '', steps = [];
   if (screen === SCREENS.PROJECTS) { headerTitle = 'Dashboard'; headerSubtitle = user?.email || 'Guest'; }
   else if (screen === SCREENS.FORM)    { headerTitle = tr.newProject || 'Nouveau projet'; steps = [{ label: tr.panel, active: true }, { label: tr.pieces, active: false }, { label: tr.results, active: false }]; }
   else if (screen === SCREENS.PIECES)  { headerTitle = project.name || tr.newProject;    steps = [{ label: tr.panel, active: true }, { label: tr.pieces, active: true  }, { label: tr.results, active: false }]; }
   else if (screen === SCREENS.RESULTS) { headerTitle = tr.results || 'Resultats';         steps = [{ label: tr.panel, active: true }, { label: tr.pieces, active: true  }, { label: tr.results, active: true  }]; }
+  else if (screen === SCREENS.SKETCH)  { headerTitle = 'Éditeur annoté'; }
 
-  const hasHeader = screen !== SCREENS.AUTH;
+  const hasHeader = screen !== SCREENS.AUTH && screen !== SCREENS.SKETCH;
   const hasSteps  = steps.length > 0;
 
   return (
     <div className="app min-h-screen bg-[#0f1620] text-slate-200 font-sans">
-      {hasHeader && (
-        <header className="sticky top-0 z-40 bg-[#0f1620]/95 backdrop-blur-md border-b border-white/10 shadow-lg h-16 flex items-center justify-between px-4 md:px-8 gap-2">
-          <div className="flex items-center gap-1 flex-shrink-0">
-            {showBack && (
-              <button onClick={goBack} className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors">
-                <ChevronLeft className="w-5 h-5" />
-              </button>
-            )}
-            <div className="flex flex-col mx-1">
-              <h1 className={'font-bold text-white ' + (hasSteps ? 'hidden md:block text-sm md:text-base' : 'text-sm md:text-base')}>
-                {headerTitle}
-              </h1>
-              <span className="text-[11px] font-mono font-black text-orange-400" style={{textShadow:'0 0 8px #f97316'}}>
-                v{APP_VERSION} · {GIT_HASH}
-              </span>
-            </div>
-            {showNext && (
-              <button
-                onClick={canGoNext ? goNext : undefined}
-                className={'p-1.5 rounded-lg transition-colors ' +
-                  (canGoNext
-                    ? 'text-orange-400 hover:text-white hover:bg-orange-500/20 cursor-pointer'
-                    : 'text-slate-500 cursor-not-allowed opacity-40')}
-              >
-                <ChevronRight className="w-5 h-5" />
-              </button>
-            )}
-            {headerSubtitle && <p className="text-[10px] text-slate-500 uppercase truncate hidden sm:block ml-1">{headerSubtitle}</p>}
-          </div>
 
-          {hasSteps && (
-            <div className="flex items-center gap-1 flex-1 justify-center">
-              {steps.map((s, i) => (
-                <div key={i} className="flex items-center gap-1">
-                  <div className={
-                    'flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-bold transition-all ' +
-                    (s.active ? 'bg-orange-500/20 text-orange-400 border border-orange-500/40' : 'text-slate-600')
-                  }>
-                    <div className={
-                      'w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-black flex-shrink-0 ' +
-                      (s.active ? 'bg-orange-500 text-black' : 'bg-slate-700 text-slate-500')
-                    }>
-                      {i + 1}
-                    </div>
-                    <span className="hidden md:inline">{s.label}</span>
-                  </div>
-                  {i < steps.length - 1 && (
-                    <div className={'w-3 h-px flex-shrink-0 ' + (steps[i + 1].active ? 'bg-orange-500/50' : 'bg-slate-700')} />
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="flex items-center gap-1.5 flex-shrink-0">
-            {(saveMsg || saving) && <span className="text-[11px] text-green-400 font-medium">{saving ? '...' : saveMsg}</span>}
-            {showSave && !saving && (
-              <button onClick={handleSave} className="p-1.5 rounded-lg text-slate-400 hover:text-green-400 hover:bg-white/10 transition-colors">
-                <Disc className="w-4 h-4" />
-              </button>
-            )}
-            <button onClick={toggleLang} className="px-2 py-1 text-slate-400 hover:text-white border border-white/10 hover:border-white/30 rounded-lg text-[11px] font-bold transition-colors">
-              {langOverride === 'fr' ? 'EN' : 'FR'}
-            </button>
-            {user && (
-              <button onClick={handleSignOut} className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-white/10 transition-colors">
-                <LogOut className="w-4 h-4" />
-              </button>
-            )}
-          </div>
-        </header>
+      {/* ── SKETCH EDITOR (plein écran, par-dessus tout) ── */}
+      {screen === SCREENS.SKETCH && (
+        <SketchEditor
+          image={project.scanImage}
+          initialResult={project.scanResult}
+          apiKey={apiKey}
+          onComplete={handleRefinementComplete}
+          onCancel={() => setScreen(SCREENS.PIECES)}
+        />
       )}
 
-      <main className={'w-full px-4 md:px-8 mb-20 ' + (hasHeader ? 'mt-4' : 'mt-0')}>
-        {screen === SCREENS.AUTH     && <AuthScreen onSkip={() => setScreen(SCREENS.PROJECTS)} />}
-        {screen === SCREENS.PROJECTS && <ProjectsScreen user={user} onNew={() => startNew(devisNum)} onLoad={handleLoadProject} onScanComplete={handleScanComplete} />}
-        {screen === SCREENS.FORM     && <ProjectForm t={tr} project={project} onChange={setProject} onNext={() => setScreen(SCREENS.PIECES)} />}
-        {screen === SCREENS.PIECES   && <PiecesList t={tr} project={project} onChange={setProject} onOptimize={handleOptimize} computing={computing} />}
-        {screen === SCREENS.RESULTS  && results && results.panels && results.panels.length > 0
-          ? <Results t={tr} results={results} project={project} />
-          : screen === SCREENS.RESULTS && (
-            <div className="flex flex-col items-center justify-center min-h-[60vh] gap-6 p-8">
-              <div className="text-5xl">⚠️</div>
-              <div className="text-center">
-                <p className="text-lg font-bold text-white mb-1">Résultats indisponibles</p>
-                <p className="text-sm text-slate-400">Les données de résultats sont manquantes ou corrompues.</p>
+      {screen !== SCREENS.SKETCH && (
+        <>
+          {hasHeader && (
+            <header className="sticky top-0 z-40 bg-[#0f1620]/95 backdrop-blur-md border-b border-white/10 shadow-lg h-16 flex items-center justify-between px-4 md:px-8 gap-2">
+              <div className="flex items-center gap-1 flex-shrink-0">
+                {showBack && (
+                  <button onClick={goBack} className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors">
+                    <ChevronLeft className="w-5 h-5" />
+                  </button>
+                )}
+                <div className="flex flex-col mx-1">
+                  <h1 className={'font-bold text-white ' + (hasSteps ? 'hidden md:block text-sm md:text-base' : 'text-sm md:text-base')}>
+                    {headerTitle}
+                  </h1>
+                  <span className="text-[11px] font-mono font-black text-orange-400" style={{textShadow:'0 0 8px #f97316'}}>
+                    v{APP_VERSION} · {GIT_HASH}
+                  </span>
+                </div>
+                {showNext && (
+                  <button
+                    onClick={canGoNext ? goNext : undefined}
+                    className={'p-1.5 rounded-lg transition-colors ' +
+                      (canGoNext
+                        ? 'text-orange-400 hover:text-white hover:bg-orange-500/20 cursor-pointer'
+                        : 'text-slate-500 cursor-not-allowed opacity-40')}
+                  >
+                    <ChevronRight className="w-5 h-5" />
+                  </button>
+                )}
+                {headerSubtitle && <p className="text-[10px] text-slate-500 uppercase truncate hidden sm:block ml-1">{headerSubtitle}</p>}
               </div>
-              <button
-                onClick={() => setScreen(SCREENS.PIECES)}
-                className="px-6 py-3 bg-orange-600 hover:bg-orange-500 text-white rounded-xl font-bold transition-colors shadow-lg">
-                ↺ Relancer l'optimisation
-              </button>
-            </div>
-          )
-        }
-      </main>
+
+              {hasSteps && (
+                <div className="flex items-center gap-1 flex-1 justify-center">
+                  {steps.map((s, i) => (
+                    <div key={i} className="flex items-center gap-1">
+                      <div className={
+                        'flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-bold transition-all ' +
+                        (s.active ? 'bg-orange-500/20 text-orange-400 border border-orange-500/40' : 'text-slate-600')
+                      }>
+                        <div className={
+                          'w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-black flex-shrink-0 ' +
+                          (s.active ? 'bg-orange-500 text-black' : 'bg-slate-700 text-slate-500')
+                        }>
+                          {i + 1}
+                        </div>
+                        <span className="hidden md:inline">{s.label}</span>
+                      </div>
+                      {i < steps.length - 1 && (
+                        <div className={'w-3 h-px flex-shrink-0 ' + (steps[i + 1].active ? 'bg-orange-500/50' : 'bg-slate-700')} />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                {/* Bouton Annoter le croquis */}
+                {canAnnotate && (
+                  <button
+                    onClick={() => setScreen(SCREENS.SKETCH)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-cyan-600/20 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-600/30 hover:text-cyan-300 transition-all"
+                    title="Annoter le croquis et relancer Claude">
+                    ✏️ <span className="hidden sm:inline">Annoter</span>
+                  </button>
+                )}
+
+                {(saveMsg || saving) && <span className="text-[11px] text-green-400 font-medium">{saving ? '...' : saveMsg}</span>}
+                {showSave && !saving && (
+                  <button onClick={handleSave} className="p-1.5 rounded-lg text-slate-400 hover:text-green-400 hover:bg-white/10 transition-colors">
+                    <Disc className="w-4 h-4" />
+                  </button>
+                )}
+                <button onClick={toggleLang} className="px-2 py-1 text-slate-400 hover:text-white border border-white/10 hover:border-white/30 rounded-lg text-[11px] font-bold transition-colors">
+                  {langOverride === 'fr' ? 'EN' : 'FR'}
+                </button>
+                {user && (
+                  <button onClick={handleSignOut} className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-white/10 transition-colors">
+                    <LogOut className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            </header>
+          )}
+
+          <main className={'w-full px-4 md:px-8 mb-20 ' + (hasHeader ? 'mt-4' : 'mt-0')}>
+            {screen === SCREENS.AUTH     && <AuthScreen onSkip={() => setScreen(SCREENS.PROJECTS)} />}
+            {screen === SCREENS.PROJECTS && (
+              <ProjectsScreen
+                user={user}
+                onNew={() => startNew(devisNum)}
+                onLoad={handleLoadProject}
+                onScanComplete={handleScanComplete}
+              />
+            )}
+            {screen === SCREENS.FORM     && <ProjectForm t={tr} project={project} onChange={setProject} onNext={() => setScreen(SCREENS.PIECES)} />}
+            {screen === SCREENS.PIECES   && <PiecesList t={tr} project={project} onChange={setProject} onOptimize={handleOptimize} computing={computing} />}
+            {screen === SCREENS.RESULTS  && results && results.panels && results.panels.length > 0
+              ? <Results t={tr} results={results} project={project} />
+              : screen === SCREENS.RESULTS && (
+                <div className="flex flex-col items-center justify-center min-h-[60vh] gap-6 p-8">
+                  <div className="text-5xl">⚠️</div>
+                  <div className="text-center">
+                    <p className="text-lg font-bold text-white mb-1">Résultats indisponibles</p>
+                    <p className="text-sm text-slate-400">Les données de résultats sont manquantes ou corrompues.</p>
+                  </div>
+                  <button
+                    onClick={() => setScreen(SCREENS.PIECES)}
+                    className="px-6 py-3 bg-orange-600 hover:bg-orange-500 text-white rounded-xl font-bold transition-colors shadow-lg">
+                    ↺ Relancer l'optimisation
+                  </button>
+                </div>
+              )
+            }
+          </main>
+        </>
+      )}
     </div>
   );
 }

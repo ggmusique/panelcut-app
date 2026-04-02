@@ -1,425 +1,426 @@
 /**
- * SketchEditor.js — Éditeur SVG interactif pour corriger les croquis scannés
+ * SketchEditor.js — Éditeur de croquis annoté
  *
- * Outils :
- *  ✏️  Stylo libre (dessin à main levée)
- *  ↔️  Cote       (ligne + flèches + texte de dimension)
- *  💬  Annotation  (bulle de texte)
- *  🗑️  Effacer tout
- *  📤  Exporter en PNG pour relance Claude
+ * Fonctionnalités :
+ *  - Affiche l'image du scan (photo originale ou SVG du plan)
+ *  - Outil COTE  : trace une double flèche avec label cm éditable
+ *  - Outil NOTE  : ajoute une bulle de texte libre
+ *  - Outil CRAYON: dessin libre (stroke orange)
+ *  - Outil EFFACE: clique sur un élément pour le supprimer
+ *  - Bouton EXPORTER : aplatit SVG + image en PNG, ouvre ClaudeRefinement
  *
- * Aucune dépendance externe — SVG + Canvas natif uniquement.
+ * Props :
+ *   image        {string}  base64 ou URL de l'image source
+ *   initialResult{object}  résultat du premier scan Claude
+ *   apiKey       {string}  clé API Anthropic
+ *   onComplete   {fn}      (newScanResult) => void  après relance Claude
+ *   onCancel     {fn}      ferme l'éditeur
  */
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useRef, useState, useCallback, useEffect } from 'react';
+import ClaudeRefinement from './ClaudeRefinement';
 
-const TOOLS = {
-  PEN:    'pen',
-  DIM:    'dim',
-  NOTE:   'note',
-  SELECT: 'select',
-};
+const TOOLS = [
+  { id: 'dim',    icon: '⇔',  label: 'Cote',    color: '#22d3ee' },
+  { id: 'note',   icon: '💬', label: 'Note',    color: '#86efac' },
+  { id: 'pencil', icon: '✏️', label: 'Crayon',  color: '#fb923c' },
+  { id: 'erase',  icon: '🧹', label: 'Effacer', color: '#f87171' },
+];
 
-const COLORS = {
-  pen:  '#f97316',   // orange
-  dim:  '#38bdf8',   // bleu cyan
-  note: '#4ade80',   // vert
-};
+// Génère un ID unique
+const uid = () => Math.random().toString(36).slice(2, 9);
 
-export default function SketchEditor({ scanImage, scanResult, onExport, onCancel }) {
-  const svgRef     = useRef(null);
-  const canvasRef  = useRef(null);
-  const [tool,     setTool]     = useState(TOOLS.DIM);
-  const [elements, setElements] = useState([]);
-  const [drawing,  setDrawing]  = useState(null); // élément en cours de dessin
-  const [penPath,  setPenPath]  = useState(null);
-  const [imgSize,  setImgSize]  = useState({ w: 800, h: 600 });
-  const [noteEdit, setNoteEdit] = useState(null); // { x, y } pour saisie texte
-  const [noteText, setNoteText] = useState('');
-  const inputRef   = useRef(null);
+export default function SketchEditor({ image, initialResult, apiKey, onComplete, onCancel }) {
+  const svgRef      = useRef(null);
+  const imgRef      = useRef(null);
+  const [tool, setTool]               = useState('dim');
+  const [elements,  setElements]      = useState([]);
+  const [drawing,   setDrawing]       = useState(null);  // élément en cours
+  const [editingId, setEditingId]     = useState(null);  // id de l'élément en édition label
+  const [editText,  setEditText]      = useState('');
+  const [showRefine, setShowRefine]   = useState(false);
+  const [exportedPng, setExportedPng] = useState(null);
+  const [imgSize,   setImgSize]       = useState({ w: 800, h: 600 });
 
-  const SVG_W = imgSize.w;
-  const SVG_H = imgSize.h;
-
-  // Charger les dimensions de l'image de fond
+  // Dimensions du SVG = dimensions de l'image
   useEffect(() => {
-    if (!scanImage) return;
+    if (!image) return;
     const img = new Image();
     img.onload = () => {
-      const maxW = Math.min(img.width,  900);
-      const maxH = Math.min(img.height, 700);
-      const ratio = Math.min(maxW / img.width, maxH / img.height, 1);
-      setImgSize({ w: Math.round(img.width * ratio), h: Math.round(img.height * ratio) });
+      const maxW = Math.min(img.naturalWidth,  1200);
+      const maxH = Math.min(img.naturalHeight, 900);
+      const ratio = Math.min(maxW / img.naturalWidth, maxH / img.naturalHeight);
+      setImgSize({ w: Math.round(img.naturalWidth * ratio), h: Math.round(img.naturalHeight * ratio) });
     };
-    img.src = scanImage;
-  }, [scanImage]);
+    img.src = image;
+  }, [image]);
 
-  useEffect(() => {
-    if (noteEdit && inputRef.current) inputRef.current.focus();
-  }, [noteEdit]);
-
-  // ─── Coords relatives au SVG ─────────────────────────────────────────────
-  const getSVGPoint = useCallback((e) => {
-    const svg  = svgRef.current;
+  // Coordonnées SVG depuis l'événement souris/touch
+  const getSVGCoords = useCallback((e) => {
+    const svg = svgRef.current;
     if (!svg) return { x: 0, y: 0 };
     const rect = svg.getBoundingClientRect();
-    const scaleX = SVG_W / rect.width;
-    const scaleY = SVG_H / rect.height;
+    const scaleX = imgSize.w / rect.width;
+    const scaleY = imgSize.h / rect.height;
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
     return {
-      x: (clientX - rect.left) * scaleX,
-      y: (clientY - rect.top)  * scaleY,
+      x: Math.round((clientX - rect.left) * scaleX),
+      y: Math.round((clientY - rect.top)  * scaleY),
     };
-  }, [SVG_W, SVG_H]);
+  }, [imgSize]);
 
-  // ─── Handlers souris / touch ──────────────────────────────────────────────
-  const onDown = useCallback((e) => {
+  // ─ POINTER DOWN
+  const handlePointerDown = useCallback((e) => {
+    if (tool === 'erase') return; // géré sur chaque élément
     e.preventDefault();
-    const p = getSVGPoint(e);
+    const { x, y } = getSVGCoords(e);
 
-    if (tool === TOOLS.PEN) {
-      setPenPath({ points: [p], color: COLORS.pen });
-      return;
+    if (tool === 'dim') {
+      setDrawing({ id: uid(), type: 'dim', x1: x, y1: y, x2: x, y2: y, label: '' });
+    } else if (tool === 'note') {
+      const id = uid();
+      setElements(els => [...els, { id, type: 'note', x, y, text: 'Note' }]);
+      setEditingId(id);
+      setEditText('Note');
+    } else if (tool === 'pencil') {
+      setDrawing({ id: uid(), type: 'pencil', points: [[x, y]] });
     }
-    if (tool === TOOLS.DIM) {
-      setDrawing({ type: 'dim', x1: p.x, y1: p.y, x2: p.x, y2: p.y });
-      return;
-    }
-    if (tool === TOOLS.NOTE) {
-      setNoteEdit({ x: p.x, y: p.y });
-      setNoteText('');
-      return;
-    }
-  }, [tool, getSVGPoint]);
+  }, [tool, getSVGCoords]);
 
-  const onMove = useCallback((e) => {
+  // ─ POINTER MOVE
+  const handlePointerMove = useCallback((e) => {
+    if (!drawing) return;
     e.preventDefault();
-    const p = getSVGPoint(e);
+    const { x, y } = getSVGCoords(e);
+    if (drawing.type === 'dim') {
+      setDrawing(d => ({ ...d, x2: x, y2: y }));
+    } else if (drawing.type === 'pencil') {
+      setDrawing(d => ({ ...d, points: [...d.points, [x, y]] }));
+    }
+  }, [drawing, getSVGCoords]);
 
-    if (tool === TOOLS.PEN && penPath) {
-      setPenPath(prev => ({ ...prev, points: [...prev.points, p] }));
-      return;
-    }
-    if (tool === TOOLS.DIM && drawing) {
-      setDrawing(prev => ({ ...prev, x2: p.x, y2: p.y }));
-      return;
-    }
-  }, [tool, penPath, drawing, getSVGPoint]);
-
-  const onUp = useCallback((e) => {
-    if (tool === TOOLS.PEN && penPath && penPath.points.length > 1) {
-      setElements(prev => [...prev, { type: 'pen', ...penPath, id: Date.now() }]);
-      setPenPath(null);
-      return;
-    }
-    if (tool === TOOLS.DIM && drawing) {
+  // ─ POINTER UP
+  const handlePointerUp = useCallback((e) => {
+    if (!drawing) return;
+    if (drawing.type === 'dim') {
       const dx = drawing.x2 - drawing.x1;
       const dy = drawing.y2 - drawing.y1;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist > 15) {
-        const label = prompt('Dimension ? (ex: 120 cm, H=85cm)') || '';
-        setElements(prev => [...prev, { ...drawing, label, id: Date.now() }]);
-      }
-      setDrawing(null);
-      return;
+      const len = Math.round(Math.sqrt(dx * dx + dy * dy));
+      if (len < 10) { setDrawing(null); return; } // trop court, ignorer
+      const id = drawing.id;
+      setElements(els => [...els, { ...drawing, label: '' }]);
+      setEditingId(id);
+      setEditText('');
+    } else if (drawing.type === 'pencil') {
+      if (drawing.points.length > 2) setElements(els => [...els, drawing]);
     }
-  }, [tool, penPath, drawing]);
+    setDrawing(null);
+  }, [drawing]);
 
-  const confirmNote = useCallback(() => {
-    if (noteEdit && noteText.trim()) {
-      setElements(prev => [...prev, {
-        type: 'note', x: noteEdit.x, y: noteEdit.y,
-        text: noteText.trim(), id: Date.now()
-      }]);
-    }
-    setNoteEdit(null);
-    setNoteText('');
-  }, [noteEdit, noteText]);
+  // ─ CONFIRMER LABEL
+  const confirmLabel = () => {
+    setElements(els => els.map(el =>
+      el.id === editingId ? { ...el, label: editText, text: editText } : el
+    ));
+    setEditingId(null);
+    setEditText('');
+  };
 
-  const deleteEl = (id) => setElements(prev => prev.filter(e => e.id !== id));
-  const clearAll = () => { setElements([]); setPenPath(null); setDrawing(null); };
+  // ─ EFFACER ÉLÉMENT
+  const eraseElement = (id) => {
+    if (tool !== 'erase') return;
+    setElements(els => els.filter(el => el.id !== id));
+  };
 
-  // ─── Export PNG aplati ────────────────────────────────────────────────────
-  const exportPNG = useCallback(async () => {
-    const svg    = svgRef.current;
+  // ─ TOUT EFFACER
+  const clearAll = () => setElements([]);
+
+  // ─ EXPORTER en PNG aplati
+  const exportPNG = useCallback(() => {
+    const svg = svgRef.current;
     if (!svg) return;
-    const serial = new XMLSerializer();
-    const svgStr = serial.serializeToString(svg);
-    const blob   = new Blob([svgStr], { type: 'image/svg+xml' });
-    const url    = URL.createObjectURL(blob);
+    const serializer = new XMLSerializer();
+    const svgStr = serializer.serializeToString(svg);
+    const svgBlob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(svgBlob);
 
-    const img = new Image();
-    img.onload = () => {
-      const canvas  = canvasRef.current;
-      canvas.width  = SVG_W;
-      canvas.height = SVG_H;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0);
+    const canvas = document.createElement('canvas');
+    canvas.width  = imgSize.w;
+    canvas.height = imgSize.h;
+    const ctx = canvas.getContext('2d');
+
+    const svgImg = new Image();
+    svgImg.onload = () => {
+      ctx.drawImage(svgImg, 0, 0, imgSize.w, imgSize.h);
       URL.revokeObjectURL(url);
       const png = canvas.toDataURL('image/png');
-      onExport(png, elements);
+      setExportedPng(png);
+      setShowRefine(true);
     };
-    img.src = url;
-  }, [SVG_W, SVG_H, elements, onExport]);
+    svgImg.src = url;
+  }, [imgSize]);
 
-  // ─── SVG helpers ──────────────────────────────────────────────────────────
-  const pointsToPath = (pts) =>
-    pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  // ─ RENDU D'UN ÉLÉMENT SVG
+  const renderElement = (el) => {
+    const cursor = tool === 'erase' ? 'cursor-crosshair' : '';
+    switch (el.type) {
+      case 'dim': {
+        const dx = el.x2 - el.x1, dy = el.y2 - el.y1;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        const mx = (el.x1 + el.x2) / 2, my = (el.y1 + el.y2) / 2;
+        const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+        const perp = len > 0 ? [-dy / len * 12, dx / len * 12] : [0, -12];
+        return (
+          <g key={el.id} onClick={() => eraseElement(el.id)} style={{ cursor: tool === 'erase' ? 'pointer' : 'default' }}>
+            {/* Ligne principale */}
+            <line x1={el.x1} y1={el.y1} x2={el.x2} y2={el.y2}
+              stroke="#22d3ee" strokeWidth="2" markerStart="url(#arrow-start)" markerEnd="url(#arrow-end)" />
+            {/* Lignes de rappel */}
+            <line x1={el.x1} y1={el.y1} x2={el.x1 + perp[0]} y2={el.y1 + perp[1]}
+              stroke="#22d3ee" strokeWidth="1" strokeDasharray="3 2" />
+            <line x1={el.x2} y1={el.y2} x2={el.x2 + perp[0]} y2={el.y2 + perp[1]}
+              stroke="#22d3ee" strokeWidth="1" strokeDasharray="3 2" />
+            {/* Label */}
+            {el.label && (
+              <>
+                <rect x={mx - el.label.length * 4 - 4} y={my - 11}
+                  width={el.label.length * 8 + 8} height={16}
+                  rx="3" fill="#0f172a" fillOpacity="0.85" />
+                <text x={mx} y={my + 3} textAnchor="middle"
+                  fontSize="12" fontFamily="monospace" fontWeight="bold" fill="#22d3ee">
+                  {el.label}
+                </text>
+              </>
+            )}
+          </g>
+        );
+      }
+      case 'note': {
+        const txt = el.text || 'Note';
+        const w = txt.length * 7 + 16;
+        return (
+          <g key={el.id} onClick={() => eraseElement(el.id)} style={{ cursor: tool === 'erase' ? 'pointer' : 'default' }}>
+            <rect x={el.x} y={el.y - 14} width={w} height={20}
+              rx="4" fill="#14532d" stroke="#86efac" strokeWidth="1.5" fillOpacity="0.9" />
+            <text x={el.x + 8} y={el.y + 2}
+              fontSize="12" fontFamily="sans-serif" fill="#86efac">{txt}</text>
+          </g>
+        );
+      }
+      case 'pencil': {
+        const d = el.points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0]},${p[1]}`).join(' ');
+        return (
+          <path key={el.id} d={d} fill="none" stroke="#fb923c" strokeWidth="2.5"
+            strokeLinecap="round" strokeLinejoin="round"
+            onClick={() => eraseElement(el.id)}
+            style={{ cursor: tool === 'erase' ? 'pointer' : 'default' }} />
+        );
+      }
+      default: return null;
+    }
+  };
 
-  function DimArrow({ x1, y1, x2, y2, label, color = COLORS.dim, onDelete, id }) {
-    const dx   = x2 - x1, dy = y2 - y1;
-    const len  = Math.sqrt(dx * dx + dy * dy);
-    if (len < 1) return null;
-    const ux   = dx / len, uy = dy / len;
-    const mx   = (x1 + x2) / 2, my = (y1 + y2) / 2;
-    // Flèches
-    const aLen = 10;
-    const a1x  = x1 + ux * aLen - uy * 5, a1y = y1 + uy * aLen + ux * 5;
-    const a1x2 = x1 + ux * aLen + uy * 5, a1y2 = y1 + uy * aLen - ux * 5;
-    const a2x  = x2 - ux * aLen - uy * 5, a2y = y2 - uy * aLen + ux * 5;
-    const a2x2 = x2 - ux * aLen + uy * 5, a2y2 = y2 - uy * aLen - ux * 5;
-    // Angle texte
-    let angle  = Math.atan2(dy, dx) * 180 / Math.PI;
-    if (angle > 90 || angle < -90) angle += 180;
-    // Offset texte perpendiculaire
-    const tox  = -uy * 14, toy = ux * 14;
-
-    return (
-      <g style={{ cursor: 'pointer' }} onClick={() => onDelete && onDelete(id)}>
-        <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth="1.5"
-          strokeDasharray="none" markerStart={`url(#arrow-${color.slice(1)})`}
-          markerEnd={`url(#arrow-${color.slice(1)})`} />
-        {/* Flèche manuelle */}
-        <polyline points={`${a1x},${a1y} ${x1},${y1} ${a1x2},${a1y2}`}
-          fill="none" stroke={color} strokeWidth="1.5" />
-        <polyline points={`${a2x},${a2y} ${x2},${y2} ${a2x2},${a2y2}`}
-          fill="none" stroke={color} strokeWidth="1.5" />
-        {label && (
-          <text
-            x={mx + tox} y={my + toy}
-            fill={color} fontSize="13" fontWeight="bold" fontFamily="monospace"
-            textAnchor="middle" dominantBaseline="middle"
-            transform={`rotate(${angle}, ${mx + tox}, ${my + toy})`}
-            style={{ paintOrder: 'stroke', strokeWidth: '3px', stroke: '#00000088' }}
-          >
-            {label}
-          </text>
-        )}
-        {/* Zone de clic pour supprimer */}
-        <circle cx={mx} cy={my} r="8" fill="transparent" />
-      </g>
-    );
-  }
-
-  function NoteEl({ x, y, text, onDelete, id }) {
-    const lines  = text.split('\n');
-    const maxLen = Math.max(...lines.map(l => l.length));
-    const bw     = Math.max(80, maxLen * 7.5 + 16);
-    const bh     = lines.length * 17 + 12;
-    return (
-      <g style={{ cursor: 'pointer' }} onClick={() => onDelete && onDelete(id)}>
-        <rect x={x} y={y - bh - 4} width={bw} height={bh}
-          rx="6" fill="#14532d" stroke={COLORS.note} strokeWidth="1.2" opacity="0.95" />
-        <polygon points={`${x + 16},${y - 4} ${x + 8},${y + 4} ${x + 24},${y - 4}`}
-          fill="#14532d" stroke={COLORS.note} strokeWidth="1" />
-        {lines.map((l, i) => (
-          <text key={i} x={x + 8} y={y - bh + 14 + i * 17}
-            fill={COLORS.note} fontSize="12" fontFamily="monospace" fontWeight="600"
-            style={{ paintOrder: 'stroke', strokeWidth: '2px', stroke: '#00000066' }}
-          >{l}</text>
-        ))}
-      </g>
-    );
-  }
-
-  // ─── Indicateurs du résultat initial ─────────────────────────────────────
-  const initDims = scanResult?.cabinet
-    ? `${scanResult.cabinet.width}×${scanResult.cabinet.height}×${scanResult.cabinet.depth ?? '?'} cm`
-    : null;
+  // élément en cours de dessin
+  const renderDrawing = () => {
+    if (!drawing) return null;
+    if (drawing.type === 'dim') {
+      return (
+        <line x1={drawing.x1} y1={drawing.y1} x2={drawing.x2} y2={drawing.y2}
+          stroke="#22d3ee" strokeWidth="2" strokeDasharray="6 3"
+          markerStart="url(#arrow-start)" markerEnd="url(#arrow-end)" />
+      );
+    }
+    if (drawing.type === 'pencil') {
+      const d = drawing.points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0]},${p[1]}`).join(' ');
+      return <path d={d} fill="none" stroke="#fb923c" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />;
+    }
+    return null;
+  };
 
   return (
-    <div className="flex flex-col gap-4 w-full">
+    <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex flex-col">
 
-      {/* En-tête */}
-      <div className="bg-[#0f1620] border border-white/10 rounded-xl p-4">
-        <div className="flex items-center justify-between flex-wrap gap-2">
+      {/* ── HEADER ── */}
+      <div className="flex items-center justify-between px-4 py-3 bg-[#0f1620] border-b border-white/10 flex-shrink-0">
+        <div className="flex items-center gap-3">
+          <button onClick={onCancel}
+            className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors">
+            ✕
+          </button>
           <div>
-            <h2 className="text-white font-bold text-lg flex items-center gap-2">
-              ✏️ Éditeur de croquis
-            </h2>
-            <p className="text-slate-400 text-sm">
-              Ajoutez des cotes et annotations, puis relancez l'analyse IA.
-            </p>
+            <h2 className="text-white font-bold text-sm">✏️ Éditeur de croquis</h2>
+            <p className="text-[11px] text-slate-500">Annotez puis relancez Claude pour affiner le scan</p>
           </div>
-          {initDims && (
-            <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg px-3 py-1.5">
-              <p className="text-[11px] text-orange-400 font-mono font-bold">Scan initial</p>
-              <p className="text-orange-300 text-sm font-bold">{initDims}</p>
-            </div>
-          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button onClick={clearAll}
+            className="px-3 py-1.5 text-xs font-bold text-slate-400 hover:text-red-400 border border-white/10 hover:border-red-500/40 rounded-lg transition-all">
+            🗑 Tout effacer
+          </button>
+          <button
+            onClick={exportPNG}
+            disabled={elements.length === 0}
+            className={
+              'px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-lg ' +
+              (elements.length > 0
+                ? 'bg-orange-600 hover:bg-orange-500 text-white cursor-pointer'
+                : 'bg-slate-700 text-slate-500 cursor-not-allowed')
+            }>
+            🚀 Relancer Claude
+          </button>
         </div>
       </div>
 
-      {/* Barre d'outils */}
-      <div className="flex items-center gap-2 flex-wrap">
-        {[
-          { id: TOOLS.DIM,    icon: '↔️',  label: 'Cote',       hint: 'Tracer une ligne de cote' },
-          { id: TOOLS.NOTE,   icon: '💬',  label: 'Annotation', hint: 'Ajouter une note texte' },
-          { id: TOOLS.PEN,    icon: '✏️',  label: 'Stylo',      hint: 'Dessin libre' },
-          { id: TOOLS.SELECT, icon: '👆',  label: 'Supprimer',  hint: 'Cliquer un élément pour le supprimer' },
-        ].map(t => (
-          <button key={t.id} onClick={() => setTool(t.id)}
-            title={t.hint}
+      {/* ── TOOLBAR ── */}
+      <div className="flex items-center gap-2 px-4 py-2 bg-[#0a0f1a] border-b border-white/5 flex-shrink-0 overflow-x-auto">
+        {TOOLS.map(t => (
+          <button
+            key={t.id}
+            onClick={() => setTool(t.id)}
             className={
-              'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-bold transition-all border ' +
+              'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border flex-shrink-0 ' +
               (tool === t.id
-                ? 'bg-orange-500/20 text-orange-400 border-orange-500/50'
-                : 'bg-white/5 text-slate-400 border-white/10 hover:text-white hover:bg-white/10')
-            }>
-            <span>{t.icon}</span>
+                ? 'bg-white/10 border-white/30 text-white scale-105'
+                : 'border-white/5 text-slate-400 hover:text-white hover:bg-white/5')
+            }
+            style={tool === t.id ? { borderColor: t.color + '80', color: t.color } : {}}
+          >
+            <span className="text-base">{t.icon}</span>
             <span className="hidden sm:inline">{t.label}</span>
           </button>
         ))}
-        <div className="flex-1" />
-        <button onClick={clearAll}
-          className="px-3 py-2 rounded-lg text-sm font-bold bg-white/5 text-red-400 border border-red-500/20 hover:bg-red-500/10 transition-all">
-          🗑️ <span className="hidden sm:inline">Tout effacer</span>
-        </button>
-        <button onClick={onCancel}
-          className="px-3 py-2 rounded-lg text-sm font-bold bg-white/5 text-slate-400 border border-white/10 hover:text-white transition-all">
-          ✕ Annuler
-        </button>
-        <button onClick={exportPNG}
-          className="px-4 py-2 rounded-lg text-sm font-bold bg-orange-600 hover:bg-orange-500 text-white border border-orange-500/50 shadow transition-all">
-          🚀 Relancer l'IA
-        </button>
+
+        <div className="ml-auto flex items-center gap-1.5 text-[11px] text-slate-500 flex-shrink-0">
+          <span className="hidden md:inline">💡</span>
+          <span className="hidden md:inline">
+            {tool === 'dim'    && 'Cliquez-glissez pour tracer une cote'}
+            {tool === 'note'   && 'Cliquez pour placer une note'}
+            {tool === 'pencil' && 'Dessinez librement sur le croquis'}
+            {tool === 'erase'  && 'Cliquez sur un élément pour le supprimer'}
+          </span>
+        </div>
       </div>
 
-      {/* Aide outil actif */}
-      <div className="text-[11px] text-slate-500 px-1">
-        {tool === TOOLS.DIM    && '↔️  Cliquez-glissez pour tracer une cote, entrez la valeur dans la popup'}
-        {tool === TOOLS.NOTE   && '💬  Cliquez pour placer une annotation texte'}
-        {tool === TOOLS.PEN    && '✏️  Dessinez librement par-dessus le croquis'}
-        {tool === TOOLS.SELECT && '👆  Cliquez sur un élément pour le supprimer'}
+      {/* ── CANVAS ── */}
+      <div className="flex-1 overflow-auto flex items-center justify-center p-4 bg-[#060b14]">
+        <div className="relative" style={{ touchAction: 'none' }}>
+          <svg
+            ref={svgRef}
+            width={imgSize.w}
+            height={imgSize.h}
+            viewBox={`0 0 ${imgSize.w} ${imgSize.h}`}
+            style={{
+              display: 'block',
+              maxWidth: '100%',
+              cursor: tool === 'erase' ? 'crosshair' : tool === 'note' ? 'cell' : 'crosshair',
+              borderRadius: '8px',
+              border: '1px solid rgba(255,255,255,0.1)',
+            }}
+            onMouseDown={handlePointerDown}
+            onMouseMove={handlePointerMove}
+            onMouseUp={handlePointerUp}
+            onMouseLeave={handlePointerUp}
+            onTouchStart={handlePointerDown}
+            onTouchMove={handlePointerMove}
+            onTouchEnd={handlePointerUp}
+          >
+            <defs>
+              <marker id="arrow-end" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L8,3 z" fill="#22d3ee" />
+              </marker>
+              <marker id="arrow-start" markerWidth="8" markerHeight="8" refX="2" refY="3" orient="auto-start-reverse">
+                <path d="M0,0 L0,6 L8,3 z" fill="#22d3ee" />
+              </marker>
+            </defs>
+
+            {/* Image de fond */}
+            {image && (
+              <image
+                ref={imgRef}
+                href={image}
+                x="0" y="0"
+                width={imgSize.w}
+                height={imgSize.h}
+                preserveAspectRatio="xMidYMid meet"
+              />
+            )}
+
+            {/* Calque annotation */}
+            {elements.map(renderElement)}
+            {renderDrawing()}
+          </svg>
+
+          {/* Input label flottant pour les cotes */}
+          {editingId && (() => {
+            const el = elements.find(e => e.id === editingId) ||
+                       (drawing?.id === editingId ? drawing : null);
+            const rect = svgRef.current?.getBoundingClientRect();
+            if (!el || !rect) return null;
+            const scaleX = rect.width  / imgSize.w;
+            const scaleY = rect.height / imgSize.h;
+            const cx = el.type === 'note' ? el.x : (el.x1 + el.x2) / 2;
+            const cy = el.type === 'note' ? el.y : (el.y1 + el.y2) / 2;
+            return (
+              <div
+                style={{
+                  position: 'absolute',
+                  left: cx * scaleX - 70,
+                  top:  cy * scaleY - 42,
+                  zIndex: 100,
+                }}
+              >
+                <div className="bg-[#0f1620] border border-cyan-500/50 rounded-xl p-2 shadow-2xl flex flex-col gap-1.5">
+                  <input
+                    autoFocus
+                    value={editText}
+                    onChange={e => setEditText(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') confirmLabel(); if (e.key === 'Escape') { setEditingId(null); setEditText(''); } }}
+                    placeholder={el.type === 'dim' ? 'Ex: 120 cm' : 'Texte...'}
+                    className="w-36 bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs text-white placeholder-slate-600 outline-none focus:border-cyan-500"
+                  />
+                  <div className="flex gap-1">
+                    <button onClick={confirmLabel}
+                      className="flex-1 py-1 text-[10px] font-bold bg-cyan-600 hover:bg-cyan-500 text-white rounded-md transition-colors">
+                      ✓ OK
+                    </button>
+                    <button onClick={() => { setEditingId(null); setEditText(''); }}
+                      className="flex-1 py-1 text-[10px] font-bold bg-white/5 text-slate-400 hover:text-white rounded-md transition-colors">
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
       </div>
 
-      {/* Zone SVG */}
-      <div
-        className="relative border border-white/10 rounded-xl overflow-hidden shadow-xl"
-        style={{ background: '#111827', touchAction: 'none' }}
-      >
-        <svg
-          ref={svgRef}
-          viewBox={`0 0 ${SVG_W} ${SVG_H}`}
-          width="100%"
-          xmlns="http://www.w3.org/2000/svg"
-          xmlnsXlink="http://www.w3.org/1999/xlink"
-          style={{ display: 'block', cursor:
-            tool === TOOLS.SELECT ? 'crosshair' :
-            tool === TOOLS.PEN    ? 'crosshair' :
-            tool === TOOLS.DIM    ? 'crosshair' :
-            'default'
-          }}
-          onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp}
-          onTouchStart={onDown} onTouchMove={onMove} onTouchEnd={onUp}
-        >
-          {/* Image de fond */}
-          {scanImage && (
-            <image
-              href={scanImage}
-              x="0" y="0"
-              width={SVG_W} height={SVG_H}
-              preserveAspectRatio="xMidYMid meet"
-            />
-          )}
-
-          {/* Overlay semi-transparent pour lisibilité des annotations */}
-          <rect width={SVG_W} height={SVG_H} fill="rgba(0,0,0,0.18)" />
-
-          {/* Éléments existants */}
-          {elements.map(el => {
-            if (el.type === 'pen') {
-              return (
-                <path key={el.id} d={pointsToPath(el.points)}
-                  fill="none" stroke={el.color} strokeWidth="2.5"
-                  strokeLinecap="round" strokeLinejoin="round"
-                  style={{ cursor: tool === TOOLS.SELECT ? 'pointer' : 'inherit' }}
-                  onClick={tool === TOOLS.SELECT ? () => deleteEl(el.id) : undefined}
-                />
-              );
-            }
-            if (el.type === 'dim') {
-              return (
-                <DimArrow key={el.id} {...el}
-                  onDelete={tool === TOOLS.SELECT ? deleteEl : null} />
-              );
-            }
-            if (el.type === 'note') {
-              return (
-                <NoteEl key={el.id} {...el}
-                  onDelete={tool === TOOLS.SELECT ? deleteEl : null} />
-              );
-            }
-            return null;
-          })}
-
-          {/* Élément en cours de dessin */}
-          {drawing && drawing.type === 'dim' && (
-            <DimArrow {...drawing} label="…" />
-          )}
-          {penPath && (
-            <path d={pointsToPath(penPath.points)}
-              fill="none" stroke={COLORS.pen} strokeWidth="2.5"
-              strokeLinecap="round" strokeLinejoin="round" opacity="0.7" />
-          )}
-
-          {/* Indicateur de placement d'annotation */}
-          {noteEdit && (
-            <>
-              <circle cx={noteEdit.x} cy={noteEdit.y} r="5"
-                fill={COLORS.note} opacity="0.8" />
-              <text x={noteEdit.x + 10} y={noteEdit.y}
-                fill={COLORS.note} fontSize="12" fontFamily="monospace">⬅ Saisie en bas</text>
-            </>
-          )}
-        </svg>
-
-        {/* Saisie annotation (flottante sous le canvas) */}
-        {noteEdit && (
-          <div className="absolute bottom-0 left-0 right-0 bg-[#0f1620]/95 backdrop-blur border-t border-green-500/30 p-3 flex gap-2">
-            <input
-              ref={inputRef}
-              value={noteText}
-              onChange={e => setNoteText(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') confirmNote(); if (e.key === 'Escape') { setNoteEdit(null); setNoteText(''); } }}
-              placeholder="Ex: H=220cm, 3 tablettes, tiroirs=15cm …"
-              className="flex-1 bg-white/5 border border-green-500/30 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 outline-none focus:border-green-400"
-            />
-            <button onClick={confirmNote}
-              className="px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg text-sm font-bold">OK</button>
-            <button onClick={() => { setNoteEdit(null); setNoteText(''); }}
-              className="px-3 py-2 bg-white/5 text-slate-400 rounded-lg text-sm">✕</button>
-          </div>
+      {/* ── STATUS BAR ── */}
+      <div className="flex items-center gap-4 px-4 py-2 bg-[#0a0f1a] border-t border-white/5 flex-shrink-0 text-[11px] font-mono">
+        <span className="text-slate-500">{elements.length} annotation{elements.length !== 1 ? 's' : ''}</span>
+        <span className="text-cyan-500">{elements.filter(e => e.type === 'dim').length} cote{elements.filter(e => e.type === 'dim').length !== 1 ? 's' : ''}</span>
+        <span className="text-green-500">{elements.filter(e => e.type === 'note').length} note{elements.filter(e => e.type === 'note').length !== 1 ? 's' : ''}</span>
+        <span className="text-orange-500">{elements.filter(e => e.type === 'pencil').length} trait{elements.filter(e => e.type === 'pencil').length !== 1 ? 's' : ''}</span>
+        {elements.length === 0 && (
+          <span className="text-slate-600 italic">Aucune annotation — ajoutez des cotes ou notes avant de relancer</span>
         )}
       </div>
 
-      {/* Canvas caché pour export PNG */}
-      <canvas ref={canvasRef} style={{ display: 'none' }} />
-
-      {/* Légende */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
-        {[
-          { color: COLORS.dim,  label: 'Cote → Claude lira la valeur exacte' },
-          { color: COLORS.note, label: 'Annotation → correction libre' },
-          { color: COLORS.pen,  label: 'Stylo → préciser une forme' },
-          { color: '#94a3b8',   label: 'Cliquer un élément (mode 👆) pour supprimer' },
-        ].map((l, i) => (
-          <div key={i} className="flex items-center gap-2 bg-white/3 rounded-lg p-2">
-            <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ background: l.color }} />
-            <span className="text-slate-400">{l.label}</span>
-          </div>
-        ))}
-      </div>
+      {/* ── MODAL CLAUDE REFINEMENT ── */}
+      {showRefine && exportedPng && (
+        <ClaudeRefinement
+          annotatedImage={exportedPng}
+          annotations={elements}
+          initialResult={initialResult}
+          apiKey={apiKey}
+          onComplete={(newResult) => {
+            setShowRefine(false);
+            onComplete(newResult);
+          }}
+          onCancel={() => setShowRefine(false)}
+        />
+      )}
     </div>
   );
 }
