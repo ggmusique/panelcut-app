@@ -8,7 +8,7 @@ import Results from './components/Results';
 import AuthScreen from './components/AuthScreen';
 import ProjectsScreen from './components/ProjectsScreen';
 import Scanner from './components/Scanner';
-import PlansScreen from './components/PlansScreen.jsx';
+import PlansScreen from './components/PlansScreen';
 import { ChevronLeft, ChevronRight, LogOut, Disc } from 'lucide-react';
 import './App.css';
 
@@ -77,11 +77,12 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
+  // Guard: si on arrive sur RESULTS avec des résultats vides/corrompus → retour à PIECES
   useEffect(() => {
     if (screen === SCREENS.RESULTS && (!results || !Array.isArray(results.panels) || results.panels.length === 0)) {
       setScreen(SCREENS.PIECES);
     }
-  }, [screen, results]);
+  }, [screen, results]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const startNew = (devisNum = '') => {
     const p = { ...DEFAULT_PROJECT, devisNum };
@@ -121,7 +122,7 @@ export default function App() {
         setSaving(false); setSaveMsg('OK'); setTimeout(() => setSaveMsg(''), 2000);
       }
     }, 50);
-  }, [project, user]);
+  }, [project, user]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const canGoNext =
     (screen === SCREENS.FORM   && project.name?.trim().length > 0) ||
@@ -142,13 +143,16 @@ export default function App() {
     else setScreen(SCREENS.PIECES);
   };
 
+  // Correction bug scan: le serveur et generatePiecesFromModel retournent des mm
+  // PiecesList et l'engine attendent des cm → on divise par 10
   const handleScanComplete = (scanResult) => {
-    const pieces = (scanResult.pieces || []).map(p => ({
-      name: p.name || 'Piece',
-      length: (parseFloat(p.length) || 0) / 10,
-      height: (parseFloat(p.height) || 0) / 10,
+    const raw = Array.isArray(scanResult) ? scanResult : (scanResult.pieces || []);
+    const pieces = raw.map(p => ({
+      name: p.name || 'Pièce',
+      length: Math.round((parseFloat(p.length) || 0) / 10 * 10) / 10,
+      height: Math.round((parseFloat(p.height) || 0) / 10 * 10) / 10,
       qty: parseInt(p.qty, 10) || 1,
-    }));
+    })).filter(p => p.length > 0 && p.height > 0);
     const projectName = 'Plan du ' + new Date().toLocaleDateString('fr-FR');
     const dNum = 'DV-' + new Date().getFullYear() + '-' + String(Math.floor(Math.random() * 9000) + 1000);
     setProject({ ...DEFAULT_PROJECT, name: projectName, devisNum: dNum, pieces });
@@ -237,19 +241,67 @@ export default function App() {
       )}
 
       <main>
-        {screen === SCREENS.AUTH     && <AuthScreen t={tr} />}
-        {screen === SCREENS.PROJECTS && <ProjectsScreen user={user} onNew={() => startNew(devisNum)} onLoad={handleLoadProject} onScanComplete={handleScanComplete} onPlans={() => setScreen(SCREENS.PLANS)} />}
-        {screen === SCREENS.FORM     && <ProjectForm t={tr} project={project} onChange={setProject} />}
-        {screen === SCREENS.PIECES   && <PiecesList t={tr} project={project} onChange={setProject} onOptimize={handleOptimize} computing={computing} />}
-        {screen === SCREENS.RESULTS  && results?.panels?.length > 0 && (
+        {/* AUTH — onSkip permet de passer sans compte */}
+        {screen === SCREENS.AUTH     && <AuthScreen onSkip={() => setScreen(SCREENS.PROJECTS)} />}
+
+        {screen === SCREENS.PROJECTS && (
+          <ProjectsScreen
+            user={user}
+            onNew={() => startNew(devisNum)}
+            onLoad={handleLoadProject}
+            onScanComplete={handleScanComplete}
+            onPlans={() => setScreen(SCREENS.PLANS)}
+          />
+        )}
+
+        {/* FORM — onNext navigue vers l'écran pièces */}
+        {screen === SCREENS.FORM && (
+          <ProjectForm
+            t={tr}
+            project={project}
+            onChange={setProject}
+            onNext={() => setScreen(SCREENS.PIECES)}
+          />
+        )}
+
+        {screen === SCREENS.PIECES && (
+          <PiecesList
+            t={tr}
+            project={project}
+            onChange={setProject}
+            onOptimize={handleOptimize}
+            computing={computing}
+          />
+        )}
+
+        {/* RESULTS — uniquement si panels valides */}
+        {screen === SCREENS.RESULTS && results?.panels?.length > 0 && (
           <Results
             t={tr}
             results={results}
             project={project}
+            onBack={() => setScreen(SCREENS.PIECES)}
           />
         )}
-        {screen === SCREENS.SCAN     && <Scanner t={tr} onPiecesDetected={handleScanComplete} onClose={() => setScreen(SCREENS.PROJECTS)} />}
-        {screen === SCREENS.PLANS    && <PlansScreen t={tr} project={project} session={user} supabase={supabase} onBack={() => setScreen(SCREENS.PROJECTS)} onScan={() => setScreen(SCREENS.SCAN)} />}
+
+        {screen === SCREENS.SCAN && (
+          <Scanner
+            t={tr}
+            onPiecesDetected={handleScanComplete}
+            onClose={() => setScreen(SCREENS.PROJECTS)}
+          />
+        )}
+
+        {screen === SCREENS.PLANS && (
+          <PlansScreen
+            t={tr}
+            project={project}
+            session={{ user }}
+            supabase={supabase}
+            onBack={() => setScreen(SCREENS.PROJECTS)}
+            onScan={() => setScreen(SCREENS.SCAN)}
+          />
+        )}
       </main>
 
       {saveMsg === 'OK' && (
