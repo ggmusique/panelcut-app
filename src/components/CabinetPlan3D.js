@@ -105,27 +105,41 @@ export default function CabinetPlan3D({ model, cabinet: cabinetProp, pieces = []
     dims = { width: cab.width, height: cab.height, depth: cab.depth || 60, plinth: cab.plinth || 0 };
     T    = (cab.thickness || 1.8) / 100;
     BT   = 0.003;
-    const W_m    = dims.width / 100;
-    const nbDiv  = cab.nb_dividers ||
-      (pieces || []).reduce((a, p) => a + (p.role === 'divider' ? (p.qty || 1) : 0), 0) || 0;
-    nbBodies = nbDiv + 1;
-    const innerW = W_m - 2 * T;
-    const bw     = innerW / nbBodies;
-    const nS     = cab.nb_shelves ||
-      (pieces || []).reduce((a, p) => a + (p.role === 'shelf' ? (p.qty || 1) : 0), 0) || 0;
-    const nD     = cab.nb_drawers ||
-      (pieces || []).reduce((a, p) => a + (['drawer_front','drawer_box'].includes(p.role) ? (p.qty || 1) : 0), 0) || 0;
-    const rod    = (pieces || []).some(p =>
-      p.role === 'rod' ||
-      (p.notes || '').toLowerCase().includes('tringle') ||
-      (p.name  || '').toLowerCase().includes('tringle')
-    );
-    bodies = Array.from({ length: nbBodies }, () => ({
-      width:   bw,
-      shelves: Math.max(0, Math.round(nS / nbBodies)),
-      drawers: Math.max(0, Math.round(nD / nbBodies)),
-      rod,
-    }));
+
+    // Priorité : modules retournés par le serveur (liste avec width/shelves/drawers)
+    const rawModules = Array.isArray(cab.modules) && cab.modules.length > 0 ? cab.modules : null;
+
+    if (rawModules) {
+      // Le serveur retourne les modules explicitement → on les utilise directement
+      nbBodies = rawModules.length;
+      bodies = rawModules.map(m => ({
+        width:   parseFloat(m.width || m.w) || (dims.width / nbBodies), // cm
+        shelves: Math.max(0, parseInt(m.shelves ?? m.nb_shelves ?? 2, 10)),
+        drawers: Math.max(0, parseInt(m.drawers ?? m.nb_drawers ?? 0, 10)),
+        rod:     Boolean(m.rod ?? m.tringle ?? m.hanging ?? false),
+      }));
+    } else {
+      // Fallback : nb_dividers ou comptage dans pieces
+      const nbDiv  = cab.nb_dividers ||
+        (pieces || []).reduce((a, p) => a + (p.role === 'divider' ? (p.qty || 1) : 0), 0) || 0;
+      nbBodies = nbDiv + 1;
+      const bw_cm  = dims.width / nbBodies; // largeur approximative en cm
+      const nS     = cab.nb_shelves ||
+        (pieces || []).reduce((a, p) => a + (p.role === 'shelf' ? (p.qty || 1) : 0), 0) || 0;
+      const nD     = cab.nb_drawers ||
+        (pieces || []).reduce((a, p) => a + (['drawer_front','drawer_box'].includes(p.role) ? (p.qty || 1) : 0), 0) || 0;
+      const rod    = (pieces || []).some(p =>
+        p.role === 'rod' ||
+        (p.notes || '').toLowerCase().includes('tringle') ||
+        (p.name  || '').toLowerCase().includes('tringle')
+      );
+      bodies = Array.from({ length: nbBodies }, () => ({
+        width:   bw_cm, // cm
+        shelves: Math.max(0, Math.round(nS / nbBodies)),
+        drawers: Math.max(0, Math.round(nD / nbBodies)),
+        rod,
+      }));
+    }
   } else {
     return (
       <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
