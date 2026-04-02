@@ -86,7 +86,7 @@ export default function CabinetPlan2D({ model }) {
 
   return (
     <div className="rounded-xl border border-slate-400 bg-white p-3 text-slate-900">
-      <svg viewBox="0 0 640 380" className="w-full" role="img" aria-label="Plan atelier 2D coté du meuble">
+      <svg viewBox="0 0 640 380" className="w-full cabinet-plan-svg" role="img" aria-label="Plan atelier 2D coté du meuble">
         <text x={view.originX} y={24} fontSize="12" fontWeight="700">Plan atelier — vue de face</text>
 
         {/* Contour extérieur du meuble */}
