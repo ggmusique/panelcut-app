@@ -80,7 +80,7 @@ export default function ClaudeRefinement({
       annotationSummary ? `Annotations visibles :\n${annotationSummary}` : '',
       extraNotes ? `Corrections supplémentaires :\n${extraNotes}` : '',
       '',
-      'PRIORITÉ : les cotes et annotations sur l'image sont EXACTES — utilise-les en priorité sur ta propre interprétation.',
+      "PRIORITÉ : les cotes et annotations sur l'image sont EXACTES — utilise-les en priorité sur ta propre interprétation.",
       'Retourne le JSON uniquement.',
     ].filter(Boolean).join('\n');
 
