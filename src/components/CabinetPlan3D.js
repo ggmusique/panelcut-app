@@ -1,343 +1,425 @@
 /**
- * CabinetPlan3D.js — Vue isométrique SVG pure (zéro lib externe)
- * Projection iso standard : axe X = droite-bas, Y = gauche-bas, Z = haut
+ * CabinetPlan3D.js — Vue 3D interactive avec Three.js (orbit à la souris & touch)
+ * Chargement Three.js via CDN dans un <script> injecté dynamiquement.
  * Reçoit : cabinet { width, height, depth, thickness, plinth, panels[] }
- * Toutes les dimensions en cm.
+ * Toutes les dimensions en cm (converties en m pour Three.js).
  */
+import { useRef, useEffect, useState, useCallback } from 'react';
 
-// ── Projection isométrique ──────────────────────────────────────────────────
-// Convention : (cx, cy, cz) => (svgX, svgY)
-// cx = gauche→droite du meuble, cy = avant→arrière, cz = bas→haut
-const ISO_SCALE = 4; // px par cm (ajusté dynamiquement)
-
-function iso(cx, cy, cz, scale = ISO_SCALE) {
-  const s = scale;
-  const x = (cx - cy) * Math.cos(Math.PI / 6) * s;
-  const y = (cx + cy) * Math.sin(Math.PI / 6) * s - cz * s;
-  return [x, y];
-}
-
-function pt(cx, cy, cz, scale) {
-  const [x, y] = iso(cx, cy, cz, scale);
-  return `${x.toFixed(2)},${y.toFixed(2)}`;
-}
-
-// ── Couleurs par rôle ───────────────────────────────────────────────────────
-const ROLE_COLORS = {
-  side:         { fill: '#1e3a5f', stroke: '#60a5fa', strokeW: 1.2 },
-  back:         { fill: '#0f1f38', stroke: '#334155', strokeW: 0.8 },
-  top:          { fill: '#1e3a5f', stroke: '#93c5fd', strokeW: 1.2 },
-  bottom:       { fill: '#1e3a5f', stroke: '#93c5fd', strokeW: 1 },
-  shelf:        { fill: '#0f2a3f', stroke: '#38bdf8', strokeW: 1 },
-  divider:      { fill: '#162032', stroke: '#7dd3fc', strokeW: 0.9 },
-  door:         { fill: 'rgba(249,115,22,0.15)', stroke: '#f97316', strokeW: 1.2 },
-  drawer_front: { fill: 'rgba(168,85,247,0.15)', stroke: '#a855f7', strokeW: 1 },
-  default:      { fill: '#1a2f4a', stroke: '#64748b', strokeW: 1 },
+// ─── Couleurs par rôle ────────────────────────────────────────────────────────
+const ROLE_MAT = {
+  side:         { color: 0x1e3a5f, emissive: 0x0a1628, opacity: 1    },
+  top:          { color: 0x1e3a5f, emissive: 0x0a1628, opacity: 1    },
+  bottom:       { color: 0x1e3a5f, emissive: 0x0a1628, opacity: 1    },
+  shelf:        { color: 0x0f3050, emissive: 0x061828, opacity: 1    },
+  divider:      { color: 0x0f3050, emissive: 0x061828, opacity: 1    },
+  back:         { color: 0x080f20, emissive: 0x030810, opacity: 0.85 },
+  door:         { color: 0xf97316, emissive: 0x7c2d12, opacity: 0.25 },
+  drawer_front: { color: 0xa855f7, emissive: 0x581c87, opacity: 0.30 },
+  default:      { color: 0x1a2f4a, emissive: 0x0a1828, opacity: 1    },
 };
 
-function colorFor(role) {
-  return ROLE_COLORS[role] || ROLE_COLORS.default;
+const EDGE_COLOR = {
+  side: 0x475569, top: 0x7dd3fc, bottom: 0x7dd3fc,
+  shelf: 0x38bdf8, divider: 0x93c5fd, back: 0x1e3a5f,
+  door: 0xf97316, drawer_front: 0xa855f7, default: 0x64748b,
+};
+
+function matFor(role) { return ROLE_MAT[role] || ROLE_MAT.default; }
+function edgeFor(role) { return EDGE_COLOR[role] || EDGE_COLOR.default; }
+
+// ─── Chargement Three.js via CDN (une seule fois) ─────────────────────────────
+let threePromise = null;
+function loadThree() {
+  if (threePromise) return threePromise;
+  threePromise = new Promise((resolve, reject) => {
+    if (window.THREE) { resolve(window.THREE); return; }
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
+    s.onload = () => resolve(window.THREE);
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+  return threePromise;
 }
 
-// Luminosité relative des 3 faces (haut = clair, droite = moyen, gauche = sombre)
-function lighten(hex, factor) {
-  if (hex.startsWith('rgba') || hex.startsWith('rgb')) return hex;
-  const n = parseInt(hex.slice(1), 16);
-  const r = Math.min(255, Math.round(((n >> 16) & 0xff) * factor));
-  const g = Math.min(255, Math.round(((n >> 8)  & 0xff) * factor));
-  const b = Math.min(255, Math.round(( n        & 0xff) * factor));
-  return `rgb(${r},${g},${b})`;
-}
-
-// ── Rendu d'un panneau en 3 faces iso ──────────────────────────────────────
-// Un panneau est une boîte aplatie (l'une des 3 dims = épaisseur)
-// On détermine quelle face montrer selon le rôle.
-function PanelBox({ panel, cab, scale, key: _key }) {
-  const t  = cab.thickness || 1.8;
-  const { x: px, y: py, z: pz, w, h, role } = panel;
-  const c  = colorFor(role);
-
-  // Détermination des dimensions 3D du panneau selon son rôle
-  let cx1, cy1, cz1, cx2, cy2, cz2; // coin bas-avant-gauche + coin haut-arrière-droit
-  switch (role) {
-    case 'side':
-    case 'divider':
-      // Plan vertical parallèle à la profondeur : épaisseur sur X
-      cx1 = px;     cy1 = 0;   cz1 = pz;
-      cx2 = px + t; cy2 = cab.depth; cz2 = pz + h;
-      break;
-    case 'back':
-      // Plan vertical parallèle à la largeur : épaisseur sur Y (fond)
-      cx1 = px;     cy1 = cab.depth - t; cz1 = pz;
-      cx2 = px + w; cy2 = cab.depth;     cz2 = pz + h;
-      break;
-    case 'top':
-    case 'bottom':
-    case 'shelf':
-      // Plan horizontal : épaisseur sur Z
-      cx1 = px;     cy1 = 0;            cz1 = pz;
-      cx2 = px + w; cy2 = cab.depth;    cz2 = pz + t;
-      break;
-    case 'door':
-      // Panneau vertical face avant : épaisseur sur Y
-      cx1 = px;     cy1 = 0;   cz1 = pz;
-      cx2 = px + w; cy2 = t;   cz2 = pz + h;
-      break;
-    case 'drawer_front':
-      cx1 = px;     cy1 = 0;   cz1 = pz;
-      cx2 = px + w; cy2 = t;   cz2 = pz + h;
-      break;
-    default:
-      cx1 = px;     cy1 = 0;   cz1 = pz;
-      cx2 = px + w; cy2 = cab.depth; cz2 = pz + h;
-  }
-
-  const dx = cx2 - cx1, dy = cy2 - cy1, dz = cz2 - cz1;
-  const fillTop    = lighten(c.fill, 1.8);
-  const fillRight  = lighten(c.fill, 1.3);
-  const fillLeft   = c.fill;
-
-  // Face du dessus (visible si Z > 0)
-  const topFace = `${pt(cx1,cy1,cz2,scale)} ${pt(cx2,cy1,cz2,scale)} ${pt(cx2,cy2,cz2,scale)} ${pt(cx1,cy2,cz2,scale)}`;
-  // Face de droite (avant, Y=cy1)
-  const frontFace = `${pt(cx1,cy1,cz1,scale)} ${pt(cx2,cy1,cz1,scale)} ${pt(cx2,cy1,cz2,scale)} ${pt(cx1,cy1,cz2,scale)}`;
-  // Face de gauche (côté, X=cx2)
-  const sideFace  = `${pt(cx2,cy1,cz1,scale)} ${pt(cx2,cy2,cz1,scale)} ${pt(cx2,cy2,cz2,scale)} ${pt(cx2,cy1,cz2,scale)}`;
-
-  return (
-    <g opacity={role === 'back' ? 0.35 : 1}>
-      {/* Face gauche */}
-      {dy > 0.5 && (
-        <polygon points={sideFace} fill={fillLeft} stroke={c.stroke} strokeWidth={c.strokeW * 0.7} strokeLinejoin="round" />
-      )}
-      {/* Face avant */}
-      {dy > 0 && (
-        <polygon points={frontFace} fill={fillRight} stroke={c.stroke} strokeWidth={c.strokeW * 0.9} strokeLinejoin="round" />
-      )}
-      {/* Face du dessus */}
-      {dz > 0.5 && (
-        <polygon points={topFace} fill={fillTop} stroke={c.stroke} strokeWidth={c.strokeW} strokeLinejoin="round" />
-      )}
-    </g>
-  );
-}
-
-// ── Axes de référence ───────────────────────────────────────────────────────
-function AxisHelper({ cab, scale, ox, oy }) {
-  const L = 18;
-  const o = iso(0, 0, 0, scale);
-  const xA = iso(L / scale, 0, 0, scale);
-  const yA = iso(0, L / scale, 0, scale);
-  const zA = iso(0, 0, L / scale, scale);
-  const c = [ox + o[0], oy + o[1]];
-  return (
-    <g>
-      <line x1={c[0]} y1={c[1]} x2={ox + xA[0]} y2={oy + xA[1]} stroke="#ef4444" strokeWidth="1.5" />
-      <text x={ox + xA[0] + 3} y={oy + xA[1] + 3} fontSize="7" fill="#ef4444" fontFamily="monospace">X</text>
-      <line x1={c[0]} y1={c[1]} x2={ox + yA[0]} y2={oy + yA[1]} stroke="#22c55e" strokeWidth="1.5" />
-      <text x={ox + yA[0] - 8} y={oy + yA[1] + 3} fontSize="7" fill="#22c55e" fontFamily="monospace">Y</text>
-      <line x1={c[0]} y1={c[1]} x2={ox + zA[0]} y2={oy + zA[1]} stroke="#60a5fa" strokeWidth="1.5" />
-      <text x={ox + zA[0] + 3} y={oy + zA[1]} fontSize="7" fill="#60a5fa" fontFamily="monospace">Z</text>
-    </g>
-  );
-}
-
-// ── Silhouette du meuble (boîte filaire) ────────────────────────────────────
-function CabinetWireframe({ cab, scale, ox, oy }) {
-  const W = cab.width, D = cab.depth || 60, H = cab.height;
-  const edges = [
-    // Base
-    [[0,0,0],[W,0,0]], [[W,0,0],[W,D,0]], [[W,D,0],[0,D,0]], [[0,D,0],[0,0,0]],
-    // Sommet
-    [[0,0,H],[W,0,H]], [[W,0,H],[W,D,H]], [[W,D,H],[0,D,H]], [[0,D,H],[0,0,H]],
-    // Montants
-    [[0,0,0],[0,0,H]], [[W,0,0],[W,0,H]], [[W,D,0],[W,D,H]], [[0,D,0],[0,D,H]],
-  ];
-  return (
-    <g>
-      {edges.map(([[x1,y1,z1],[x2,y2,z2]], i) => {
-        const [ax, ay] = iso(x1, y1, z1, scale);
-        const [bx, by] = iso(x2, y2, z2, scale);
-        return (
-          <line key={i}
-            x1={ox + ax} y1={oy + ay} x2={ox + bx} y2={oy + by}
-            stroke="#1e3a5f" strokeWidth="0.5" strokeDasharray="3,3" opacity="0.5" />
-        );
-      })}
-    </g>
-  );
-}
-
-// ── Cotations 3D ────────────────────────────────────────────────────────────
-function DimLine3D({ p1, p2, label, color, scale, ox, oy, offset = [0, -10] }) {
-  const [ax, ay] = iso(...p1, scale);
-  const [bx, by] = iso(...p2, scale);
-  const mx = (ax + bx) / 2 + offset[0];
-  const my = (ay + by) / 2 + offset[1];
-  return (
-    <g>
-      <line x1={ox+ax} y1={oy+ay} x2={ox+bx} y2={oy+by} stroke={color} strokeWidth="0.8"
-        markerStart="url(#iso-arrow-s)" markerEnd="url(#iso-arrow-e)" />
-      <text x={ox+mx} y={oy+my} textAnchor="middle" fontSize="8" fill={color} fontFamily="monospace"
-        style={{textShadow:'0 0 4px #000'}}>{label}</text>
-    </g>
-  );
-}
-
-// ── Composant principal ─────────────────────────────────────────────────────
+// ─── Composant principal ───────────────────────────────────────────────────────
 export default function CabinetPlan3D({ cabinet, name = 'Meuble' }) {
-  if (!cabinet || !cabinet.width || !cabinet.height) {
+  const canvasRef  = useRef(null);
+  const rendRef   = useRef(null);   // THREE.WebGLRenderer
+  const sceneRef  = useRef(null);
+  const camRef    = useRef(null);
+  const frameRef  = useRef(null);
+  const orbitRef  = useRef({ theta: 0.6, phi: 1.1, radius: 2.2, dragging: false, lastX: 0, lastY: 0 });
+  const [loading, setLoading] = useState(true);
+  const [error,   setError]   = useState(null);
+
+  // ─── Construire la scène ──────────────────────────────────────────────────
+  const buildScene = useCallback((THREE, canvas) => {
+    if (!cabinet?.width || !cabinet?.height) return;
+
+    const cab = {
+      ...cabinet,
+      depth:     cabinet.depth     || 60,
+      thickness: cabinet.thickness || 1.8,
+      plinth:    cabinet.plinth    || 0,
+      panels:    cabinet.panels    || [],
+    };
+
+    // cm → m
+    const m = v => v / 100;
+    const W = m(cab.width), H = m(cab.height), D = m(cab.depth), T = m(cab.thickness);
+
+    // Renderer
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    rendRef.current = renderer;
+
+    // Scène
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x04090f);
+    scene.fog = new THREE.FogExp2(0x04090f, 0.8);
+    sceneRef.current = scene;
+
+    // Caméra
+    const aspect = canvas.clientWidth / canvas.clientHeight;
+    const camera = new THREE.PerspectiveCamera(45, aspect, 0.01, 50);
+    camRef.current = camera;
+
+    // ─── Grille de sol ───────────────────────────────────────────────────
+    const gridHelper = new THREE.GridHelper(4, 40, 0x0f2040, 0x0a1830);
+    gridHelper.position.y = 0;
+    scene.add(gridHelper);
+
+    // ─── Lumières ────────────────────────────────────────────────────────
+    const ambient = new THREE.AmbientLight(0x8ab4d4, 0.4);
+    scene.add(ambient);
+
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+    dirLight.position.set(3, 5, 4);
+    dirLight.castShadow = true;
+    dirLight.shadow.mapSize.set(1024, 1024);
+    dirLight.shadow.camera.near = 0.1;
+    dirLight.shadow.camera.far  = 20;
+    scene.add(dirLight);
+
+    const fillLight = new THREE.DirectionalLight(0x3b82f6, 0.3);
+    fillLight.position.set(-4, 2, -2);
+    scene.add(fillLight);
+
+    const rimLight = new THREE.DirectionalLight(0xf97316, 0.2);
+    rimLight.position.set(0, -3, -4);
+    scene.add(rimLight);
+
+    // ─── Panneaux ────────────────────────────────────────────────────────
+    const hasPanels = cab.panels.length > 0;
+
+    if (hasPanels) {
+      for (const p of cab.panels) {
+        const mat   = matFor(p.role);
+        const eCol  = edgeFor(p.role);
+        const isVertSide = p.role === 'side' || p.role === 'divider';
+        const isHoriz    = ['top','bottom','shelf'].includes(p.role);
+        const isBack     = p.role === 'back';
+        const isDoor     = p.role === 'door' || p.role === 'drawer_front';
+
+        let bw, bh, bd, bx, by, bz;
+
+        if (isVertSide) {
+          bw = T; bh = m(p.h); bd = D;
+          bx = m(p.x) + T/2;
+          by = m(p.y) + bh/2;
+          bz = D/2;
+        } else if (isHoriz) {
+          bw = m(p.w || cab.width); bh = T; bd = D;
+          bx = m(p.x || 0) + bw/2;
+          by = m(p.y) + T/2;
+          bz = D/2;
+        } else if (isBack) {
+          bw = m(p.w || cab.width); bh = m(p.h); bd = T;
+          bx = bw/2;
+          by = m(p.y) + bh/2;
+          bz = D - T/2;
+        } else if (isDoor) {
+          bw = m(p.w); bh = m(p.h); bd = T;
+          bx = m(p.x) + bw/2;
+          by = m(p.y) + bh/2;
+          bz = T/2;
+        } else {
+          bw = m(p.w || cab.width); bh = m(p.h); bd = T;
+          bx = m(p.x || 0) + bw/2;
+          by = m(p.y) + bh/2;
+          bz = D/2;
+        }
+
+        const geo  = new THREE.BoxGeometry(bw, bh, bd);
+        const mesh = new THREE.Mesh(geo, new THREE.MeshPhongMaterial({
+          color:      mat.color,
+          emissive:   mat.emissive,
+          specular:   0x224466,
+          shininess:  40,
+          transparent: mat.opacity < 1,
+          opacity:    mat.opacity,
+          depthWrite: mat.opacity >= 1,
+        }));
+        mesh.position.set(bx - W/2, by, bz - D/2);
+        mesh.castShadow    = true;
+        mesh.receiveShadow = true;
+        scene.add(mesh);
+
+        // Arêtes
+        const edges = new THREE.LineSegments(
+          new THREE.EdgesGeometry(geo),
+          new THREE.LineBasicMaterial({ color: eCol, linewidth: 1 })
+        );
+        edges.position.copy(mesh.position);
+        scene.add(edges);
+      }
+    } else {
+      // Fallback : boîte filaire
+      const wireGeo  = new THREE.BoxGeometry(W, H, D);
+      const wireMesh = new THREE.Mesh(wireGeo, new THREE.MeshPhongMaterial({
+        color: 0x1e3a5f, emissive: 0x0a1628, transparent: true, opacity: 0.15,
+      }));
+      wireMesh.position.set(0, H/2, 0);
+      scene.add(wireMesh);
+      const edges = new THREE.LineSegments(
+        new THREE.EdgesGeometry(wireGeo),
+        new THREE.LineBasicMaterial({ color: 0x60a5fa })
+      );
+      edges.position.set(0, H/2, 0);
+      scene.add(edges);
+    }
+
+    // ─── Sol (ombre) ──────────────────────────────────────────────────────
+    const floor = new THREE.Mesh(
+      new THREE.PlaneGeometry(10, 10),
+      new THREE.MeshPhongMaterial({ color: 0x050a14, transparent: true, opacity: 0.8 })
+    );
+    floor.rotation.x = -Math.PI / 2;
+    floor.receiveShadow = true;
+    scene.add(floor);
+
+    // ─── Radius initial de l'orbite ───────────────────────────────────────
+    const maxDim = Math.max(W, H, D);
+    orbitRef.current.radius = maxDim * 2.8;
+    orbitRef.current.target = new THREE.Vector3(0, H / 2, 0);
+
+    setLoading(false);
+  }, [cabinet]);
+
+  // ─── RAF loop ─────────────────────────────────────────────────────────────
+  const animate = useCallback(() => {
+    if (!rendRef.current || !sceneRef.current || !camRef.current) return;
+    frameRef.current = requestAnimationFrame(animate);
+    const { theta, phi, radius, target } = orbitRef.current;
+    const THREE = window.THREE;
+    const t = target || new THREE.Vector3(0, 0, 0);
+    camRef.current.position.set(
+      t.x + radius * Math.sin(phi) * Math.sin(theta),
+      t.y + radius * Math.cos(phi),
+      t.z + radius * Math.sin(phi) * Math.cos(theta)
+    );
+    camRef.current.lookAt(t);
+    rendRef.current.render(sceneRef.current, camRef.current);
+  }, []);
+
+  // ─── Init Three.js ────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!canvasRef.current) return;
+    let alive = true;
+    loadThree()
+      .then(THREE => {
+        if (!alive) return;
+        buildScene(THREE, canvasRef.current);
+        animate();
+      })
+      .catch(() => setError('Impossible de charger Three.js'));
+    return () => {
+      alive = false;
+      if (frameRef.current) cancelAnimationFrame(frameRef.current);
+      if (rendRef.current) { rendRef.current.dispose(); rendRef.current = null; }
+    };
+  }, [buildScene, animate]);
+
+  // ─── Resize ───────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const onResize = () => {
+      if (!canvasRef.current || !rendRef.current || !camRef.current) return;
+      const w = canvasRef.current.clientWidth;
+      const h = canvasRef.current.clientHeight;
+      camRef.current.aspect = w / h;
+      camRef.current.updateProjectionMatrix();
+      rendRef.current.setSize(w, h);
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  // ─── Contrôles souris ─────────────────────────────────────────────────────
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const o = orbitRef.current;
+    const PIH = Math.PI / 2;
+
+    const onDown = e => { o.dragging = true; o.lastX = e.clientX; o.lastY = e.clientY; };
+    const onUp   = () => { o.dragging = false; };
+    const onMove = e => {
+      if (!o.dragging) return;
+      const dx = e.clientX - o.lastX;
+      const dy = e.clientY - o.lastY;
+      o.theta -= dx * 0.008;
+      o.phi   = Math.max(0.12, Math.min(Math.PI - 0.12, o.phi + dy * 0.008));
+      o.lastX = e.clientX; o.lastY = e.clientY;
+    };
+    const onWheel = e => {
+      e.preventDefault();
+      o.radius = Math.max(0.3, Math.min(8, o.radius + e.deltaY * 0.002));
+    };
+
+    // Touch
+    let lastTouchDist = null;
+    const onTouchStart = e => {
+      if (e.touches.length === 1) { o.dragging = true; o.lastX = e.touches[0].clientX; o.lastY = e.touches[0].clientY; }
+      else if (e.touches.length === 2) {
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        lastTouchDist = Math.sqrt(dx*dx + dy*dy);
+      }
+    };
+    const onTouchEnd = () => { o.dragging = false; lastTouchDist = null; };
+    const onTouchMove = e => {
+      e.preventDefault();
+      if (e.touches.length === 1 && o.dragging) {
+        const dx = e.touches[0].clientX - o.lastX;
+        const dy = e.touches[0].clientY - o.lastY;
+        o.theta -= dx * 0.01;
+        o.phi   = Math.max(0.12, Math.min(Math.PI - 0.12, o.phi + dy * 0.01));
+        o.lastX = e.touches[0].clientX; o.lastY = e.touches[0].clientY;
+      } else if (e.touches.length === 2 && lastTouchDist) {
+        const dx   = e.touches[0].clientX - e.touches[1].clientX;
+        const dy   = e.touches[0].clientY - e.touches[1].clientY;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        o.radius   = Math.max(0.3, Math.min(8, o.radius * (lastTouchDist / dist)));
+        lastTouchDist = dist;
+      }
+    };
+
+    canvas.addEventListener('mousedown', onDown);
+    canvas.addEventListener('mouseup',   onUp);
+    canvas.addEventListener('mouseleave',onUp);
+    canvas.addEventListener('mousemove', onMove);
+    canvas.addEventListener('wheel',     onWheel, { passive: false });
+    canvas.addEventListener('touchstart',onTouchStart, { passive: false });
+    canvas.addEventListener('touchend',  onTouchEnd);
+    canvas.addEventListener('touchmove', onTouchMove, { passive: false });
+
+    return () => {
+      canvas.removeEventListener('mousedown', onDown);
+      canvas.removeEventListener('mouseup',   onUp);
+      canvas.removeEventListener('mouseleave',onUp);
+      canvas.removeEventListener('mousemove', onMove);
+      canvas.removeEventListener('wheel',     onWheel);
+      canvas.removeEventListener('touchstart',onTouchStart);
+      canvas.removeEventListener('touchend',  onTouchEnd);
+      canvas.removeEventListener('touchmove', onTouchMove);
+    };
+  }, []);
+
+  // ─── Boutons vue rapide ───────────────────────────────────────────────────
+  const snapView = (theta, phi) => {
+    orbitRef.current.theta = theta;
+    orbitRef.current.phi   = phi;
+  };
+
+  if (!cabinet?.width || !cabinet?.height) {
     return (
-      <div className="text-center py-12 text-slate-500 text-sm">
-        <p className="text-3xl mb-3">📦</p>
+      <div className="text-center py-16 text-slate-500 text-sm">
+        <p className="text-4xl mb-4">📦</p>
         <p>Dimensions du meuble non disponibles pour la vue 3D.</p>
       </div>
     );
   }
 
-  const cab = {
-    ...cabinet,
-    depth: cabinet.depth || 60,
-    thickness: cabinet.thickness || 1.8,
-    plinth: cabinet.plinth || 0,
-    panels: cabinet.panels || [],
-  };
-
-  // Calcul de l'échelle pour tenir dans ~480px de large
-  const MAX_SVG_W = 480;
-  const rawSpan = (cab.width + cab.depth) * Math.cos(Math.PI / 6);
-  const scale = Math.min(5, Math.max(1.5, (MAX_SVG_W - 80) / rawSpan));
-
-  // Bounding box de la projection
-  const corners = [
-    [0, 0, 0], [cab.width, 0, 0], [0, cab.depth, 0], [cab.width, cab.depth, 0],
-    [0, 0, cab.height], [cab.width, 0, cab.height], [0, cab.depth, cab.height], [cab.width, cab.depth, cab.height],
-  ];
-  const xs = corners.map(([cx, cy, cz]) => iso(cx, cy, cz, scale)[0]);
-  const ys = corners.map(([cx, cy, cz]) => iso(cx, cy, cz, scale)[1]);
-  const minX = Math.min(...xs), maxX = Math.max(...xs);
-  const minY = Math.min(...ys), maxY = Math.max(...ys);
-
-  const PAD   = 50;
-  const CART  = 58;
-  const svgW  = maxX - minX + PAD * 2;
-  const svgH  = maxY - minY + PAD * 2 + CART;
-  const ox    = PAD - minX;
-  const oy    = PAD - minY;
-
-  // Tri des panneaux par profondeur de peintre (plus loin = dessiné en premier)
-  // Clé de tri : avg(cx+cy) croissant = plus à l'arrière
-  const sortedPanels = [...cab.panels].sort((a, b) => {
-    const depthA = (a.x || 0) + ((a.role === 'back') ? cab.depth : (cab.depth / 2));
-    const depthB = (b.x || 0) + ((b.role === 'back') ? cab.depth : (cab.depth / 2));
-    return depthB - depthA;
-  });
-
-  // Si aucun panneau, on dessine juste la silhouette
-  const hasPanels = sortedPanels.length > 0;
-
   return (
-    <div className="relative">
-      <div className="absolute -inset-0.5 bg-gradient-to-br from-blue-600 to-cyan-400 rounded-xl opacity-10 blur" />
-      <svg
-        viewBox={`0 0 ${svgW.toFixed(0)} ${svgH.toFixed(0)}`}
-        className="relative w-full h-auto bg-[#04090f] rounded-xl border border-white/10"
-        style={{ display: 'block' }}
-      >
-        <defs>
-          <pattern id="iso-grid" width="20" height="20" patternUnits="userSpaceOnUse">
-            <path d="M20 0L0 0 0 20" fill="none" stroke="rgba(255,255,255,0.02)" strokeWidth="0.5" />
-          </pattern>
-          <radialGradient id="iso-bg" cx="50%" cy="40%">
-            <stop offset="0%" stopColor="#0a1628" />
-            <stop offset="100%" stopColor="#020608" />
-          </radialGradient>
-          <marker id="iso-arrow-s" viewBox="0 0 6 6" refX="1" refY="3" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
-            <path d="M0 0L6 3L0 6" fill="none" stroke="#64748b" strokeWidth="1" />
-          </marker>
-          <marker id="iso-arrow-e" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="4" markerHeight="4" orient="auto">
-            <path d="M0 0L6 3L0 6" fill="none" stroke="#64748b" strokeWidth="1" />
-          </marker>
-        </defs>
-
-        <rect x={0} y={0} width={svgW} height={svgH} fill="url(#iso-bg)" />
-        <rect x={0} y={0} width={svgW} height={svgH} fill="url(#iso-grid)" />
-
-        {/* Titre */}
-        <text x={svgW / 2} y={14} textAnchor="middle" fontSize="10" fontWeight="700"
-          fill="#f97316" fontFamily="sans-serif" letterSpacing="1">
-          VUE ISOMÉTRIQUE — {(name || 'MEUBLE').toUpperCase()}
-        </text>
-
-        {/* Silhouette filaire */}
-        <CabinetWireframe cab={cab} scale={scale} ox={ox} oy={oy} />
-
-        {/* Panneaux */}
-        {hasPanels
-          ? sortedPanels.map((panel, i) => (
-              panel.w > 0 && panel.h > 0
-                ? <PanelBox key={i} panel={panel} cab={cab} scale={scale} ox={ox} oy={oy} />
-                : null
-            ))
-          : (
-            /* Fallback : boîte pleine si pas de panels */
-            <>
-              {/* Face gauche */}
-              <polygon
-                points={`${pt(0,0,0,scale)} ${pt(0,cab.depth,0,scale)} ${pt(0,cab.depth,cab.height,scale)} ${pt(0,0,cab.height,scale)}`
-                  .split(' ').map(p => { const [x,y] = p.split(','); return `${ox+parseFloat(x)},${oy+parseFloat(y)}`; }).join(' ')}
-                fill="#1a2f4a" stroke="#60a5fa" strokeWidth="1"
-              />
-              {/* Face avant */}
-              <polygon
-                points={`${pt(0,0,0,scale)} ${pt(cab.width,0,0,scale)} ${pt(cab.width,0,cab.height,scale)} ${pt(0,0,cab.height,scale)}`
-                  .split(' ').map(p => { const [x,y] = p.split(','); return `${ox+parseFloat(x)},${oy+parseFloat(y)}`; }).join(' ')}
-                fill="#1e3a5f" stroke="#93c5fd" strokeWidth="1"
-              />
-              {/* Dessus */}
-              <polygon
-                points={`${pt(0,0,cab.height,scale)} ${pt(cab.width,0,cab.height,scale)} ${pt(cab.width,cab.depth,cab.height,scale)} ${pt(0,cab.depth,cab.height,scale)}`
-                  .split(' ').map(p => { const [x,y] = p.split(','); return `${ox+parseFloat(x)},${oy+parseFloat(y)}`; }).join(' ')}
-                fill="#2a4f7a" stroke="#93c5fd" strokeWidth="1"
-              />
-            </>
-          )
-        }
-
-        {/* Axes */}
-        <AxisHelper cab={cab} scale={scale} ox={ox} oy={oy} />
-
-        {/* Cotations */}
-        <DimLine3D
-          p1={[0, cab.depth + 4, 0]} p2={[cab.width, cab.depth + 4, 0]}
-          label={`L ${cab.width} cm`} color="#f59e0b" scale={scale} ox={ox} oy={oy} offset={[0, 8]}
+    <div className="relative flex flex-col gap-3">
+      {/* Canvas */}
+      <div className="relative rounded-xl overflow-hidden border border-white/10 shadow-2xl"
+        style={{ aspectRatio: '4/3' }}>
+        <canvas
+          ref={canvasRef}
+          style={{ width: '100%', height: '100%', display: 'block', cursor: 'grab' }}
         />
-        <DimLine3D
-          p1={[cab.width + 4, 0, 0]} p2={[cab.width + 4, cab.depth, 0]}
-          label={`P ${cab.depth} cm`} color="#22c55e" scale={scale} ox={ox} oy={oy} offset={[10, 0]}
-        />
-        <DimLine3D
-          p1={[cab.width + 4, 0, 0]} p2={[cab.width + 4, 0, cab.height]}
-          label={`H ${cab.height} cm`} color="#60a5fa" scale={scale} ox={ox} oy={oy} offset={[12, 0]}
-        />
+        {loading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-[#04090f] rounded-xl">
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-10 h-10 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+              <p className="text-slate-400 text-sm">Chargement Three.js…</p>
+            </div>
+          </div>
+        )}
+        {error && (
+          <div className="absolute inset-0 flex items-center justify-center bg-[#04090f] rounded-xl">
+            <p className="text-red-400 text-sm">{error}</p>
+          </div>
+        )}
+        {/* Badge titre */}
+        <div className="absolute top-3 left-3 bg-black/60 backdrop-blur-sm px-3 py-1 rounded-full border border-white/10">
+          <span className="text-[10px] font-bold text-orange-400 tracking-widest">VUE 3D INTERACTIVE</span>
+        </div>
+        {/* Dimensions badge */}
+        <div className="absolute top-3 right-3 bg-black/60 backdrop-blur-sm px-3 py-1 rounded-full border border-white/10">
+          <span className="text-[10px] font-mono text-slate-300">
+            {cabinet.width}×{cabinet.height}×{cabinet.depth||60} cm
+          </span>
+        </div>
+      </div>
 
-        {/* Cartouche */}
-        <rect x={2} y={svgH - CART + 2} width={svgW - 4} height={CART - 4}
-          fill="#04090f" stroke="#1e3a5f" strokeWidth="0.8" rx="3" />
-        <line x1={2} y1={svgH - CART + 18} x2={svgW - 2} y2={svgH - CART + 18}
-          stroke="#1e3a5f" strokeWidth="0.5" />
-        <text x={svgW / 2} y={svgH - CART + 13} textAnchor="middle" fontSize="9" fontWeight="700"
-          fill="#f97316" fontFamily="sans-serif">PanelCut Pro — Vue isométrique</text>
-        <text x={8} y={svgH - CART + 30} fontSize="7.5" fill="#64748b" fontFamily="monospace">
-          {`${cab.width}×${cab.height}×${cab.depth} cm — ép. ${cab.thickness} cm`}
-        </text>
-        <text x={8} y={svgH - CART + 42} fontSize="7" fill="#475569" fontFamily="monospace">
-          {`${sortedPanels.length} panneaux structurels — ${new Date().toLocaleDateString('fr-FR')}`}
-        </text>
-        <text x={svgW - 8} y={svgH - CART + 30} textAnchor="end" fontSize="7" fill="#334155" fontFamily="monospace">
-          x=Largeur · y=Profondeur · z=Hauteur
-        </text>
-      </svg>
+      {/* Contrôles vues rapides */}
+      <div className="flex gap-2">
+        {[
+          { label: '🔄 Face',    theta: Math.PI,    phi: Math.PI/2 },
+          { label: '↗ Iso',     theta: 0.6,        phi: 1.1       },
+          { label: '⬆ Dessus',  theta: 0.6,        phi: 0.05      },
+          { label: '➡ Côté',    theta: Math.PI/2,  phi: Math.PI/2 },
+          { label: '↙ Arrière', theta: 0,          phi: 1.1       },
+        ].map(v => (
+          <button key={v.label} onClick={() => snapView(v.theta, v.phi)}
+            className="flex-1 py-2 text-[10px] font-bold text-slate-400 hover:text-white bg-[#0a0f1a] hover:bg-[#111827] border border-white/5 rounded-lg transition-all">
+            {v.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Légende */}
+      <div className="bg-[#04090f] border border-white/5 rounded-xl p-3">
+        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Contrôles</p>
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-slate-500">
+          <span>🖱️ <strong className="text-slate-400">Clic-glisser</strong> → rotation</span>
+          <span>🖱️ <strong className="text-slate-400">Molette</strong> → zoom</span>
+          <span>👆 <strong className="text-slate-400">1 doigt</strong> → rotation</span>
+          <span>🤏 <strong className="text-slate-400">Pincement</strong> → zoom</span>
+        </div>
+        <div className="flex flex-wrap gap-2 mt-3">
+          {[
+            { color: '#475569', label: 'Montant / Côté' },
+            { color: '#7dd3fc', label: 'Dessus / Tablette' },
+            { color: '#38bdf8', label: 'Tablette' },
+            { color: '#f97316', label: 'Porte (transparent)' },
+            { color: '#a855f7', label: 'Tiroir' },
+            { color: '#1e3a5f', label: 'Fond arrière' },
+          ].map(({ color, label }) => (
+            <div key={label} className="flex items-center gap-1.5">
+              <div className="w-2.5 h-2.5 rounded-sm" style={{ background: color }} />
+              <span className="text-[10px] text-slate-400">{label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
