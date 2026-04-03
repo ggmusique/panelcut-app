@@ -65,7 +65,6 @@ export default function App() {
   const [saving,    setSaving]    = useState(false);
   const [saveMsg,   setSaveMsg]   = useState('');
 
-  // Clé API Anthropic — lue depuis .env ou prompt
   const [apiKey, setApiKey] = useState(
     process.env.REACT_APP_ANTHROPIC_KEY || lsGet('pc_apikey', '')
   );
@@ -146,7 +145,8 @@ export default function App() {
     else setScreen(SCREENS.PIECES);
   };
 
-  // Scan initial Claude Vision → stocke image + résultat, va directement à SKETCH
+  // ✅ Scan initial Claude Vision → stocke image + résultat, va à SKETCH
+  // Accepte (scanResult, scanImageBase64) envoyé par NewProjectWizard via ImageUpload
   const handleScanComplete = (scanResult, scanImageBase64) => {
     const pieces = (scanResult.pieces || []).map(p => ({
       name:   String(p.name   || 'Pièce').trim(),
@@ -156,10 +156,13 @@ export default function App() {
     })).filter(p => p.length > 0 && p.height > 0);
 
     const cabinet = scanResult.cabinet || null;
+
+    // Met à jour project avec l'image base64 ET le résultat du scan
     setProject(prev => ({
       ...prev,
-      pieces, cabinet,
-      scanImage:  scanImageBase64 || null,
+      pieces,
+      cabinet,
+      scanImage:  scanImageBase64 || null,   // ← l'image pour SketchEditor
       scanResult: scanResult,
     }));
     setResults(null);
@@ -201,8 +204,6 @@ export default function App() {
 
   const showBack = [SCREENS.PIECES, SCREENS.RESULTS].includes(screen);
   const showSave = user && [SCREENS.PIECES, SCREENS.RESULTS].includes(screen);
-
-  // Bouton "Annoter" : visible sur PIECES si un scan existe
   const canAnnotate = screen === SCREENS.PIECES && !!project.scanImage;
 
   let headerTitle = 'PanelCut Pro', headerSubtitle = '', steps = [];
@@ -215,12 +216,15 @@ export default function App() {
   return (
     <div className="app min-h-screen bg-[#0f1620] text-slate-200 font-sans">
 
-      {/* ── Standalone full-screen components (manage their own layout) ── */}
+      {/* ── Standalone full-screen components ── */}
       {screen === SCREENS.LANDING  && <LandingScreen onNew={() => startNew(devisNum)} onHistory={() => setScreen(user ? SCREENS.HISTORY : SCREENS.AUTH)} onAuth={() => setScreen(SCREENS.AUTH)} user={user} />}
-      {screen === SCREENS.WIZARD   && <NewProjectWizard t={tr} project={project} onChange={setProject} onGoScan={() => setScreen(SCREENS.SKETCH)} onGoManual={() => setScreen(SCREENS.PIECES)} onCancel={() => setScreen(SCREENS.LANDING)} />}
+
+      {/* ✅ FIX: onGoScan reçoit (scanResult, imageBase64) et appelle handleScanComplete */}
+      {screen === SCREENS.WIZARD   && <NewProjectWizard t={tr} project={project} onChange={setProject} onGoScan={handleScanComplete} onGoManual={() => setScreen(SCREENS.PIECES)} onCancel={() => setScreen(SCREENS.LANDING)} />}
+
       {screen === SCREENS.HISTORY  && <HistoryScreen user={user} onNew={() => startNew(devisNum)} onLoad={handleLoadProject} onScanComplete={handleScanComplete} onBack={() => setScreen(SCREENS.LANDING)} />}
 
-      {/* ── SKETCH EDITOR (plein écran, par-dessus tout) ── */}
+      {/* ── SKETCH EDITOR ── */}
       {screen === SCREENS.SKETCH && (
         <SketchEditor
           image={project.scanImage}
@@ -260,7 +264,6 @@ export default function App() {
                     <ChevronRight className="w-5 h-5" />
                   </button>
                 )}
-                {headerSubtitle && <p className="text-[10px] text-slate-500 uppercase truncate hidden sm:block ml-1">{headerSubtitle}</p>}
               </div>
 
               {hasSteps && (
@@ -288,7 +291,6 @@ export default function App() {
               )}
 
               <div className="flex items-center gap-1.5 flex-shrink-0">
-                {/* Bouton Annoter le croquis */}
                 {canAnnotate && (
                   <button
                     onClick={() => setScreen(SCREENS.SKETCH)}
@@ -297,7 +299,6 @@ export default function App() {
                     ✏️ <span className="hidden sm:inline">Annoter</span>
                   </button>
                 )}
-
                 {(saveMsg || saving) && <span className="text-[11px] text-green-400 font-medium">{saving ? '...' : saveMsg}</span>}
                 {showSave && !saving && (
                   <button onClick={handleSave} className="p-1.5 rounded-lg text-slate-400 hover:text-green-400 hover:bg-white/10 transition-colors">
