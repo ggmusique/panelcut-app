@@ -2,13 +2,11 @@
  * SketchEditor.js — Éditeur de croquis annoté
  *
  * Props :
- *   image (ou scanImage)  {string}  base64 ou URL de l'image source
- *   scanResult            {object}  résultat du premier scan Claude
- *   onExport              {fn}      (pngBase64, elements[]) => void — appelé après export PNG
- *   onCancel              {fn}      ferme l'éditeur
- *
- * NOTE : Ce composant N'inclut plus ClaudeRefinement en interne.
- *        C'est ScanWithEditor qui orchestre la relance Claude.
+ *   image / scanImage  {string}  base64 ou URL de l’image source
+ *   initialResult      {object}  résultat du premier scan Claude
+ *   apiKey             {string}  clé Anthropic (non utilisée côté client, le serveur la gère)
+ *   onComplete         {fn}      (newScanResult) => void — appelé après relance Claude
+ *   onCancel           {fn}      ferme l’éditeur
  */
 import { useRef, useState, useCallback, useEffect } from 'react';
 
@@ -21,21 +19,22 @@ const TOOLS = [
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 
-export default function SketchEditor({ image, scanImage, scanResult, onExport, onCancel }) {
-  // Accepte indifféremment image= ou scanImage= pour robustesse
+export default function SketchEditor({ image, scanImage, initialResult, apiKey, onComplete, onCancel }) {
   const imgSrc = image || scanImage || null;
 
-  const svgRef      = useRef(null);
-  const imgRef      = useRef(null);
-  const [tool, setTool]             = useState('dim');
-  const [elements,  setElements]    = useState([]);
-  const [drawing,   setDrawing]     = useState(null);
-  const [editingId, setEditingId]   = useState(null);
-  const [editText,  setEditText]    = useState('');
-  const [imgSize,   setImgSize]     = useState({ w: 800, h: 600 });
-  const [imgLoaded, setImgLoaded]   = useState(false);
+  const svgRef    = useRef(null);
+  const imgRef    = useRef(null);
 
-  // Calcule la taille du SVG selon l'image source
+  const [tool,      setTool]      = useState('dim');
+  const [elements,  setElements]  = useState([]);
+  const [drawing,   setDrawing]   = useState(null);
+  const [editingId, setEditingId] = useState(null);
+  const [editText,  setEditText]  = useState('');
+  const [imgSize,   setImgSize]   = useState({ w: 800, h: 600 });
+  const [imgLoaded, setImgLoaded] = useState(false);
+  const [loading,   setLoading]   = useState(false);
+  const [error,     setError]     = useState(null);
+
   useEffect(() => {
     if (!imgSrc) return;
     const img = new window.Image();
@@ -49,15 +48,10 @@ export default function SketchEditor({ image, scanImage, scanResult, onExport, o
       });
       setImgLoaded(true);
     };
-    img.onerror = () => {
-      // Image non chargeable → taille fixe par défaut
-      setImgSize({ w: 800, h: 600 });
-      setImgLoaded(true);
-    };
+    img.onerror = () => { setImgSize({ w: 800, h: 600 }); setImgLoaded(true); };
     img.src = imgSrc;
   }, [imgSrc]);
 
-  // Coordonnées SVG depuis événement souris/touch
   const getSVGCoords = useCallback((e) => {
     const svg = svgRef.current;
     if (!svg) return { x: 0, y: 0 };
@@ -72,7 +66,6 @@ export default function SketchEditor({ image, scanImage, scanResult, onExport, o
     };
   }, [imgSize]);
 
-  // ─ POINTER DOWN
   const handlePointerDown = useCallback((e) => {
     if (tool === 'erase') return;
     e.preventDefault();
@@ -89,29 +82,22 @@ export default function SketchEditor({ image, scanImage, scanResult, onExport, o
     }
   }, [tool, getSVGCoords]);
 
-  // ─ POINTER MOVE
   const handlePointerMove = useCallback((e) => {
     if (!drawing) return;
     e.preventDefault();
     const { x, y } = getSVGCoords(e);
-    if (drawing.type === 'dim') {
-      setDrawing(d => ({ ...d, x2: x, y2: y }));
-    } else if (drawing.type === 'pencil') {
-      setDrawing(d => ({ ...d, points: [...d.points, [x, y]] }));
-    }
+    if (drawing.type === 'dim')    setDrawing(d => ({ ...d, x2: x, y2: y }));
+    if (drawing.type === 'pencil') setDrawing(d => ({ ...d, points: [...d.points, [x, y]] }));
   }, [drawing, getSVGCoords]);
 
-  // ─ POINTER UP
   const handlePointerUp = useCallback(() => {
     if (!drawing) return;
     if (drawing.type === 'dim') {
-      const dx = drawing.x2 - drawing.x1;
-      const dy = drawing.y2 - drawing.y1;
+      const dx = drawing.x2 - drawing.x1, dy = drawing.y2 - drawing.y1;
       if (Math.sqrt(dx * dx + dy * dy) < 10) { setDrawing(null); return; }
       const id = drawing.id;
       setElements(els => [...els, { ...drawing, label: '' }]);
-      setEditingId(id);
-      setEditText('');
+      setEditingId(id); setEditText('');
     } else if (drawing.type === 'pencil') {
       if (drawing.points.length > 2) setElements(els => [...els, drawing]);
     }
@@ -122,8 +108,7 @@ export default function SketchEditor({ image, scanImage, scanResult, onExport, o
     setElements(els => els.map(el =>
       el.id === editingId ? { ...el, label: editText, text: editText } : el
     ));
-    setEditingId(null);
-    setEditText('');
+    setEditingId(null); setEditText('');
   };
 
   const eraseElement = (id) => {
@@ -133,10 +118,18 @@ export default function SketchEditor({ image, scanImage, scanResult, onExport, o
 
   const clearAll = () => setElements([]);
 
-  // ─ EXPORT PNG → appelle onExport(png, elements)
-  const handleExport = useCallback(() => {
+  // ───────────────────────────────────────────────
+  // RELANCER CLAUDE — pipeline complet :
+  // 1. Sérialise le SVG (avec annotations) en PNG
+  // 2. Envoie au serveur /api/scan
+  // 3. Appelle onComplete(result) → App.js stocke les pièces
+  // ───────────────────────────────────────────────
+  const handleRelancer = useCallback(() => {
     const svg = svgRef.current;
     if (!svg) return;
+    setLoading(true);
+    setError(null);
+
     const serializer = new XMLSerializer();
     const svgStr  = serializer.serializeToString(svg);
     const svgBlob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
@@ -144,16 +137,47 @@ export default function SketchEditor({ image, scanImage, scanResult, onExport, o
     const canvas  = document.createElement('canvas');
     canvas.width  = imgSize.w;
     canvas.height = imgSize.h;
-    const ctx     = canvas.getContext('2d');
-    const svgImg  = new window.Image();
-    svgImg.onload = () => {
-      ctx.drawImage(svgImg, 0, 0, imgSize.w, imgSize.h);
+    const ctx  = canvas.getContext('2d');
+    const img  = new window.Image();
+
+    img.onload = async () => {
+      ctx.drawImage(img, 0, 0, imgSize.w, imgSize.h);
       URL.revokeObjectURL(url);
-      const png = canvas.toDataURL('image/png');
-      if (onExport) onExport(png, elements);
+      const pngDataUrl = canvas.toDataURL('image/png');
+      const base64 = pngDataUrl.split(',')[1];
+
+      try {
+        const res = await fetch('https://panelcut-server.vercel.app/api/scan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image: base64, mediaType: 'image/png' }),
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.message || `Erreur serveur (${res.status})`);
+        }
+
+        const data = await res.json();
+        setLoading(false);
+
+        if (onComplete) onComplete(data);
+
+      } catch (err) {
+        console.error('[SketchEditor] Relance Claude échouée:', err);
+        setError(err.message || 'Erreur de connexion au serveur');
+        setLoading(false);
+      }
     };
-    svgImg.src = url;
-  }, [imgSize, elements, onExport]);
+
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      setError('Impossible d’exporter le croquis en PNG');
+      setLoading(false);
+    };
+
+    img.src = url;
+  }, [imgSize, onComplete]);
 
   // ─ RENDU ÉLÉMENT SVG
   const renderElement = (el) => {
@@ -249,17 +273,36 @@ export default function SketchEditor({ image, scanImage, scanResult, onExport, o
             <p className="text-[11px] text-slate-500">Annotez puis relancez Claude pour affiner le scan</p>
           </div>
         </div>
+
         <div className="flex items-center gap-2">
+          {/* Message d'erreur inline */}
+          {error && (
+            <span className="text-xs text-red-400 font-bold max-w-xs truncate">⚠️ {error}</span>
+          )}
+
           <button onClick={clearAll}
             className="px-3 py-1.5 text-xs font-bold text-slate-400 hover:text-red-400 border border-white/10 hover:border-red-500/40 rounded-lg transition-all">
             🗑 Tout effacer
           </button>
-          {/* Toujours actif : on peut relancer même sans annotation */}
+
           <button
-            onClick={handleExport}
-            className="px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-lg bg-orange-600 hover:bg-orange-500 text-white cursor-pointer"
+            onClick={loading ? undefined : handleRelancer}
+            disabled={loading}
+            className={
+              'px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-lg flex items-center gap-2 ' +
+              (loading
+                ? 'bg-orange-800 text-orange-300 cursor-not-allowed'
+                : 'bg-orange-600 hover:bg-orange-500 text-white cursor-pointer')
+            }
           >
-            🚀 Relancer Claude
+            {loading ? (
+              <>
+                <span className="w-3 h-3 border-2 border-orange-300/40 border-t-orange-300 rounded-full animate-spin inline-block" />
+                Analyse...
+              </>
+            ) : (
+              <>🚀 Relancer Claude</>
+            )}
           </button>
         </div>
       </div>
@@ -294,14 +337,13 @@ export default function SketchEditor({ image, scanImage, scanResult, onExport, o
       <div className="flex-1 overflow-auto flex items-center justify-center p-4 bg-[#060b14]">
         <div className="relative" style={{ touchAction: 'none' }}>
 
-          {/* Message si pas d'image */}
           {!imgSrc && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center z-10"
               style={{ width: imgSize.w, height: imgSize.h }}>
               <div className="text-4xl">🖼️</div>
               <p className="text-slate-400 text-sm font-bold">Aucune image reçue</p>
               <p className="text-slate-600 text-xs max-w-xs">
-                L'image du scan n'a pas été transmise à l'éditeur.<br/>
+                L’image du scan n’a pas été transmise à l’éditeur.<br/>
                 Retournez au scan et réessayez.
               </p>
               <button onClick={onCancel}
@@ -341,7 +383,6 @@ export default function SketchEditor({ image, scanImage, scanResult, onExport, o
               </marker>
             </defs>
 
-            {/* Image de fond du croquis */}
             {imgSrc && (
               <image
                 ref={imgRef}
@@ -353,7 +394,6 @@ export default function SketchEditor({ image, scanImage, scanResult, onExport, o
               />
             )}
 
-            {/* Grille légère si pas d'image */}
             {!imgSrc && (
               <>
                 <defs>
@@ -369,12 +409,10 @@ export default function SketchEditor({ image, scanImage, scanResult, onExport, o
               </>
             )}
 
-            {/* Calque annotations */}
             {elements.map(renderElement)}
             {renderDrawing()}
           </svg>
 
-          {/* Input label flottant pour cotes/notes */}
           {editingId && (() => {
             const el  = elements.find(e => e.id === editingId) ||
                         (drawing?.id === editingId ? drawing : null);
@@ -427,9 +465,12 @@ export default function SketchEditor({ image, scanImage, scanResult, onExport, o
         <span className="text-green-500">{elements.filter(e => e.type === 'note').length} note{elements.filter(e => e.type === 'note').length !== 1 ? 's' : ''}</span>
         <span className="text-orange-500">{elements.filter(e => e.type === 'pencil').length} trait{elements.filter(e => e.type === 'pencil').length !== 1 ? 's' : ''}</span>
         {!imgSrc && (
-          <span className="text-red-400 font-bold">⚠️ Image manquante — vérifiez Scanner.js → scanImage prop</span>
+          <span className="text-red-400 font-bold">⚠️ Image manquante</span>
         )}
-        {imgSrc && elements.length === 0 && (
+        {loading && (
+          <span className="text-orange-400 animate-pulse">⏳ Analyse Claude en cours...</span>
+        )}
+        {!loading && !error && imgSrc && elements.length === 0 && (
           <span className="text-slate-600 italic">Ajoutez des cotes ou notes, ou relancez directement</span>
         )}
       </div>
