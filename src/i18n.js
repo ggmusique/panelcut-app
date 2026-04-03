@@ -36,6 +36,11 @@
     companyPlaceholder: "Votre entreprise",
     cutOptions: "Options de coupe",
     panelType: "Type de panneau",
+    toggle_dark_mode: 'Basculer le mode sombre',
+header_saved: 'Sauvegardé',
+header_saving: 'Sauvegarde...',
+header_unsaved: 'Non sauvegardé',
+header_logout: 'Se déconnecter',
     info: "Informations"
   },
   en: {
@@ -75,6 +80,11 @@
     companyPlaceholder: "Your Company",
     cutOptions: "Cut Options",
     panelType: "Panel Type",
+    toggle_dark_mode: 'Toggle dark mode',
+header_saved: 'Saved',
+header_saving: 'Saving...',
+header_unsaved: 'Unsaved',
+header_logout: 'Sign out',
     info: "Information"
   }
 };
