@@ -178,13 +178,14 @@ function PlanSubTabs({ active, onChange }) {
   );
 }
 
-function TabBar({ active, onChange, hasCabinet }) {
+// ── TabBar : Plans TOUJOURS visible — on affiche un message si pas de cabinet
+function TabBar({ active, onChange }) {
   const tabs = [
-    { id: 'resume', label: 'Résumé',  icon: <BarChart2 className="w-4 h-4" /> },
-    { id: 'visual', label: 'Visuel',  icon: <Maximize2 className="w-4 h-4" /> },
-    { id: 'cuts',   label: 'Coupes',  icon: <Scissors  className="w-4 h-4" /> },
-    { id: 'boards', label: 'Planches',icon: <List      className="w-4 h-4" /> },
-    ...(hasCabinet ? [{ id: 'plans', label: 'Plans', icon: <Map className="w-4 h-4" /> }] : []),
+    { id: 'resume',  label: 'Résumé',   icon: <BarChart2 className="w-4 h-4" /> },
+    { id: 'visual',  label: 'Visuel',   icon: <Maximize2 className="w-4 h-4" /> },
+    { id: 'cuts',    label: 'Coupes',   icon: <Scissors  className="w-4 h-4" /> },
+    { id: 'boards',  label: 'Planches', icon: <List      className="w-4 h-4" /> },
+    { id: 'plans',   label: 'Plans',    icon: <Map       className="w-4 h-4" /> },
   ];
   return (
     <div className="flex bg-[#111] border border-white/5 rounded-xl p-1 gap-1 overflow-x-auto">
@@ -202,11 +203,23 @@ function TabBar({ active, onChange, hasCabinet }) {
 
 export default function Results({ t, results, project }) {
   const [currentPanel, setCurrentPanel] = useState(0);
-  const [tab, setTab] = useState('resume');
+  const [tab, setTab]       = useState('resume');
   const [planView, setPlanView] = useState('2d');
   const colorMap = {};
 
-  const cabinet    = project.cabinet || null;
+  // Coerce toutes les dimensions en Number pour éviter les problèmes de type string
+  const rawCabinet = project.cabinet || null;
+  const cabinet = rawCabinet ? {
+    ...rawCabinet,
+    width:     Number(rawCabinet.width)     || 0,
+    height:    Number(rawCabinet.height)    || 0,
+    depth:     Number(rawCabinet.depth)     || 60,
+    thickness: Number(rawCabinet.thickness) || 1.8,
+    plinth:    Number(rawCabinet.plinth)    || 0,
+    panels:    Array.isArray(rawCabinet.panels) ? rawCabinet.panels : [],
+  } : null;
+
+  // hasCabinet = true si on a des dimensions valides
   const hasCabinet = !!(cabinet && cabinet.width > 0 && cabinet.height > 0);
 
   const panel      = results.panels[currentPanel];
@@ -236,7 +249,7 @@ export default function Results({ t, results, project }) {
   return (
     <div className="min-h-screen bg-[#050505] text-slate-200 pb-32 font-sans">
       <div className="sticky top-16 z-20 bg-[#050505]/95 backdrop-blur-xl pt-3 pb-2 px-4">
-        <TabBar active={tab} onChange={setTab} hasCabinet={hasCabinet} />
+        <TabBar active={tab} onChange={setTab} />
       </div>
 
       <div className="px-4 py-4 max-w-7xl mx-auto">
@@ -290,7 +303,7 @@ export default function Results({ t, results, project }) {
                 <Box className="w-4 h-4 text-blue-400 flex-shrink-0" />
                 <div>
                   <p className="text-sm font-bold text-blue-300">Plans 2D + 3D disponibles</p>
-                  <p className="text-xs text-slate-400">{cabinet.width}×{cabinet.height}×{cabinet.depth} cm — {(cabinet.panels||[]).length} panneaux structurels</p>
+                  <p className="text-xs text-slate-400">{cabinet.width}×{cabinet.height}×{cabinet.depth} cm</p>
                 </div>
                 <button onClick={() => setTab('plans')} className="ml-auto text-xs font-bold text-blue-400 hover:text-blue-300 whitespace-nowrap">Voir →</button>
               </div>
@@ -349,19 +362,14 @@ export default function Results({ t, results, project }) {
         {/* ── PLANCHES */}
         {tab === 'boards' && <BoardList results={results} project={project} />}
 
-        {/* ── PLANS 2D / 3D
-             IMPORTANT : on monte les DEUX vues dès que tab==='plans' et hasCabinet,
-             on les affiche/cache via CSS (visibility + height) et NON via un
-             conditionnel React. Cela évite le unmount/remount du canvas WebGL
-             qui provoque offsetWidth=0 et la disparition de la scène au zoom.
-        */}
+        {/* ── PLANS 2D / 3D */}
         {tab === 'plans' && (
           <div className="space-y-4">
             {hasCabinet ? (
               <>
                 <PlanSubTabs active={planView} onChange={setPlanView} />
 
-                {/* Vue 2D — masquée mais montée quand planView !== '2d' */}
+                {/* Vue 2D */}
                 <div style={planView !== '2d' ? { display: 'none' } : {}}>
                   <div className="flex items-center gap-2 text-xs text-slate-500 px-1 mb-3">
                     <Map className="w-3 h-3" />
@@ -388,36 +396,28 @@ export default function Results({ t, results, project }) {
                   </div>
                 </div>
 
-                {/* Vue 3D — toujours montée, cachée si planView !== '3d'
-                    Le canvas WebGL ne doit jamais être démonté sinon il perd sa taille. */}
+                {/* Vue 3D */}
                 <div style={planView !== '3d' ? { display: 'none' } : {}}>
                   <div className="flex items-center gap-2 text-xs text-slate-500 px-1 mb-3">
                     <Box className="w-3 h-3" />
                     <span>Vue isométrique — cliquer-glisser pour tourner — molette pour zoomer</span>
                   </div>
                   <CabinetPlan3D cabinet={cabinet} name={project.name} />
-                  <div className="bg-[#111] border border-white/5 rounded-xl p-4 text-xs text-slate-500 space-y-1 mt-3">
-                    <p className="font-bold text-slate-400">Légende panneaux</p>
-                    <div className="flex flex-wrap gap-2">
-                      {[
-                        { c: '#475569', l: 'Montant/Côté' }, { c: '#7dd3fc', l: 'Dessus' },
-                        { c: '#38bdf8', l: 'Tablette' },   { c: '#f97316', l: 'Porte' },
-                        { c: '#a855f7', l: 'Tiroir' },      { c: '#1e3a5f', l: 'Fond arrière' },
-                      ].map(({ c, l }) => (
-                        <div key={l} className="flex items-center gap-1">
-                          <div className="w-2.5 h-2.5 rounded-sm" style={{ background: c }} />
-                          <span className="text-slate-400">{l}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
                 </div>
               </>
             ) : (
+              /* ─ Pas de cabinet : inviter à faire un scan */
               <div className="flex flex-col items-center justify-center py-16 gap-4 text-center">
-                <div className="text-4xl">📐</div>
-                <p className="text-white font-bold">Plans non disponibles</p>
-                <p className="text-sm text-slate-400 max-w-xs">Les plans sont générés uniquement depuis un scan IA. Lancez un nouveau scan pour obtenir les vues 2D et 3D.</p>
+                <div className="text-5xl">📐</div>
+                <p className="text-white font-bold text-lg">Plans non disponibles</p>
+                <p className="text-sm text-slate-400 max-w-xs">
+                  Les plans 2D et 3D sont générés automatiquement depuis un scan IA.
+                  Lancez un nouveau projet avec Scan IA pour obtenir les vues industrielles.
+                </p>
+                <div className="bg-[#111] border border-white/10 rounded-xl p-4 text-left text-xs text-slate-500 max-w-sm">
+                  <p className="text-slate-400 font-bold mb-2">💡 Debug info</p>
+                  <p>project.cabinet = {JSON.stringify(project.cabinet)?.slice(0, 80) || 'null'}</p>
+                </div>
               </div>
             )}
           </div>
