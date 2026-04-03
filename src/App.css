@@ -511,3 +511,23 @@ body {
   font-family: 'Courier New', monospace;
   color: var(--accent);
 }
+/* Supprime les flèches natives (spinner) des inputs number */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield; /* Standard property */
+}
+
+/* Style optionnel pour les inputs number custom */
+input[type="number"] {
+  /* Permet de mieux cibler si besoin */
+}
+/* Firefox */
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
