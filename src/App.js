@@ -9,7 +9,7 @@ import SketchEditor from './components/SketchEditor';
 import LandingScreen    from './components/LandingScreen';
 import NewProjectWizard from './components/NewProjectWizard';
 import HistoryScreen    from './components/HistoryScreen';
-import { ChevronLeft, ChevronRight, LogOut, Disc } from 'lucide-react';
+import { ChevronLeft, ChevronRight, LogOut, Disc, Moon, Sun } from 'lucide-react';
 import './App.css';
 
 const SCREENS = {
@@ -51,6 +51,14 @@ function lsClear() {
 export default function App() {
   const lang = useLang();
   const [langOverride, setLangOverride] = useState(lang);
+  
+  // ── Dark Mode State ──
+  const [isDark, setIsDark] = useState(() => {
+    const stored = localStorage.getItem('pc_darkmode');
+    if (stored !== null) return stored === 'true';
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  });
+  
   const tr = I18N[langOverride] || I18N['fr'];
 
   const [screen,  setScreenRaw]  = useState(() => {
@@ -73,6 +81,20 @@ export default function App() {
   const setProject = (p) => { setProjectRaw(p); lsSet(LS_PROJECT, p); };
   const setResults = (r) => { setResultsRaw(r); lsSet(LS_RESULTS, r); };
 
+  // ── Dark Mode: Sync with DOM ──
+  useEffect(() => {
+    if (isDark) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    localStorage.setItem('pc_darkmode', String(isDark));
+  }, [isDark]);
+
+  // ── Toggle Dark Mode ──
+  const toggleDarkMode = () => setIsDark(prev => !prev);
+
+  // ── Supabase Auth ──
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
@@ -145,8 +167,6 @@ export default function App() {
     else setScreen(SCREENS.PIECES);
   };
 
-  // ✅ Scan initial Claude Vision → stocke image + résultat, va à SKETCH
-  // Accepte (scanResult, scanImageBase64) envoyé par NewProjectWizard via ImageUpload
   const handleScanComplete = (scanResult, scanImageBase64) => {
     const pieces = (scanResult.pieces || []).map(p => ({
       name:   String(p.name   || 'Pièce').trim(),
@@ -157,19 +177,17 @@ export default function App() {
 
     const cabinet = scanResult.cabinet || null;
 
-    // Met à jour project avec l'image base64 ET le résultat du scan
     setProject(prev => ({
       ...prev,
       pieces,
       cabinet,
-      scanImage:  scanImageBase64 || null,   // ← l'image pour SketchEditor
+      scanImage:  scanImageBase64 || null,
       scanResult: scanResult,
     }));
     setResults(null);
     setScreen(SCREENS.SKETCH);
   };
 
-  // Relance Claude Vision avec image annotée → met à jour les pièces
   const handleRefinementComplete = (newScanResult) => {
     const pieces = (newScanResult.pieces || []).map(p => ({
       name:   String(p.name   || 'Pièce').trim(),
@@ -214,12 +232,11 @@ export default function App() {
   const hasSteps  = steps.length > 0;
 
   return (
-    <div className="app min-h-screen bg-[#0f1620] text-slate-200 font-sans">
+    <div className="app min-h-screen bg-[#0f1620] text-slate-200 font-sans dark:bg-slate-950 dark:text-slate-100 transition-colors duration-300">
 
       {/* ── Standalone full-screen components ── */}
       {screen === SCREENS.LANDING  && <LandingScreen onNew={() => startNew(devisNum)} onHistory={() => setScreen(user ? SCREENS.HISTORY : SCREENS.AUTH)} onAuth={() => setScreen(SCREENS.AUTH)} user={user} />}
 
-      {/* ✅ FIX: onGoScan reçoit (scanResult, imageBase64) et appelle handleScanComplete */}
       {screen === SCREENS.WIZARD   && <NewProjectWizard t={tr} project={project} onChange={setProject} onGoScan={handleScanComplete} onGoManual={() => setScreen(SCREENS.PIECES)} onCancel={() => setScreen(SCREENS.LANDING)} />}
 
       {screen === SCREENS.HISTORY  && <HistoryScreen user={user} onNew={() => startNew(devisNum)} onLoad={handleLoadProject} onScanComplete={handleScanComplete} onBack={() => setScreen(SCREENS.LANDING)} />}
@@ -238,7 +255,7 @@ export default function App() {
       {![SCREENS.LANDING, SCREENS.WIZARD, SCREENS.HISTORY, SCREENS.SKETCH].includes(screen) && (
         <>
           {hasHeader && (
-            <header className="sticky top-0 z-40 bg-[#0f1620]/95 backdrop-blur-md border-b border-white/10 shadow-lg h-16 flex items-center justify-between px-4 md:px-8 gap-2">
+            <header className="sticky top-0 z-40 bg-[#0f1620]/95 dark:bg-slate-950/95 backdrop-blur-md border-b border-white/10 shadow-lg h-16 flex items-center justify-between px-4 md:px-8 gap-2 transition-colors duration-300">
               <div className="flex items-center gap-1 flex-shrink-0">
                 {showBack && (
                   <button onClick={goBack} className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors">
@@ -299,6 +316,17 @@ export default function App() {
                     ✏️ <span className="hidden sm:inline">Annoter</span>
                   </button>
                 )}
+                
+                {/* Toggle Dark Mode */}
+                <button
+                  onClick={toggleDarkMode}
+                  title={tr.toggle_dark_mode || 'Mode sombre'}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-yellow-400 hover:bg-white/10 transition-colors"
+                  aria-label={tr.toggle_dark_mode || 'Toggle dark mode'}
+                >
+                  {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+                </button>
+                
                 {(saveMsg || saving) && <span className="text-[11px] text-green-400 font-medium">{saving ? '...' : saveMsg}</span>}
                 {showSave && !saving && (
                   <button onClick={handleSave} className="p-1.5 rounded-lg text-slate-400 hover:text-green-400 hover:bg-white/10 transition-colors">
