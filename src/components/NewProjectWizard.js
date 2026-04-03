@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import PanelSelector from './PanelSelector';
+import ImageUpload from './ImageUpload';
 import { ChevronRight, ChevronLeft, Settings } from 'lucide-react';
 
 const STEPS = [
@@ -11,12 +12,27 @@ const STEPS = [
 export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoManual, onCancel }) {
   const [step, setStep] = useState(1);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
 
   const update = (key, val) => onChange({ ...project, [key]: val });
   const canNext = step === 1 ? project.name?.trim().length > 0 : true;
 
+  // Reçoit le résultat du scan + image base64 depuis ImageUpload
+  const handleScanComplete = (scanResult, imageBase64) => {
+    setShowScanner(false);
+    onGoScan(scanResult, imageBase64);
+  };
+
   return (
     <div className="min-h-screen bg-[#0f1620] text-slate-200 pb-20 font-sans">
+
+      {/* ── Scanner overlay ── */}
+      {showScanner && (
+        <ImageUpload
+          onScanComplete={handleScanComplete}
+          onCancel={() => setShowScanner(false)}
+        />
+      )}
 
       {/* ── Stepper ── */}
       <div className="max-w-2xl mx-auto px-4 pt-10 pb-6">
@@ -175,8 +191,10 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
           <div>
             <h2 className="text-xl font-bold text-white mb-6">Méthode d'entrée des pièces</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+              {/* ─ Scanner ─ */}
               <button
-                onClick={onGoScan}
+                onClick={() => setShowScanner(true)}
                 className="group bg-[#131c2a] hover:bg-[#1a2535] border border-white/5 hover:border-orange-500/40 rounded-2xl p-8 text-left transition-all hover:-translate-y-1 hover:shadow-xl flex flex-col gap-4"
               >
                 <div className="text-4xl">📷</div>
@@ -194,6 +212,7 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
                 </div>
               </button>
 
+              {/* ─ Manuel ─ */}
               <button
                 onClick={onGoManual}
                 className="group bg-[#131c2a] hover:bg-[#1a2535] border border-white/5 hover:border-blue-500/40 rounded-2xl p-8 text-left transition-all hover:-translate-y-1 hover:shadow-xl flex flex-col gap-4"
