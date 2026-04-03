@@ -2,31 +2,32 @@ import { useState, useCallback, useEffect } from 'react';
 import { optimise } from './engineV2';
 import { I18N, useLang } from './i18n';
 import { supabase, saveProject, loadProject, signOut } from './supabase';
-import ProjectForm from './components/ProjectForm';
 import PiecesList from './components/PiecesList';
 import Results from './components/Results';
 import AuthScreen from './components/AuthScreen';
-import ProjectsScreen from './components/ProjectsScreen';
 import SketchEditor from './components/SketchEditor';
+import LandingScreen    from './components/LandingScreen';
+import NewProjectWizard from './components/NewProjectWizard';
+import HistoryScreen    from './components/HistoryScreen';
 import { ChevronLeft, ChevronRight, LogOut, Disc } from 'lucide-react';
 import './App.css';
 
 const SCREENS = {
-  AUTH: 'auth',
-  PROJECTS: 'projects',
-  FORM: 'form',
-  PIECES: 'pieces',
-  RESULTS: 'results',
-  SKETCH: 'sketch',   // ← nouvel écran
+  LANDING:  'landing',
+  AUTH:     'auth',
+  HISTORY:  'history',
+  WIZARD:   'wizard',
+  SKETCH:   'sketch',
+  PIECES:   'pieces',
+  RESULTS:  'results',
 };
 
 const DEFAULT_PROJECT = {
-  name: '', client: '', company: '',
-  panel: { w: 244, h: 122 }, kerf: 3, tolerance: 10,
-  pricePerPanel: 39.8, pieces: [], furniture: [],
-  devisNum: '', supabaseId: null, cabinet: null,
-  scanImage: null,   // ← image base64 du scan d'origine (pour l'éditeur)
-  scanResult: null,  // ← résultat brut du premier Claude Vision
+  name: '', client: '', company: '', devisNum: '',
+  panel: { w: 244, h: 122, thickness: 1.8, label: 'MDF 18mm' },
+  kerf: 3, tolerance: 10, pricePerPanel: 39.8,
+  pieces: [], furniture: [], supabaseId: null, cabinet: null,
+  scanImage: null, scanResult: null,
 };
 
 const APP_VERSION = process.env.REACT_APP_VERSION || '1.0.0';
@@ -52,7 +53,10 @@ export default function App() {
   const [langOverride, setLangOverride] = useState(lang);
   const tr = I18N[langOverride] || I18N['fr'];
 
-  const [screen,  setScreenRaw]  = useState(() => lsGet(LS_SCREEN,  SCREENS.AUTH));
+  const [screen,  setScreenRaw]  = useState(() => {
+    const stored = lsGet(LS_SCREEN, SCREENS.LANDING);
+    return Object.values(SCREENS).includes(stored) ? stored : SCREENS.LANDING;
+  });
   const [project, setProjectRaw] = useState(() => lsGet(LS_PROJECT, { ...DEFAULT_PROJECT }));
   const [results, setResultsRaw] = useState(() => lsGet(LS_RESULTS, null));
 
@@ -74,21 +78,21 @@ export default function App() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         setUser(session.user);
-        const savedScreen = lsGet(LS_SCREEN, SCREENS.AUTH);
-        if (savedScreen === SCREENS.AUTH) setScreen(SCREENS.PROJECTS);
+        const savedScreen = lsGet(LS_SCREEN, SCREENS.LANDING);
+        if (savedScreen === SCREENS.AUTH) setScreen(SCREENS.HISTORY);
       }
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
         setUser(session.user);
         if (_event === 'SIGNED_IN') {
-          const savedScreen = lsGet(LS_SCREEN, SCREENS.AUTH);
-          if (savedScreen === SCREENS.AUTH) setScreen(SCREENS.PROJECTS);
+          const savedScreen = lsGet(LS_SCREEN, SCREENS.LANDING);
+          if (savedScreen === SCREENS.AUTH) setScreen(SCREENS.HISTORY);
         }
       } else {
         setUser(null);
         lsClear();
-        setScreenRaw(SCREENS.AUTH);
+        setScreenRaw(SCREENS.LANDING);
         setProjectRaw({ ...DEFAULT_PROJECT });
         setResultsRaw(null);
       }
@@ -97,18 +101,18 @@ export default function App() {
   }, []);
 
   const startNew = (devisNum = '') => {
-    const p = { ...DEFAULT_PROJECT, devisNum };
-    setProject(p);
+    setProject({ ...DEFAULT_PROJECT, devisNum });
     setResults(null);
-    setScreen(SCREENS.FORM);
+    setScreen(SCREENS.WIZARD);
   };
 
   const goBack = () => {
-    if (screen === SCREENS.SKETCH)  setScreen(SCREENS.PROJECTS);
+    if      (screen === SCREENS.WIZARD)  setScreen(SCREENS.LANDING);
+    else if (screen === SCREENS.SKETCH)  setScreen(SCREENS.WIZARD);
+    else if (screen === SCREENS.PIECES)  setScreen(SCREENS.WIZARD);
     else if (screen === SCREENS.RESULTS) setScreen(SCREENS.PIECES);
-    else if (screen === SCREENS.PIECES)  setScreen(SCREENS.FORM);
-    else if (screen === SCREENS.FORM)    setScreen(user ? SCREENS.PROJECTS : SCREENS.AUTH);
-    else setScreen(SCREENS.AUTH);
+    else if (screen === SCREENS.HISTORY) setScreen(SCREENS.LANDING);
+    else if (screen === SCREENS.AUTH)    setScreen(SCREENS.LANDING);
   };
 
   const handleOptimize = useCallback(() => {
@@ -126,12 +130,10 @@ export default function App() {
   }, [project, user]);
 
   const canGoNext =
-    (screen === SCREENS.FORM   && project.name?.trim().length > 0) ||
-    (screen === SCREENS.PIECES && project.pieces.length > 0 && !computing);
-  const showNext = [SCREENS.FORM, SCREENS.PIECES].includes(screen);
+    screen === SCREENS.PIECES && project.pieces.length > 0 && !computing;
+  const showNext = screen === SCREENS.PIECES;
 
   const goNext = () => {
-    if (screen === SCREENS.FORM)   setScreen(SCREENS.PIECES);
     if (screen === SCREENS.PIECES) handleOptimize();
   };
 
@@ -144,7 +146,7 @@ export default function App() {
     else setScreen(SCREENS.PIECES);
   };
 
-  // Scan initial Claude Vision → stocke image + résultat pour l'éditeur
+  // Scan initial Claude Vision → stocke image + résultat, va directement à SKETCH
   const handleScanComplete = (scanResult, scanImageBase64) => {
     const pieces = (scanResult.pieces || []).map(p => ({
       name:   String(p.name   || 'Pièce').trim(),
@@ -154,20 +156,14 @@ export default function App() {
     })).filter(p => p.length > 0 && p.height > 0);
 
     const cabinet = scanResult.cabinet || null;
-    const projectName = 'Plan du ' + new Date().toLocaleDateString('fr-FR');
-    const dNum = 'DV-' + new Date().getFullYear() + '-' + String(Math.floor(Math.random() * 9000) + 1000);
-
-    setProject({
-      ...DEFAULT_PROJECT,
-      name: projectName,
-      devisNum: dNum,
-      pieces,
-      cabinet,
+    setProject(prev => ({
+      ...prev,
+      pieces, cabinet,
       scanImage:  scanImageBase64 || null,
       scanResult: scanResult,
-    });
+    }));
     setResults(null);
-    setScreen(SCREENS.PIECES);
+    setScreen(SCREENS.SKETCH);
   };
 
   // Relance Claude Vision avec image annotée → met à jour les pièces
@@ -195,7 +191,7 @@ export default function App() {
     await signOut();
     setUser(null);
     lsClear();
-    setScreenRaw(SCREENS.AUTH);
+    setScreenRaw(SCREENS.LANDING);
     setProjectRaw({ ...DEFAULT_PROJECT });
     setResultsRaw(null);
   };
@@ -203,24 +199,26 @@ export default function App() {
   const toggleLang = () => setLangOverride(l => l === 'fr' ? 'en' : 'fr');
   const [devisNum] = useState(() => 'DV-' + new Date().getFullYear() + '-' + String(Math.floor(Math.random() * 9000) + 1000));
 
-  const showBack = [SCREENS.FORM, SCREENS.PIECES, SCREENS.RESULTS].includes(screen);
+  const showBack = [SCREENS.PIECES, SCREENS.RESULTS].includes(screen);
   const showSave = user && [SCREENS.PIECES, SCREENS.RESULTS].includes(screen);
 
   // Bouton "Annoter" : visible sur PIECES si un scan existe
   const canAnnotate = screen === SCREENS.PIECES && !!project.scanImage;
 
   let headerTitle = 'PanelCut Pro', headerSubtitle = '', steps = [];
-  if (screen === SCREENS.PROJECTS) { headerTitle = 'Dashboard'; headerSubtitle = user?.email || 'Guest'; }
-  else if (screen === SCREENS.FORM)    { headerTitle = tr.newProject || 'Nouveau projet'; steps = [{ label: tr.panel, active: true }, { label: tr.pieces, active: false }, { label: tr.results, active: false }]; }
-  else if (screen === SCREENS.PIECES)  { headerTitle = project.name || tr.newProject;    steps = [{ label: tr.panel, active: true }, { label: tr.pieces, active: true  }, { label: tr.results, active: false }]; }
-  else if (screen === SCREENS.RESULTS) { headerTitle = tr.results || 'Resultats';         steps = [{ label: tr.panel, active: true }, { label: tr.pieces, active: true  }, { label: tr.results, active: true  }]; }
-  else if (screen === SCREENS.SKETCH)  { headerTitle = 'Éditeur annoté'; }
+  if (screen === SCREENS.PIECES)  { headerTitle = project.name || 'Nouveau projet'; steps = [{ label: 'Panneau', active: true }, { label: 'Pièces', active: true }, { label: 'Résultats', active: false }]; }
+  else if (screen === SCREENS.RESULTS) { headerTitle = 'Résultats'; steps = [{ label: 'Panneau', active: true }, { label: 'Pièces', active: true }, { label: 'Résultats', active: true }]; }
 
-  const hasHeader = screen !== SCREENS.AUTH && screen !== SCREENS.SKETCH;
+  const hasHeader = ![SCREENS.AUTH, SCREENS.SKETCH, SCREENS.LANDING, SCREENS.WIZARD, SCREENS.HISTORY].includes(screen);
   const hasSteps  = steps.length > 0;
 
   return (
     <div className="app min-h-screen bg-[#0f1620] text-slate-200 font-sans">
+
+      {/* ── Standalone full-screen components (manage their own layout) ── */}
+      {screen === SCREENS.LANDING  && <LandingScreen onNew={() => startNew(devisNum)} onHistory={() => setScreen(user ? SCREENS.HISTORY : SCREENS.AUTH)} onAuth={() => setScreen(SCREENS.AUTH)} user={user} />}
+      {screen === SCREENS.WIZARD   && <NewProjectWizard t={tr} project={project} onChange={setProject} onGoScan={() => setScreen(SCREENS.SKETCH)} onGoManual={() => setScreen(SCREENS.PIECES)} onCancel={() => setScreen(SCREENS.LANDING)} />}
+      {screen === SCREENS.HISTORY  && <HistoryScreen user={user} onNew={() => startNew(devisNum)} onLoad={handleLoadProject} onScanComplete={handleScanComplete} onBack={() => setScreen(SCREENS.LANDING)} />}
 
       {/* ── SKETCH EDITOR (plein écran, par-dessus tout) ── */}
       {screen === SCREENS.SKETCH && (
@@ -233,7 +231,7 @@ export default function App() {
         />
       )}
 
-      {screen !== SCREENS.SKETCH && (
+      {![SCREENS.LANDING, SCREENS.WIZARD, SCREENS.HISTORY, SCREENS.SKETCH].includes(screen) && (
         <>
           {hasHeader && (
             <header className="sticky top-0 z-40 bg-[#0f1620]/95 backdrop-blur-md border-b border-white/10 shadow-lg h-16 flex items-center justify-between px-4 md:px-8 gap-2">
@@ -319,16 +317,7 @@ export default function App() {
           )}
 
           <main className={'w-full px-4 md:px-8 mb-20 ' + (hasHeader ? 'mt-4' : 'mt-0')}>
-            {screen === SCREENS.AUTH     && <AuthScreen onSkip={() => setScreen(SCREENS.PROJECTS)} />}
-            {screen === SCREENS.PROJECTS && (
-              <ProjectsScreen
-                user={user}
-                onNew={() => startNew(devisNum)}
-                onLoad={handleLoadProject}
-                onScanComplete={handleScanComplete}
-              />
-            )}
-            {screen === SCREENS.FORM     && <ProjectForm t={tr} project={project} onChange={setProject} onNext={() => setScreen(SCREENS.PIECES)} />}
+            {screen === SCREENS.AUTH     && <AuthScreen onSkip={() => setScreen(SCREENS.HISTORY)} />}
             {screen === SCREENS.PIECES   && <PiecesList t={tr} project={project} onChange={setProject} onOptimize={handleOptimize} computing={computing} />}
             {screen === SCREENS.RESULTS  && results && results.panels && results.panels.length > 0
               ? <Results t={tr} results={results} project={project} />
