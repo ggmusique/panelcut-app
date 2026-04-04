@@ -1,20 +1,27 @@
 /**
- * SketchEditor.js — Éditeur de croquis annoté
- *
- * Props :
- *   image / scanImage  {string}  base64 ou URL de l’image source
- *   initialResult      {object}  résultat du premier scan Claude
- *   apiKey             {string}  clé Anthropic (non utilisée côté client, le serveur la gère)
- *   onComplete         {fn}      (newScanResult) => void — appelé après relance Claude
- *   onCancel           {fn}      ferme l’éditeur
+ * SketchEditor.js — Éditeur de croquis annoté (Version Améliorée)
+ * 
+ * Nouveautés :
+ * - Ajout d'outils "Éléments Prédéfinis" (Tiroirs, Portes, Tablettes, etc.)
+ * - Envoi d'un contexte textuel structuré à l'IA lors de la relance
  */
 import { useRef, useState, useCallback, useEffect } from 'react';
 
-const TOOLS = [
+// Outils de dessin classiques
+const DRAW_TOOLS = [
   { id: 'dim',    icon: '⇔',  label: 'Cote',    color: '#22d3ee' },
   { id: 'note',   icon: '💬', label: 'Note',    color: '#86efac' },
   { id: 'pencil', icon: '✏️', label: 'Crayon',  color: '#fb923c' },
   { id: 'erase',  icon: '🧹', label: 'Effacer', color: '#f87171' },
+];
+
+// Éléments sémantiques prédéfinis pour aider l'IA
+const SEMANTIC_TOOLS = [
+  { id: 'block_drawers', icon: ' drawers', label: 'Bloc Tiroirs', color: '#a855f7', prompt: 'Bloc de tiroirs' },
+  { id: 'block_door',    icon: '🚪', label: 'Porte',        color: '#3b82f6', prompt: 'Porte de placard' },
+  { id: 'block_shelf',   icon: '▬',  label: 'Tablette',     color: '#eab308', prompt: 'Tablette / Étagère' },
+  { id: 'block_pantry',  icon: '👕', label: 'Penderie',     color: '#ec4899', prompt: 'Espace penderie (barre)' },
+  { id: 'block_col',     icon: '⬍',  label: 'Colonne',      color: '#14b8a6', prompt: 'Colonne de rangement' },
 ];
 
 const uid = () => Math.random().toString(36).slice(2, 9);
@@ -35,6 +42,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
   const [loading,   setLoading]   = useState(false);
   const [error,     setError]     = useState(null);
 
+  // Charger l'image et calculer la taille d'affichage
   useEffect(() => {
     if (!imgSrc) return;
     const img = new window.Image();
@@ -70,6 +78,8 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     if (tool === 'erase') return;
     e.preventDefault();
     const { x, y } = getSVGCoords(e);
+    
+    // Gestion des outils de dessin classiques
     if (tool === 'dim') {
       setDrawing({ id: uid(), type: 'dim', x1: x, y1: y, x2: x, y2: y, label: '' });
     } else if (tool === 'note') {
@@ -79,6 +89,24 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
       setEditText('Note');
     } else if (tool === 'pencil') {
       setDrawing({ id: uid(), type: 'pencil', points: [[x, y]] });
+    } 
+    // Gestion des éléments sémantiques (clic simple pour placer)
+    else if (SEMANTIC_TOOLS.some(t => t.id === tool)) {
+      const semanticTool = SEMANTIC_TOOLS.find(t => t.id === tool);
+      const id = uid();
+      setElements(els => [...els, { 
+        id, 
+        type: 'semantic', 
+        semanticType: tool, 
+        x, 
+        y, 
+        label: semanticTool.prompt,
+        width: 80, // Largeur par défaut pour le rectangle visuel
+        height: 60 
+      }]);
+      // On ouvre directement l'édition pour ajuster le libellé si besoin
+      setEditingId(id);
+      setEditText(semanticTool.prompt);
     }
   }, [tool, getSVGCoords]);
 
@@ -119,10 +147,10 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
   const clearAll = () => setElements([]);
 
   // ───────────────────────────────────────────────
-  // RELANCER CLAUDE — pipeline complet :
-  // 1. Sérialise le SVG (avec annotations) en PNG
-  // 2. Envoie au serveur /api/scan
-  // 3. Appelle onComplete(result) → App.js stocke les pièces
+  // RELANCER CLAUDE — Pipeline amélioré
+  // 1. Génère un résumé textuel des annotations sémantiques
+  // 2. Sérialise le SVG (avec annotations) en PNG
+  // 3. Envoie au serveur /api/scan avec le contexte texte
   // ───────────────────────────────────────────────
   const handleRelancer = useCallback(() => {
     const svg = svgRef.current;
@@ -130,6 +158,18 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     setLoading(true);
     setError(null);
 
+    // 1. Construire le contexte textuel pour l'IA
+    const semanticElements = elements.filter(el => el.type === 'semantic');
+    let contextPrompt = "";
+    if (semanticElements.length > 0) {
+      contextPrompt = "ANNOTATIONS UTILISATEUR DÉTECTÉES SUR LE CROQUIS :\n";
+      semanticElements.forEach((el, idx) => {
+        contextPrompt += `- Zone ${idx+1} : ${el.label} (Position approximative sur le plan)\n`;
+      });
+      contextPrompt += "\nINSTRUCTION : Utilise ces annotations pour identifier précisément les pièces, leurs rôles et leurs quantités. Respecte les zones indiquées.";
+    }
+
+    // 2. Export SVG vers PNG
     const serializer = new XMLSerializer();
     const svgStr  = serializer.serializeToString(svg);
     const svgBlob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
@@ -147,10 +187,16 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
       const base64 = pngDataUrl.split(',')[1];
 
       try {
+        // 3. Envoi au serveur
+        // On envoie l'image ET le contexte texte dans le champ 'prompt_context'
         const res = await fetch('https://panelcut-server.vercel.app/api/scan', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ image: base64, mediaType: 'image/png' }),
+          body: JSON.stringify({ 
+            image: base64, 
+            mediaType: 'image/png',
+            prompt_context: contextPrompt // Nouveau champ pour guider l'IA
+          }),
         });
 
         if (!res.ok) {
@@ -177,7 +223,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     };
 
     img.src = url;
-  }, [imgSize, onComplete]);
+  }, [imgSize, onComplete, elements]);
 
   // ─ RENDU ÉLÉMENT SVG
   const renderElement = (el) => {
@@ -221,6 +267,28 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
               rx="4" fill="#14532d" stroke="#86efac" strokeWidth="1.5" fillOpacity="0.9" />
             <text x={el.x + 8} y={el.y + 2}
               fontSize="12" fontFamily="sans-serif" fill="#86efac">{txt}</text>
+          </g>
+        );
+      }
+      case 'semantic': {
+        // Rendu des blocs sémantiques (Rectangle coloré + Icône + Texte)
+        const toolDef = SEMANTIC_TOOLS.find(t => t.id === el.semanticType);
+        const color = toolDef?.color || '#fff';
+        const label = el.label || toolDef?.label || 'Élément';
+        
+        return (
+          <g key={el.id} onClick={() => eraseElement(el.id)}
+            style={{ cursor: tool === 'erase' ? 'pointer' : 'move' }}>
+            <rect x={el.x} y={el.y} width={el.width} height={el.height}
+              rx="4" fill={color} fillOpacity="0.2" stroke={color} strokeWidth="2" strokeDasharray="4 2" />
+            <text x={el.x + el.width/2} y={el.y + el.height/2 + 5} 
+              textAnchor="middle" fontSize="12" fontWeight="bold" fill={color} style={{pointerEvents: 'none'}}>
+              {label}
+            </text>
+            <text x={el.x + el.width/2} y={el.y - 10} 
+              textAnchor="middle" fontSize="16" style={{pointerEvents: 'none'}}>
+              {toolDef?.icon}
+            </text>
           </g>
         );
       }
@@ -275,7 +343,6 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Message d'erreur inline */}
           {error && (
             <span className="text-xs text-red-400 font-bold max-w-xs truncate">⚠️ {error}</span>
           )}
@@ -307,9 +374,10 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
         </div>
       </div>
 
-      {/* TOOLBAR */}
+      {/* TOOLBAR DESSIN */}
       <div className="flex items-center gap-2 px-4 py-2 bg-[#0a0f1a] border-b border-white/5 flex-shrink-0 overflow-x-auto">
-        {TOOLS.map(t => (
+        <span className="text-[10px] text-slate-500 uppercase font-bold mr-2">Dessin</span>
+        {DRAW_TOOLS.map(t => (
           <button key={t.id} onClick={() => setTool(t.id)}
             className={
               'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border flex-shrink-0 ' +
@@ -322,6 +390,25 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
             <span className="hidden sm:inline">{t.label}</span>
           </button>
         ))}
+        
+        <div className="w-px h-6 bg-white/10 mx-2"></div>
+
+        {/* TOOLBAR ÉLÉMENTS SÉMANTIQUES */}
+        <span className="text-[10px] text-slate-500 uppercase font-bold mr-2">Éléments</span>
+        {SEMANTIC_TOOLS.map(t => (
+          <button key={t.id} onClick={() => setTool(t.id)}
+            className={
+              'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border flex-shrink-0 ' +
+              (tool === t.id
+                ? 'bg-white/10 border-white/30 text-white scale-105'
+                : 'border-white/5 text-slate-400 hover:text-white hover:bg-white/5')
+            }
+            style={tool === t.id ? { borderColor: t.color + '80', color: t.color } : {}}>
+            <span className="text-base">{t.icon}</span>
+            <span className="hidden md:inline">{t.label}</span>
+          </button>
+        ))}
+
         <div className="ml-auto flex items-center gap-1.5 text-[11px] text-slate-500 flex-shrink-0">
           <span className="hidden md:inline">💡</span>
           <span className="hidden md:inline">
@@ -329,6 +416,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
             {tool === 'note'   && 'Cliquez pour placer une note'}
             {tool === 'pencil' && 'Dessinez librement sur le croquis'}
             {tool === 'erase'  && 'Cliquez sur un élément pour le supprimer'}
+            {SEMANTIC_TOOLS.some(t => t.id === tool) && 'Cliquez sur le plan pour placer cet élément'}
           </span>
         </div>
       </div>
@@ -361,7 +449,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
             style={{
               display: 'block',
               maxWidth: '100%',
-              cursor: tool === 'erase' ? 'crosshair' : tool === 'note' ? 'cell' : 'crosshair',
+              cursor: tool === 'erase' ? 'crosshair' : tool === 'note' || SEMANTIC_TOOLS.some(t => t.id === tool) ? 'cell' : 'crosshair',
               borderRadius: '8px',
               border: '1px solid rgba(255,255,255,0.1)',
               background: imgSrc ? 'transparent' : '#0a0a14',
@@ -420,8 +508,8 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
             if (!el || !rect) return null;
             const scaleX = rect.width  / imgSize.w;
             const scaleY = rect.height / imgSize.h;
-            const cx = el.type === 'note' ? el.x : (el.x1 + el.x2) / 2;
-            const cy = el.type === 'note' ? el.y : (el.y1 + el.y2) / 2;
+            const cx = el.type === 'note' || el.type === 'semantic' ? el.x : (el.x1 + el.x2) / 2;
+            const cy = el.type === 'note' || el.type === 'semantic' ? el.y : (el.y1 + el.y2) / 2;
             return (
               <div style={{
                 position: 'absolute',
@@ -463,7 +551,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
         <span className="text-slate-500">{elements.length} annotation{elements.length !== 1 ? 's' : ''}</span>
         <span className="text-cyan-500">{elements.filter(e => e.type === 'dim').length} cote{elements.filter(e => e.type === 'dim').length !== 1 ? 's' : ''}</span>
         <span className="text-green-500">{elements.filter(e => e.type === 'note').length} note{elements.filter(e => e.type === 'note').length !== 1 ? 's' : ''}</span>
-        <span className="text-orange-500">{elements.filter(e => e.type === 'pencil').length} trait{elements.filter(e => e.type === 'pencil').length !== 1 ? 's' : ''}</span>
+        <span className="text-purple-500">{elements.filter(e => e.type === 'semantic').length} élément{elements.filter(e => e.type === 'semantic').length !== 1 ? 's' : ''}</span>
         {!imgSrc && (
           <span className="text-red-400 font-bold">⚠️ Image manquante</span>
         )}
