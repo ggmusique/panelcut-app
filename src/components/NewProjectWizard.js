@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 
 export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoManual, onCancel }) {
-  // ── 🔥 FIX CRITIQUE : Refs pour éviter boucles infinies + perte de données ──
+  // ── Refs stables pour éviter les boucles de rendu ──
   const projectRef = useRef(project);
   const onChangeRef = useRef(onChange);
   
@@ -37,32 +37,24 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
   const fileInputRef = useRef(null);
   const [scanning, setScanning] = useState(false);
 
-  // ── 🔥 Sync vers le parent (via refs stables, sans boucle, sans perte de données) ──
+  // ── Sync vers le parent ──
   useEffect(() => {
     const currentProject = projectRef.current;
     onChangeRef.current({
-      ...currentProject, // ← Conserve pieces, furniture, cabinet, scanImage, etc.
+      ...currentProject,
       name, client, company, devisNum,
       panel: { w: panelW, h: panelH, thickness: panelThickness, label: panelLabel },
       grainDirection, edgeType, supplierRef,
       kerf, tolerance, pricePerPanel,
     });
-  }, [
-    // ← project et onChange NE SONT PAS ici (on utilise les refs)
-    name, client, company, devisNum,
-    panelW, panelH, panelThickness, panelLabel,
-    grainDirection, edgeType, supplierRef,
-    kerf, tolerance, pricePerPanel
-  ]);
+  }, [name, client, company, devisNum, panelW, panelH, panelThickness, panelLabel, grainDirection, edgeType, supplierRef, kerf, tolerance, pricePerPanel]);
 
-  // ── Calcul automatique du prix quand les dimensions changent ──
+  // ── Calcul prix auto ──
   useEffect(() => {
     if (pricePerM2 > 0) {
       const newArea = (panelW * panelH) / 10000;
       const newPrice = parseFloat((newArea * pricePerM2).toFixed(2));
-      if (newPrice !== pricePerPanel) {
-        setPricePerPanel(newPrice);
-      }
+      if (newPrice !== pricePerPanel) setPricePerPanel(newPrice);
     }
   }, [panelW, panelH, pricePerM2]);
 
@@ -74,7 +66,6 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
   };
   const isFormValid = name.trim().length > 0 && panelW > 0 && panelH > 0 && panelThickness > 0;
 
-  // ── Gestion prix manuel ──
   const handlePriceChange = (val) => {
     const p = parseFloat(val);
     if (isNaN(p)) return;
@@ -83,7 +74,7 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
     if (area > 0 && p > 0) setPricePerM2(parseFloat((p / area).toFixed(2)));
   };
 
-  // ── Flux Scan ──
+  // ── 🔥 FIX CRITIQUE : Retour à l'envoi JSON Base64 compatible avec le serveur actuel ──
   const triggerFilePicker = () => fileInputRef.current?.click();
 
   const handleFileSelect = async (event) => {
@@ -92,7 +83,7 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
     
     setScanning(true);
     try {
-      // 1. Lire le fichier en Base64 pour l'affichage local
+      // 1. Conversion en Base64 (avec header data:image/...)
       const base64Full = await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result);
@@ -100,42 +91,49 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
         reader.readAsDataURL(file);
       });
 
-      // 2. Préparer l'envoi en FormData (Multipart)
-      const formData = new FormData();
-      formData.append('image', file); // Envoi direct du fichier binaire
-      formData.append('mediaType', file.type);
+      // 2. Extraction du Base64 pur (sans header) pour l'API
+      const base64Data = base64Full.split(',')[1];
 
       const apiUrl = 'https://panelcut-server.vercel.app/api/scan';
-      console.log("Envoi du scan vers:", apiUrl);
+      console.log("Envoi du scan (JSON) vers:", apiUrl);
 
+      // 3. Envoi en JSON (Format attendu par le serveur actuel)
       const response = await fetch(apiUrl, {
         method: 'POST',
-        body: formData,
+        headers: { 
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          image: base64Data, 
+          mediaType: file.type 
+        }),
       });
 
+      // 4. Gestion détaillée des erreurs
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || 'Erreur serveur lors du scan');
+        console.error("Détails erreur serveur:", response.status, errData);
+        throw new Error(errData.error || `Erreur HTTP ${response.status}`);
       }
 
       const scanResult = await response.json();
-      console.log("Résultat du scan:", scanResult);
+      console.log("✅ Succès du scan:", scanResult);
 
-      // 3. Appeler le callback avec le résultat ET l'image complète
+      // 5. Callback avec résultat + image originale pour l'affichage
       if (onGoScan) {
         onGoScan(scanResult, base64Full);
       }
 
     } catch (err) {
-      console.error('Scan error:', err);
-      alert(`❌ Échec du scan : ${err.message}`);
+      console.error('❌ Échec complet du scan:', err);
+      alert(`Échec du scan : ${err.message}\nVérifiez la console (F12) pour plus de détails.`);
     } finally {
       setScanning(false);
-      event.target.value = null; // Reset input
+      if (fileInputRef.current) fileInputRef.current.value = null;
     }
   };
 
-  // ── Options ──
+  // ── Options (inchangées) ──
   const thicknessOptions = [
     { value: 0.8, label: '8 mm' }, { value: 1.2, label: '12 mm' }, { value: 1.8, label: '18 mm' },
     { value: 2.2, label: '22 mm' }, { value: 2.5, label: '25 mm' }, { value: 3.0, label: '30 mm' },
