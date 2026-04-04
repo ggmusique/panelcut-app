@@ -1,5 +1,59 @@
 import React, { useState, useEffect, useRef } from 'react';
 
+// ─── Prompt Claude Vision — paramétré par l'épaisseur choisie par l'utilisateur ─
+const getVisionPrompt = (thickness) => `Tu es un expert en lecture de plans de menuiserie. 
+Analyse l'image et décompose-la en structures réelles.
+ÉPAISSEUR GÉNÉRALE : ${thickness} cm.
+
+STRUCTURE DU JSON :
+{
+  "width": <largeur_hors_tout>,
+  "height": <hauteur_hors_tout>,
+  "depth": <profondeur>,
+  "plinth": <hauteur_socle_si_visible>,
+  "modules": [
+    {
+      "x_start": <position_bord_gauche_interieur>,
+      "width": <largeur_interieure_nette>,
+      "shelves": [ {"y": <hauteur_tablette>} ],
+      "drawers": [],
+      "rod": {"y": <hauteur_tringle>} ou null
+    }
+  ]
+}
+
+CONSIGNES DE PRÉCISION :
+1. Ne crée pas de modules identiques par défaut. Observe bien les séparations verticales.
+2. Si tu vois une grande zone vide avec une barre, c'est une penderie ("rod").
+3. Le "x_start" du premier module est TOUJOURS égal à ${thickness}.
+4. La somme (épaisseur + largeur_module + épaisseur...) doit être égale à la largeur totale.
+5. Ne retourne QUE le JSON, aucun commentaire.`;
+
+// ─── Prompt de correction — forces l'IA à respecter les instructions textuelles ─
+const getCorrectionPrompt = (thickness, userInstructions, previousData) => `Tu es un expert en ébénisterie et menuiserie. Corrige le JSON du meuble ci-dessous en suivant STRICTEMENT les instructions de l'utilisateur.
+
+JSON actuel (à corriger) :
+${JSON.stringify(previousData, null, 2)}
+
+INSTRUCTIONS DE CORRECTION :
+${userInstructions}
+
+Règles absolues :
+- thickness = ${thickness} (épaisseur panneau imposée — ne jamais modifier)
+- x_start du premier module = ${thickness}
+- x_start de chaque module suivant = x_start_précédent + width_précédent + ${thickness}
+- La somme de tous les modules doit respecter : width_totale = ${thickness} + (Σ width_modules) + (nb_modules × ${thickness})
+- Les positions y sont en cm depuis le bas intérieur (au-dessus du fond bas)
+- Retourne UNIQUEMENT le JSON corrigé (même structure), sans aucun commentaire.
+
+Structure attendue :
+{
+  "width": <cm>, "height": <cm>, "depth": <cm>, "plinth": <cm>,
+  "modules": [ { "x_start": <cm>, "width": <cm>,
+    "shelves": [{"y":<cm>}], "drawers": [{"y":<cm>,"height":<cm>}],
+    "rod": {"y":<cm>} ou null, "doors": <n> } ]
+}`;
+
 export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoManual, onCancel }) {
   // ── 🔥 FIX CRITIQUE : Refs pour éviter boucles infinies + perte de données ──
   const projectRef = useRef(project);
@@ -34,8 +88,13 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
   const [pricePerM2, setPricePerM2] = useState(initialPriceM2);
 
   // ── États pour le Scan ──
-  const fileInputRef = useRef(null);
-  const [scanning, setScanning] = useState(false);
+  const fileInputRef   = useRef(null);
+  const processedImageRef = useRef(null); // stocke processedBase64 pour la rectification
+  const [scanning,        setScanning]        = useState(false);
+  const [correcting,      setCorrecting]      = useState(false);
+  const [showCorrection,  setShowCorrection]  = useState(false);
+  const [correctionText,  setCorrectionText]  = useState('');
+  const [lastScanResult,  setLastScanResult]  = useState(null);
 
   // ── 🔥 Sync vers le parent (via refs stables) ──
   useEffect(() => {
@@ -148,8 +207,9 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
 
       // 3. Préparer l'envoi en JSON (Format attendu par le serveur)
       const payload = {
-        image: base64Data,
-        mediaType: file.type || 'image/jpeg'
+        image:     base64Data,
+        mediaType: file.type || 'image/jpeg',
+        prompt:    getVisionPrompt(panelThickness),
       };
 
       const apiUrl = 'https://panelcut-server.vercel.app/api/scan';
@@ -172,9 +232,24 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
       const scanResult = await response.json();
       console.log("✅ Résultat du scan reçu:", scanResult);
 
-      // 4. Callback avec le résultat ET l'image traitée (pour affichage si besoin)
+      // 4. Injecter l'épaisseur choisie par l'utilisateur (priorité sur la valeur IA)
+      //    Cela garantit que engineV2 et le plan 2D utilisent la bonne épaisseur.
+      const correctedResult = {
+        ...scanResult,
+        cabinet: {
+          ...(scanResult?.cabinet || {}),
+          thickness: panelThickness,
+        },
+        thickness: panelThickness,
+      };
+
+      // 5. Mémoriser le résultat et l'image pour une éventuelle rectification
+      processedImageRef.current = processedBase64;
+      setLastScanResult(correctedResult);
+
+      // 6. Callback avec le résultat corrigé ET l'image traitée
       if (onGoScan) {
-        onGoScan(scanResult, processedBase64);
+        onGoScan(correctedResult, processedBase64);
       }
 
     } catch (err) {
@@ -183,6 +258,46 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
     } finally {
       setScanning(false);
       event.target.value = null;
+    }
+  };
+
+  // ── Rectification ──
+  const handleCorrection = async () => {
+    if (!processedImageRef.current || !correctionText.trim()) return;
+    setCorrecting(true);
+    try {
+      const base64Data = processedImageRef.current.split(',')[1];
+      const payload = {
+        image:     base64Data,
+        mediaType: 'image/jpeg',
+        prompt:    getCorrectionPrompt(panelThickness, correctionText.trim(), lastScanResult),
+      };
+      const response = await fetch('https://panelcut-server.vercel.app/api/scan', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `Erreur serveur (${response.status})`);
+      }
+      const scanResult = await response.json();
+      const correctedResult = {
+        ...scanResult,
+        cabinet:   { ...(scanResult?.cabinet || {}), thickness: panelThickness },
+        thickness: panelThickness,
+      };
+      // Mettre à jour la mémorisation et masquer le panneau
+      setLastScanResult(correctedResult);
+      setShowCorrection(false);
+      setCorrectionText('');
+      // Propager via onGoScan (mêmes refs stables que le scan initial)
+      if (onGoScan) onGoScan(correctedResult, processedImageRef.current);
+    } catch (err) {
+      console.error('💥 Échec de la rectification:', err);
+      alert(`❌ Rectification échouée : ${err.message}`);
+    } finally {
+      setCorrecting(false);
     }
   };
 
@@ -356,16 +471,58 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
 
       {/* Barre d'actions */}
       <div className="sticky bottom-0 bg-[#0f1620]/95 dark:bg-slate-950/95 backdrop-blur-md border-t border-white/10 p-4">
-        <div className="max-w-3xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
-          <button onClick={onCancel} className="w-full sm:w-auto px-5 py-2.5 text-sm font-medium text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 rounded-xl transition-colors">← {t?.btn_cancel || 'Annuler'}</button>
-          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-            <button onClick={triggerFilePicker} disabled={scanning} className="flex-1 sm:flex-none px-5 py-2.5 text-sm font-bold bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl transition-all shadow-lg shadow-cyan-600/20 active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-50">
-              {scanning ? '⏳ Analyse...' : '📷 Scanner un plan'}
-            </button>
-            <button onClick={onGoManual} disabled={!isFormValid} className={`flex-1 sm:flex-none px-5 py-2.5 text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${isFormValid ? 'bg-orange-600 hover:bg-orange-500 text-white shadow-lg shadow-orange-600/20 active:scale-[0.98]' : 'bg-slate-700 text-slate-500 cursor-not-allowed opacity-50'}`}>
-              ✏️ {t?.btn_manual || 'Saisie manuelle'} →
-            </button>
+        <div className="max-w-3xl mx-auto flex flex-col gap-3">
+
+          {/* Panneau de rectification (visible après un scan) */}
+          {showCorrection && (
+            <div className="bg-amber-950/40 border border-amber-500/30 rounded-xl p-3 flex flex-col gap-2">
+              <p className="text-xs font-bold text-amber-300">🛠️ Décrivez la correction à apporter :</p>
+              <textarea
+                value={correctionText}
+                onChange={(e) => setCorrectionText(e.target.value)}
+                placeholder="Ex : Il n'y a que 2 colonnes — une de 120 cm et une de 58 cm. Supprime la 3e colonne."
+                rows={3}
+                className="w-full px-3 py-2 bg-slate-900/80 border border-amber-500/30 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500/50 resize-none"
+              />
+              <div className="flex gap-2 justify-end">
+                <button
+                  onClick={() => { setShowCorrection(false); setCorrectionText(''); }}
+                  className="px-4 py-2 text-xs font-medium text-slate-300 bg-white/5 hover:bg-white/10 rounded-lg transition-colors"
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={handleCorrection}
+                  disabled={correcting || !correctionText.trim()}
+                  className="px-4 py-2 text-xs font-bold bg-amber-600 hover:bg-amber-500 text-white rounded-lg transition-all disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  {correcting ? '⏳ Correction...' : '✅ Envoyer la correction'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+            <button onClick={onCancel} className="w-full sm:w-auto px-5 py-2.5 text-sm font-medium text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 rounded-xl transition-colors">← {t?.btn_cancel || 'Annuler'}</button>
+            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+              {lastScanResult && (
+                <button
+                  onClick={() => setShowCorrection(v => !v)}
+                  disabled={correcting}
+                  className="flex-1 sm:flex-none px-5 py-2.5 text-sm font-bold bg-amber-700 hover:bg-amber-600 text-white rounded-xl transition-all shadow-lg shadow-amber-700/20 active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  🛠️ Rectifier le plan
+                </button>
+              )}
+              <button onClick={triggerFilePicker} disabled={scanning || correcting} className="flex-1 sm:flex-none px-5 py-2.5 text-sm font-bold bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl transition-all shadow-lg shadow-cyan-600/20 active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-50">
+                {scanning ? '⏳ Analyse...' : '📷 Scanner un plan'}
+              </button>
+              <button onClick={onGoManual} disabled={!isFormValid} className={`flex-1 sm:flex-none px-5 py-2.5 text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${isFormValid ? 'bg-orange-600 hover:bg-orange-500 text-white shadow-lg shadow-orange-600/20 active:scale-[0.98]' : 'bg-slate-700 text-slate-500 cursor-not-allowed opacity-50'}`}>
+                ✏️ {t?.btn_manual || 'Saisie manuelle'} →
+              </button>
+            </div>
           </div>
+
         </div>
       </div>
     </div>

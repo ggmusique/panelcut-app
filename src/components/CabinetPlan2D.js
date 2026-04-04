@@ -30,6 +30,7 @@ const C = {
     back:         { fill: '#060e1c', stroke: '#1e3a5f', strokeW: 0.8 },
     door:         { fill: 'rgba(249,115,22,0.08)', stroke: '#f97316', strokeW: 1.2 },
     drawer_front: { fill: 'rgba(168,85,247,0.10)', stroke: '#a855f7', strokeW: 1.2 },
+    rod:          { fill: 'rgba(52,211,153,0.20)',  stroke: '#34d399', strokeW: 1.5 },
     default:      { fill: '#0f172a', stroke: '#64748b', strokeW: 1.2 },
   },
 };
@@ -46,9 +47,9 @@ function buildPanelsFromModules(cab) {
   const detailed = modules.filter(m => typeof m === 'object' && m !== null && (m.width ?? m.w ?? 0) > 0);
   if (detailed.length === 0) return null;
 
-  const T  = cab.thickness || 1.8;
-  const H  = cab.height;
-  const PL = cab.plinth || 0;
+  const T      = cab.thickness || 3.0;  // 30 mm par défaut
+  const H      = cab.height;
+  const PL     = cab.plinth || 0;
   const panels = [];
   const innerH = H - PL - 2 * T;
 
@@ -57,40 +58,82 @@ function buildPanelsFromModules(cab) {
 
   let curX = T;
   detailed.forEach((m, i) => {
-    const mW      = m.width;
-    const shelves = Math.max(0, parseInt(m.shelves ?? 0, 10));
-    const drawers = Math.max(0, parseInt(m.drawers ?? 0, 10));
-    const hasRod  = Boolean(m.rod ?? m.tringle ?? false);
+    const mW = m.width;
+    // x_start issu du scan (coordonnée réelle) ou calculé
+    const mX = (m.x_start != null && m.x_start > 0) ? m.x_start : curX;
+
+    // Tablettes : positions exactes (array {y}) ou distribution uniforme
+    const rawShelves     = m.shelfPositions ?? m.shelves;
+    const shelfPositions = Array.isArray(rawShelves)
+      ? rawShelves.filter(s => s && typeof s.y === 'number')
+      : null;
+    const shelvesCount   = shelfPositions
+      ? shelfPositions.length
+      : Math.max(0, parseInt(rawShelves ?? 0, 10));
+
+    // Tiroirs : positions exactes (array {y,height}) ou zone proportionnelle
+    const rawDrawers      = m.drawerPositions ?? m.drawers;
+    const drawerPositions = Array.isArray(rawDrawers)
+      ? rawDrawers.filter(d => d && typeof d.y === 'number')
+      : null;
+    const drawersCount    = drawerPositions
+      ? drawerPositions.length
+      : Math.max(0, parseInt(rawDrawers ?? 0, 10));
+
+    // Tringle : position exacte ({y}) ou booléen
+    const rawRod = m.rodPosition ?? m.rod;
+    const rodPos = (rawRod && typeof rawRod === 'object' && typeof rawRod.y === 'number')
+      ? rawRod : null;
+    const hasRod = Boolean(rodPos || rawRod === true || m.tringle || m.hanging || m.penderie);
 
     // Fond bas
-    panels.push({ name: `Fond bas ${i+1}`, role: 'bottom', x: curX, y: PL, w: mW, h: T });
+    panels.push({ name: `Fond bas ${i+1}`, role: 'bottom', x: mX, y: PL, w: mW, h: T });
 
-    // Tablettes intermédiaires
-    if (drawers > 0) {
-      // Tablette séparatrice penderie / tiroirs
-      const drawerZoneH  = innerH * 0.45;
-      const sepY         = PL + T + (innerH - drawerZoneH);
-      panels.push({ name: `Sépar. ${i+1}`, role: 'shelf', x: curX, y: sepY, w: mW, h: T });
-
-      // Tablettes dans la zone penderie
-      if (shelves > 0) {
-        const hangH = innerH - drawerZoneH;
-        const gap   = hangH / (shelves + 1);
-        for (let s = 0; s < shelves; s++) {
-          panels.push({
-            name: `Tablette ${i+1}-${s+1}`, role: 'shelf',
-            x: curX, y: PL + T + gap * (s + 1), w: mW, h: T,
-          });
-        }
-      }
-    } else if (shelves > 0) {
-      const gap = innerH / (shelves + 1);
-      for (let s = 0; s < shelves; s++) {
+    // Tablettes : positions exactes en priorité
+    if (shelfPositions && shelfPositions.length > 0) {
+      shelfPositions.forEach((s, si) => {
+        panels.push({
+          name: `Tablette ${i+1}-${si+1}`, role: 'shelf',
+          x: mX, y: PL + s.y, w: mW, h: T,
+        });
+      });
+    } else if (shelvesCount > 0) {
+      const gap = innerH / (shelvesCount + 1);
+      for (let s = 0; s < shelvesCount; s++) {
         panels.push({
           name: `Tablette ${i+1}-${s+1}`, role: 'shelf',
-          x: curX, y: PL + T + gap * (s + 1), w: mW, h: T,
+          x: mX, y: PL + T + gap * (s + 1), w: mW, h: T,
         });
       }
+    }
+
+    // Tiroirs : positions exactes en priorité
+    if (drawerPositions && drawerPositions.length > 0) {
+      drawerPositions.forEach((d, di) => {
+        panels.push({
+          name: `Tiroir ${i+1}-${di+1}`, role: 'drawer_front',
+          x: mX, y: PL + d.y, w: mW, h: Math.max(d.height ?? 20, T),
+        });
+      });
+    } else if (drawersCount > 0) {
+      const drawerZoneH = innerH * 0.45;
+      const dH          = drawerZoneH / drawersCount;
+      const zoneTop     = PL + T + (innerH - drawerZoneH);
+      for (let d = 0; d < drawersCount; d++) {
+        panels.push({
+          name: `Tiroir ${i+1}-${d+1}`, role: 'drawer_front',
+          x: mX, y: zoneTop + dH * d, w: mW, h: dH,
+        });
+      }
+    }
+
+    // Tringle : position exacte en priorité
+    if (hasRod) {
+      const rodY = rodPos ? PL + rodPos.y : PL + T + innerH * 0.6;
+      panels.push({
+        name: `Tringle ${i+1}`, role: 'rod',
+        x: mX, y: rodY, w: mW, h: Math.max(1.0, T * 0.4),
+      });
     }
 
     // Portes
@@ -99,20 +142,7 @@ function buildPanelsFromModules(cab) {
         const doorW = mW / m.doors;
         panels.push({
           name: `Porte ${i+1}-${d+1}`, role: 'door',
-          x: curX + doorW * d, y: PL, w: doorW, h: H - PL,
-        });
-      }
-    }
-
-    // Tiroirs (représentés comme drawer_front)
-    if (drawers > 0) {
-      const drawerZoneH = innerH * 0.45;
-      const dH = drawerZoneH / drawers;
-      const zoneTop = PL + T + (innerH - drawerZoneH);
-      for (let d = 0; d < drawers; d++) {
-        panels.push({
-          name: `Tiroir ${i+1}-${d+1}`, role: 'drawer_front',
-          x: curX, y: zoneTop + dH * d, w: mW, h: dH,
+          x: mX + doorW * d, y: PL, w: doorW, h: H - PL,
         });
       }
     }
@@ -121,10 +151,10 @@ function buildPanelsFromModules(cab) {
     panels.push({
       name: i === detailed.length - 1 ? 'Côté D' : `Sep. ${i+1}`,
       role: 'side',
-      x: curX + mW, y: PL, w: T, h: H - PL,
+      x: mX + mW, y: PL, w: T, h: H - PL,
     });
 
-    curX += mW + T;
+    curX = mX + mW + T;
   });
 
   // Dessus global
@@ -250,11 +280,30 @@ function ViewFace({ cab, sc, ox, oy }) {
       {panels.filter(p => p.role !== 'back').map((p, i) => {
         const c  = rc(p.role);
         const isVertical = p.role === 'side' || p.role === 'divider';
+        const isRod      = p.role === 'rod';
         const px = p.x * sc;
         const py = (cab.height - p.y - p.h) * sc;
         const pw = isVertical ? t : p.w * sc;
-        const ph = p.h * sc;
-        if (pw < 0.5 || ph < 0.5) return null;
+        const ph = Math.max(isRod ? 1.5 : p.h * sc, 0.5);
+        if (pw < 0.5) return null;
+        if (isRod) {
+          // Représentation tringle : double ligne horizontale avec supports
+          const cy = py + ph / 2;
+          return (
+            <g key={i}>
+              <line x1={px + t * 0.5} y1={cy} x2={px + pw - t * 0.5} y2={cy}
+                stroke={c.stroke} strokeWidth="1.8" strokeLinecap="round" />
+              <line x1={px + t * 0.5} y1={py} x2={px + t * 0.5} y2={py + ph + 2}
+                stroke={c.stroke} strokeWidth="1" />
+              <line x1={px + pw - t * 0.5} y1={py} x2={px + pw - t * 0.5} y2={py + ph + 2}
+                stroke={c.stroke} strokeWidth="1" />
+              {pw > 25 && (
+                <text x={px + pw/2} y={cy - 3} textAnchor="middle"
+                  fontSize="5.5" fill={c.stroke} fontFamily="monospace">⊕ tringle</text>
+              )}
+            </g>
+          );
+        }
         return (
           <g key={i}>
             {isVertical && <rect x={px} y={py} width={Math.max(pw,1)} height={Math.max(ph,1)} fill="url(#d2-hatch)" opacity="0.4" />}
@@ -287,11 +336,23 @@ function ViewFace({ cab, sc, ox, oy }) {
       {/* Cotations intérieures côtés */}
       <DH x1={0} x2={t} y={H + 16} val={`ép.${cab.thickness}`} color="#7dd3fc" />
 
-      {/* Tablettes : cotes de hauteur */}
-      {panels.filter(p => p.role === 'shelf').map((p, i) => {
-        const py = (cab.height - p.y - p.h) * sc;
-        return <DV key={i} x={-30 - i * 12} y1={(cab.height - p.y - p.h) * sc} y2={(cab.height - p.y) * sc} val={p.y.toFixed(0)} side={-1} color="#93c5fd" />;
-      })}
+      {/* Tablettes : cote de hauteur depuis le bas */}
+      {panels.filter(p => p.role === 'shelf').map((p, i) => (
+        <DV key={i} x={-30 - i * 12} y1={(cab.height - p.y - p.h) * sc} y2={(cab.height - p.y) * sc}
+          val={p.y.toFixed(0)} side={-1} color="#93c5fd" />
+      ))}
+
+      {/* Tiroirs : cote de position haute */}
+      {panels.filter(p => p.role === 'drawer_front').map((p, i) => (
+        <DV key={i} x={W + 30 + i * 12} y1={(cab.height - p.y - p.h) * sc} y2={(cab.height - p.y) * sc}
+          val={p.y.toFixed(0)} side={1} color="#a855f7" />
+      ))}
+
+      {/* Tringle : cote de hauteur */}
+      {panels.filter(p => p.role === 'rod').map((p, i) => (
+        <DV key={i} x={W + 50 + i * 12} y1={(cab.height - p.y - p.h) * sc} y2={(cab.height - p.y) * sc}
+          val={p.y.toFixed(0)} side={1} color="#34d399" />
+      ))}
 
       <AxisLine x1={W/2} y1={-8} x2={W/2} y2={H+8} />
 
@@ -486,21 +547,21 @@ export default function CabinetPlan2D({ cabinet, name = 'Meuble' }) {
     );
   }
 
-  const cab = {
+  const cabBase = {
     ...cabinet,
     depth:     cabinet.depth     || 60,
-    thickness: cabinet.thickness || 1.8,
+    thickness: cabinet.thickness || 3.0,  // 30 mm par défaut
     plinth:    cabinet.plinth    || 0,
-    // ← NOUVEAU : si panels vide/absent, on les génère depuis modules ou dimensions
-    panels: (cabinet.panels && cabinet.panels.length > 0)
-      ? cabinet.panels
-      : buildPanelsFromModules(cab) ?? buildPanelsFromDimensions({
-          width:     cabinet.width,
-          height:    cabinet.height,
-          depth:     cabinet.depth     || 60,
-          thickness: cabinet.thickness || 1.8,
-        }),
   };
+  const generatedPanels = (cabinet.panels && cabinet.panels.length > 0)
+    ? cabinet.panels
+    : buildPanelsFromModules(cabBase) ?? buildPanelsFromDimensions({
+        width:     cabinet.width,
+        height:    cabinet.height,
+        depth:     cabBase.depth,
+        thickness: cabBase.thickness,
+      });
+  const cab = { ...cabBase, panels: generatedPanels };
 
   const GAP  = 28;
   const PAD  = 52;

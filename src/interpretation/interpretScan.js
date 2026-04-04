@@ -29,32 +29,72 @@ const pickFirstBool = (sources, fallback = false) => {
 
 const toCm = (value) => {
   if (!Number.isFinite(value) || value <= 0) return value;
-  if (value > 500) return value / 10;   // mm → cm
-  if (value < 5)   return value * 100;  // m  → cm
-  return value;                          // déjà en cm
+  if (value > 500)              return value / 10;   // mm → cm  (ex: 1800 → 180)
+  if (value >= 1.0 && value <= 4.5) return value;   // épaisseur panneau — ne pas toucher
+  if (value < 1.0)              return value * 100;  // m → cm   (ex: 0.8 → 80)
+  return value;                                       // déjà en cm
 };
 
 /**
  * Lit les modules détaillés depuis cabinet.modules[]
- * Chaque module a : { x, width, shelves, drawers, doors, rod }
- * Retourne un tableau de bodies { width, shelves, drawers, doors, rod }
- * ou null si absent/vide.
+ * Chaque module a : { x_start, width, shelves (array|count), drawers (array|count), rod ({y}|bool), doors }
+ * Retourne un tableau de bodies enrichis ou null si absent/vide.
  */
 const readBodiesFromModules = (scanResult) => {
   const src = scanResult?.cabinet || scanResult?.furniture || scanResult || {};
 
-  // Priorité 1 : modules détaillés (format serveur)
+  // Priorité 1 : modules détaillés (format serveur avec positions y)
   const rawModules = src?.modules || scanResult?.modules || [];
   if (Array.isArray(rawModules) && rawModules.length > 0) {
     const detailed = rawModules.filter(m => typeof m === 'object' && m !== null);
     if (detailed.length > 0) {
-      return detailed.map(m => ({
-        width:   toCm(toNumber(m?.width ?? m?.w ?? m?.largeur, 0)),
-        shelves: Math.max(0, parseInt(m?.shelves  ?? m?.nb_shelves  ?? 0, 10)),
-        drawers: Math.max(0, parseInt(m?.drawers  ?? m?.nb_drawers  ?? 0, 10)),
-        doors:   Math.max(0, parseInt(m?.doors    ?? m?.nb_doors    ?? 0, 10)),
-        rod:     pickFirstBool([m?.rod, m?.tringle, m?.hanging, m?.penderie], false),
-      }));
+      return detailed.map(m => {
+        // Tablettes : tableau de positions {y} ou simple compteur
+        const rawShelves = m?.shelves ?? m?.nb_shelves ?? 0;
+        let shelfPositions = null;
+        if (Array.isArray(rawShelves)) {
+          const positions = rawShelves
+            .filter(s => s && typeof s === 'object' && s.y != null)
+            .map(s => ({ y: toCm(toNumber(s.y, 0)) }));
+          if (positions.length > 0) shelfPositions = positions;
+        }
+
+        // Tiroirs : tableau de positions {y, height} ou simple compteur
+        const rawDrawers = m?.drawers ?? m?.nb_drawers ?? 0;
+        let drawerPositions = null;
+        if (Array.isArray(rawDrawers)) {
+          const positions = rawDrawers
+            .filter(d => d && typeof d === 'object' && d.y != null)
+            .map(d => ({
+              y:      toCm(toNumber(d.y, 0)),
+              height: toCm(toNumber(d.height ?? d.h ?? 20, 0)),
+            }));
+          if (positions.length > 0) drawerPositions = positions;
+        }
+
+        // Tringle : {y} ou booléen
+        const rawRod = m?.rod ?? m?.tringle ?? null;
+        let rodPosition = null;
+        let hasRod = false;
+        if (rawRod && typeof rawRod === 'object' && rawRod.y != null) {
+          rodPosition = { y: toCm(toNumber(rawRod.y, 0)) };
+          hasRod = true;
+        } else {
+          hasRod = pickFirstBool([rawRod, m?.hanging, m?.penderie], false);
+        }
+
+        return {
+          x_start:         toCm(toNumber(m?.x_start ?? m?.x ?? 0, 0)),
+          width:           toCm(toNumber(m?.width ?? m?.w ?? m?.largeur, 0)),
+          shelves:         shelfPositions ? shelfPositions.length : Math.max(0, parseInt(rawShelves, 10)),
+          shelfPositions,
+          drawers:         drawerPositions ? drawerPositions.length : Math.max(0, parseInt(rawDrawers, 10)),
+          drawerPositions,
+          doors:           Math.max(0, parseInt(m?.doors ?? m?.nb_doors ?? 0, 10)),
+          rod:             hasRod,
+          rodPosition,
+        };
+      });
     }
   }
 
@@ -62,11 +102,15 @@ const readBodiesFromModules = (scanResult) => {
   const rawBodies = src?.bodies || scanResult?.bodies || [];
   if (Array.isArray(rawBodies) && rawBodies.length > 0) {
     return rawBodies.map(b => ({
-      width:   toCm(toNumber(b?.width ?? b?.w ?? 0, 0)),
-      shelves: Math.max(0, parseInt(b?.shelves ?? b?.nb_shelves ?? 0, 10)),
-      drawers: Math.max(0, parseInt(b?.drawers ?? b?.nb_drawers ?? 0, 10)),
-      doors:   Math.max(0, parseInt(b?.doors   ?? b?.nb_doors   ?? 0, 10)),
-      rod:     pickFirstBool([b?.rod, b?.tringle, b?.hanging], false),
+      x_start:         toCm(toNumber(b?.x_start ?? 0, 0)),
+      width:           toCm(toNumber(b?.width ?? b?.w ?? 0, 0)),
+      shelves:         Math.max(0, parseInt(b?.shelves ?? b?.nb_shelves ?? 0, 10)),
+      shelfPositions:  null,
+      drawers:         Math.max(0, parseInt(b?.drawers ?? b?.nb_drawers ?? 0, 10)),
+      drawerPositions: null,
+      doors:           Math.max(0, parseInt(b?.doors ?? b?.nb_doors ?? 0, 10)),
+      rod:             pickFirstBool([b?.rod, b?.tringle, b?.hanging], false),
+      rodPosition:     null,
     }));
   }
 
