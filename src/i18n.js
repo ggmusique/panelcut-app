@@ -36,7 +36,59 @@
     companyPlaceholder: "Votre entreprise",
     cutOptions: "Options de coupe",
     panelType: "Type de panneau",
-    info: "Informations"
+    toggle_dark_mode: 'Basculer le mode sombre',
+header_saved: 'Sauvegardé',
+header_saving: 'Sauvegarde...',
+header_unsaved: 'Non sauvegardé',
+header_logout: 'Se déconnecter',
+    info: "Informations",
+    // Section titles
+section_project: 'Projet',
+section_panel: 'Panneau',
+section_finish: 'Finition',
+section_settings: 'Paramètres',
+
+// Field labels
+field_name: 'Nom du projet',
+field_client: 'Client',
+field_company: 'Entreprise',
+field_devis: 'Devis N°',
+field_dimensions: 'Dimensions',
+field_thickness: 'Épaisseur',
+field_label: 'Référence / Label',
+field_grain: 'Sens du fil',
+field_edge: 'Type de chant',
+field_supplier_ref: 'Référence fournisseur',
+field_kerf: 'Kerf (mm)',
+field_tolerance: 'Tolérance (mm)',
+field_price: 'Prix panneau (€)',
+
+// Placeholders
+placeholder_project_name: 'Ex: Armoire cuisine Dupont',
+placeholder_client: 'Ex: M. Dupont',
+placeholder_company: 'Ex: Menuiserie Martin',
+placeholder_label: 'Ex: EGGER W980 Premium',
+placeholder_supplier: 'Ex: EGGER W980 ST9, KRONOSPAN K001...',
+
+// Grain options
+grain_horizontal: 'Horizontal →',
+grain_vertical: 'Vertical ↑',
+grain_indifferent: 'Indifférent',
+
+// Edge options
+edge_none: 'Aucun',
+edge_veneer: 'Placage bois',
+
+// Helpers & labels
+helper_dimensions: 'Stocké en cm pour le moteur d\'optimisation',
+helper_required: '* Champs requis : Nom, Dimensions, Épaisseur',
+label_price_m2: 'Prix/m²',
+toggle_units: 'Basculer cm/mm',
+
+// Buttons
+btn_back: 'Retour',
+btn_pieces: 'Pièces',
+formSubtitle: 'Définissez les paramètres de votre panneau'
   },
   en: {
     appName: "PanelCut Pro",
@@ -75,6 +127,45 @@
     companyPlaceholder: "Your Company",
     cutOptions: "Cut Options",
     panelType: "Panel Type",
+    toggle_dark_mode: 'Toggle dark mode',
+header_saved: 'Saved',
+header_saving: 'Saving...',
+header_unsaved: 'Unsaved',
+header_logout: 'Sign out',
+section_project: 'Project',
+section_panel: 'Panel',
+section_finish: 'Finish',
+section_settings: 'Settings',
+field_name: 'Project name',
+field_client: 'Client',
+field_company: 'Company',
+field_devis: 'Quote #',
+field_dimensions: 'Dimensions',
+field_thickness: 'Thickness',
+field_label: 'Reference / Label',
+field_grain: 'Grain direction',
+field_edge: 'Edge banding',
+field_supplier_ref: 'Supplier reference',
+field_kerf: 'Kerf (mm)',
+field_tolerance: 'Tolerance (mm)',
+field_price: 'Panel price (€)',
+placeholder_project_name: 'Ex: Kitchen cabinet Dupont',
+placeholder_client: 'Ex: Mr. Dupont',
+placeholder_company: 'Ex: Martin Carpentry',
+placeholder_label: 'Ex: EGGER W980 Premium',
+placeholder_supplier: 'Ex: EGGER W980 ST9, KRONOSPAN K001...',
+grain_horizontal: 'Horizontal →',
+grain_vertical: 'Vertical ↑',
+grain_indifferent: 'Indifferent',
+edge_none: 'None',
+edge_veneer: 'Wood veneer',
+helper_dimensions: 'Stored in cm for optimization engine',
+helper_required: '* Required: Name, Dimensions, Thickness',
+label_price_m2: 'Price/m²',
+toggle_units: 'Toggle cm/mm',
+btn_back: 'Back',
+btn_pieces: 'Pieces',
+formSubtitle: 'Define your panel parameters',
     info: "Information"
   }
 };

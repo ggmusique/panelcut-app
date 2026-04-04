@@ -140,6 +140,30 @@ function cut(rect, pieces, kerf, tol, depth, panelId) {
 
       allPlaced.push({ ...p, bandY: usedH, x: xStart });
       placedIds.add(p.id);
+
+      // Coupe V apres la derniere piece si elle ne va pas jusqu au bord droit
+      const isLast = si === bestSel.length - 1;
+      const afterEdge = xStart + p.l;
+      if (isLast && afterEdge + kerf < W) {
+        // Il y a une chute a droite — on ajoute quand meme la coupe pour indiquer la largeur
+        const relPos = afterEdge - (prevVPos > 0 ? prevVPos + kerf : 0);
+        allCuts.push({
+          type: 'bande',
+          cutNum: allCuts.filter(c => c.type === 'bande').length + 1,
+          pos: afterEdge + kerf,
+          posCm: (p.l / 10).toFixed(1), // largeur de la derniere piece
+          bandY: usedH,
+          bandYCm: (usedH / 10).toFixed(1),
+          bandH,
+          bandHCm: (bandH / 10).toFixed(1),
+          orientation: 'vertical',
+          panelId,
+          depth,
+          bandKey: bKey,
+          isLastInBand: true,
+        });
+      }
+
       if (posInBand > 0) prevVPos = posInBand; // mise a jour pour la prochaine cote relative
       posInBand += p.l + kerf;
     }
