@@ -37,6 +37,105 @@ const C = {
 function rc(role) { return C.role[role] || C.role.default; }
 
 /**
+ * Génère les panneaux depuis les modules détaillés (serveur).
+ * Retourne null si pas de modules utilisables.
+ */
+function buildPanelsFromModules(cab) {
+  const modules = cab.modules;
+  if (!Array.isArray(modules) || modules.length === 0) return null;
+  const detailed = modules.filter(m => typeof m === 'object' && m !== null && (m.width ?? m.w ?? 0) > 0);
+  if (detailed.length === 0) return null;
+
+  const T  = cab.thickness || 1.8;
+  const H  = cab.height;
+  const PL = cab.plinth || 0;
+  const panels = [];
+  const innerH = H - PL - 2 * T;
+
+  // Côté gauche global
+  panels.push({ name: 'Côté G', role: 'side', x: 0, y: PL, w: T, h: H - PL });
+
+  let curX = T;
+  detailed.forEach((m, i) => {
+    const mW      = m.width;
+    const shelves = Math.max(0, parseInt(m.shelves ?? 0, 10));
+    const drawers = Math.max(0, parseInt(m.drawers ?? 0, 10));
+    const hasRod  = Boolean(m.rod ?? m.tringle ?? false);
+
+    // Fond bas
+    panels.push({ name: `Fond bas ${i+1}`, role: 'bottom', x: curX, y: PL, w: mW, h: T });
+
+    // Tablettes intermédiaires
+    if (drawers > 0) {
+      // Tablette séparatrice penderie / tiroirs
+      const drawerZoneH  = innerH * 0.45;
+      const sepY         = PL + T + (innerH - drawerZoneH);
+      panels.push({ name: `Sépar. ${i+1}`, role: 'shelf', x: curX, y: sepY, w: mW, h: T });
+
+      // Tablettes dans la zone penderie
+      if (shelves > 0) {
+        const hangH = innerH - drawerZoneH;
+        const gap   = hangH / (shelves + 1);
+        for (let s = 0; s < shelves; s++) {
+          panels.push({
+            name: `Tablette ${i+1}-${s+1}`, role: 'shelf',
+            x: curX, y: PL + T + gap * (s + 1), w: mW, h: T,
+          });
+        }
+      }
+    } else if (shelves > 0) {
+      const gap = innerH / (shelves + 1);
+      for (let s = 0; s < shelves; s++) {
+        panels.push({
+          name: `Tablette ${i+1}-${s+1}`, role: 'shelf',
+          x: curX, y: PL + T + gap * (s + 1), w: mW, h: T,
+        });
+      }
+    }
+
+    // Portes
+    if ((m.doors ?? 0) > 0) {
+      for (let d = 0; d < m.doors; d++) {
+        const doorW = mW / m.doors;
+        panels.push({
+          name: `Porte ${i+1}-${d+1}`, role: 'door',
+          x: curX + doorW * d, y: PL, w: doorW, h: H - PL,
+        });
+      }
+    }
+
+    // Tiroirs (représentés comme drawer_front)
+    if (drawers > 0) {
+      const drawerZoneH = innerH * 0.45;
+      const dH = drawerZoneH / drawers;
+      const zoneTop = PL + T + (innerH - drawerZoneH);
+      for (let d = 0; d < drawers; d++) {
+        panels.push({
+          name: `Tiroir ${i+1}-${d+1}`, role: 'drawer_front',
+          x: curX, y: zoneTop + dH * d, w: mW, h: dH,
+        });
+      }
+    }
+
+    // Séparateur droit (ou côté droit final)
+    panels.push({
+      name: i === detailed.length - 1 ? 'Côté D' : `Sep. ${i+1}`,
+      role: 'side',
+      x: curX + mW, y: PL, w: T, h: H - PL,
+    });
+
+    curX += mW + T;
+  });
+
+  // Dessus global
+  panels.push({ name: 'Dessus', role: 'top', x: 0, y: H - T, w: cab.width, h: T });
+  // Fond arrière
+  panels.push({ name: 'Fond arr.', role: 'back', x: T, y: PL, w: cab.width - 2*T, h: H - PL });
+
+  return panels;
+}
+
+/**
  * Génère automatiquement les panneaux structurels depuis les dimensions brutes.
  * Utilisé quand Claude Vision ne retourne pas de tableau panels.
  */
@@ -392,10 +491,10 @@ export default function CabinetPlan2D({ cabinet, name = 'Meuble' }) {
     depth:     cabinet.depth     || 60,
     thickness: cabinet.thickness || 1.8,
     plinth:    cabinet.plinth    || 0,
-    // ← NOUVEAU : si panels vide/absent, on les génère automatiquement
+    // ← NOUVEAU : si panels vide/absent, on les génère depuis modules ou dimensions
     panels: (cabinet.panels && cabinet.panels.length > 0)
       ? cabinet.panels
-      : buildPanelsFromDimensions({
+      : buildPanelsFromModules(cab) ?? buildPanelsFromDimensions({
           width:     cabinet.width,
           height:    cabinet.height,
           depth:     cabinet.depth     || 60,
