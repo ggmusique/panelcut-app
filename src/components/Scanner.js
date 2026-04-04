@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 
 const Scanner = ({ onComplete, onClose }) => {
   const { t } = useTranslation();
-  const [step, setStep] = useState('capture'); // capture, processing, review, done
+  const [step, setStep] = useState('capture');
   const [image, setImage] = useState(null);
   const [preview, setPreview] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -15,11 +15,15 @@ const Scanner = ({ onComplete, onClose }) => {
   const canvasRef = useRef(null);
   const [stream, setStream] = useState(null);
 
-  // Démarrer la caméra au montage
   useEffect(() => {
     startCamera();
     return () => stopCamera();
   }, []);
+
+  // Nettoyer la caméra si la modale se ferme
+  useEffect(() => {
+    return () => stopCamera();
+  }, [onClose]);
 
   const startCamera = async () => {
     try {
@@ -32,7 +36,7 @@ const Scanner = ({ onComplete, onClose }) => {
       }
     } catch (err) {
       console.error("Erreur caméra:", err);
-      setError(t('scanner.camera_error'));
+      setError(t('scanner.camera_error') || "Erreur d'accès à la caméra");
     }
   };
 
@@ -77,34 +81,68 @@ const Scanner = ({ onComplete, onClose }) => {
     reader.readAsDataURL(file);
   };
 
+  // Fonction de pré-traitement pour améliorer la détection IA
+  const preprocessImageForAI = (dataUrl) => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        
+        // Dessiner l'image originale
+        ctx.drawImage(img, 0, 0);
+        
+        // Appliquer un filtre noir et blanc + contraste
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imageData.data;
+        
+        for (let i = 0; i < data.length; i += 4) {
+          // Moyenne RGB pour le niveau de gris
+          const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+          
+          // Augmenter le contraste (facteur 1.2)
+          const contrasted = 128 + (avg - 128) * 1.2;
+          
+          // Appliquer aux 3 canaux
+          data[i] = contrasted;     // R
+          data[i + 1] = contrasted; // G
+          data[i + 2] = contrasted; // B
+        }
+        
+        ctx.putImageData(imageData, 0, 0);
+        resolve(canvas.toDataURL('image/jpeg', 0.8));
+      };
+      img.src = dataUrl;
+    });
+  };
+
   const handleConfirm = async () => {
-    if (!image) return;
+    if (!preview) return;
 
     setIsProcessing(true);
     setStep('processing');
     setError(null);
 
     try {
-      // Création du FormData pour l'envoi multipart
-      const formData = new FormData();
+      // 1. Pré-traiter l'image pour l'IA
+      const processedImageBase64 = await preprocessImageForAI(preview);
       
-      // Conversion de la base64 en Blob si nécessaire
-      let imageBlob = image;
-      if (typeof image === 'string' && image.startsWith('data:image')) {
-        const response = await fetch(image);
-        imageBlob = await response.blob();
-      }
-      
-      formData.append('image', imageBlob, 'scan.jpg');
+      // Extraire le base64 pur (sans le header data:image/jpeg;base64,)
+      const base64Data = processedImageBase64.split(',')[1];
+      const mediaType = 'image/jpeg';
 
-      // Appel à l'API avec la bonne URL et méthode
+      const formData = new FormData();
+      formData.append('image', base64Data);
+      formData.append('mediaType', mediaType);
+
       const apiUrl = 'https://panelcut-server.vercel.app/api/scan';
       console.log("Envoi du scan vers:", apiUrl);
 
       const response = await fetch(apiUrl, {
         method: 'POST',
-        body: formData, 
-        // Ne pas définir Content-Type manuellement pour laisser le navigateur gérer la boundary
+        body: formData,
       });
 
       if (!response.ok) {
@@ -116,22 +154,20 @@ const Scanner = ({ onComplete, onClose }) => {
       const data = await response.json();
       console.log("Réception du scan:", data);
 
-      // Simulation ou traitement des pièces détectées
       if (data.pieces) {
         setDetectedPieces(data.pieces);
       } else {
-        // Fallback si le serveur ne renvoie pas encore de pièces structurées
         setDetectedPieces([{ id: 1, name: t('scanner.detected_part'), width: 100, height: 200, quantity: 1 }]);
       }
 
       setStep('done');
       
-      // Appel du callback avec les données et l'image pour l'éditeur
       setTimeout(() => {
         if (onComplete) {
           onComplete({
-            image: preview,
-            pieces: detectedPieces.length > 0 ? detectedPieces : [{ id: 1, name: t('scanner.detected_part'), width: 100, height: 200, quantity: 1 }]
+            image: preview, // On renvoie l'image originale pour l'affichage
+            pieces: detectedPieces.length > 0 ? detectedPieces : [{ id: 1, name: t('scanner.detected_part'), width: 100, height: 200, quantity: 1 }],
+            cabinet: data.cabinet
           });
         }
       }, 1000);
@@ -160,7 +196,6 @@ const Scanner = ({ onComplete, onClose }) => {
     <div className="fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center p-4">
       <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-md overflow-hidden shadow-2xl relative">
         
-        {/* Header */}
         <div className="p-4 border-b dark:border-gray-700 flex justify-between items-center">
           <h3 className="text-lg font-bold text-gray-900 dark:text-white">
             {t('scanner.title')}
@@ -170,7 +205,6 @@ const Scanner = ({ onComplete, onClose }) => {
           </button>
         </div>
 
-        {/* Content */}
         <div className="p-6 min-h-[300px] flex flex-col items-center justify-center">
           
           {error && (
