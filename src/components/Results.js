@@ -3,6 +3,7 @@ import { exportPDF } from '../pdfExport';
 import { Download, Scissors, RotateCw, Layers, ChevronLeft, ChevronRight, Maximize2, BarChart2, Map, List, Box } from 'lucide-react';
 import CabinetPlan2D from './CabinetPlan2D';
 import CabinetPlan3D from './CabinetPlan3D';
+import CabinetElevationFront from './CabinetElevationFront';
 import BoardList from './BoardList';
 
 const PIECE_COLORS = [
@@ -164,6 +165,7 @@ function PlanSubTabs({ active, onChange }) {
   return (
     <div className="flex bg-[#0a0a0a] border border-white/5 rounded-lg p-0.5 gap-0.5 mb-4">
       {[
+        { id: 'facade', label: '🧱 Façade — style croquis' },
         { id: '2d', label: '📐 Vue 2D — 3 vues ortho' },
         { id: '3d', label: '📦 Vue 3D — Isométrique' },
       ].map(t => (
@@ -204,7 +206,7 @@ function TabBar({ active, onChange }) {
 export default function Results({ t, results, project }) {
   const [currentPanel, setCurrentPanel] = useState(0);
   const [tab, setTab]       = useState('resume');
-  const [planView, setPlanView] = useState('2d');
+  const [planView, setPlanView] = useState('facade');
   const colorMap = {};
 
   // Coerce toutes les dimensions en Number pour éviter les problèmes de type string
@@ -368,6 +370,15 @@ export default function Results({ t, results, project }) {
             {hasCabinet ? (
               <>
                 <PlanSubTabs active={planView} onChange={setPlanView} />
+
+                {/* Vue façade */}
+                <div style={planView !== 'facade' ? { display: 'none' } : {}}>
+                  <div className="flex items-center gap-2 text-xs text-slate-500 px-1 mb-3">
+                    <Map className="w-3 h-3" />
+                    <span>Élévation frontale cotée — modules numérotés et largeurs par colonne</span>
+                  </div>
+                  <CabinetElevationFront cabinet={cabinet} name={project.name} />
+                </div>
 
                 {/* Vue 2D */}
                 <div style={planView !== '2d' ? { display: 'none' } : {}}>
