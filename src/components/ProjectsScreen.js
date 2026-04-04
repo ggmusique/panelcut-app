@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { loadProjects, deleteProject } from '../supabase';
 import { Plus, Trash2, FolderOpen, User, Calendar, FileText, Layers, CheckCircle, X, Ruler, Activity } from 'lucide-react';
 import ImageUpload    from './ImageUpload';
@@ -136,7 +136,7 @@ export default function ProjectsScreen({ onLoad, onNew, user, onScanComplete }) 
             <div className="flex items-center justify-between mb-6 relative z-10">
               <div className="flex items-center gap-3 text-green-400">
                 <div className="p-2 bg-green-500/10 rounded-lg">
-                  <CheckCircle className="w-6 h-6" />
+                  <CheckCircle className="w-5 h-5" />
                 </div>
                 <div>
                   <h3 className="font-bold text-lg text-white">Analyse Terminée</h3>
@@ -151,10 +151,22 @@ export default function ProjectsScreen({ onLoad, onNew, user, onScanComplete }) 
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 relative z-10">
-              <div className="bg-white/5 backdrop-blur-sm border border-white/5 p-4 rounded-xl text-center hover:bg-white/10 transition-colors">
-                <div className="text-3xl font-bold text-white mb-1">{lastResult.pieces?.length || 0}</div>
-                <div className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Pièces Détectées</div>
+
+            {/* Toggle 2D / 3D si modèle meuble disponible */}
+            {cabinetModel && (
+              <div className="flex gap-2 mb-4">
+                <button
+                  onClick={() => setView3D(false)}
+                  className={"px-4 py-2 rounded-lg text-sm font-bold transition-colors " + (!view3D ? 'bg-orange-500 text-white' : 'bg-white/5 text-slate-400 hover:text-white')}
+                >
+                  Plan 2D
+                </button>
+                <button
+                  onClick={() => setView3D(true)}
+                  className={"px-4 py-2 rounded-lg text-sm font-bold transition-colors " + (view3D ? 'bg-orange-500 text-white' : 'bg-white/5 text-slate-400 hover:text-white')}
+                >
+                  Vue 3D
+                </button>
               </div>
               {lastResult.cabinet && (
                 <>
@@ -174,6 +186,11 @@ export default function ProjectsScreen({ onLoad, onNew, user, onScanComplete }) 
                 </div>
                 <div className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Confiance IA</div>
               </div>
+            )}
+
+            <div className="mt-4 flex items-center gap-2 text-xs text-slate-500">
+              <Activity className="w-3 h-3 text-orange-500" />
+              Pièces chargées — lance l'optimisation depuis l'écran Pièces
             </div>
           </div>
         )}

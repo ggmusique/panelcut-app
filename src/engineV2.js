@@ -123,7 +123,7 @@ function rotateInputs(pieces, panel) {
 }
 
 function relaxedTolerance(panel) {
-  return Math.round(Math.max(panel.w, panel.h) * 10);
+  return 50;
 }
 
 function getMetrics(result) {
