@@ -10,22 +10,61 @@ const TOOLS = [
 ];
 
 const uid = () => Math.random().toString(36).slice(2, 9);
+const toNum = (v, d = 0) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : d;
+};
+
+const normalizeModulesFromResult = (result, width = 0) => {
+  const cabinet = result?.cabinet || {};
+  const raw = Array.isArray(cabinet.modules) ? cabinet.modules : [];
+  const detailed = raw.filter(m => typeof m === 'object' && m !== null);
+  if (detailed.length > 0) {
+    return detailed.map((m, i) => ({
+      id: i + 1,
+      width: Math.max(1, toNum(m.width ?? m.w ?? m.largeur, 1)),
+      shelves: Math.max(0, parseInt(m.shelves ?? m.nb_shelves ?? 0, 10) || 0),
+      drawers: Math.max(0, parseInt(m.drawers ?? m.nb_drawers ?? 0, 10) || 0),
+      doors: Math.max(0, parseInt(m.doors ?? m.nb_doors ?? 0, 10) || 0),
+      rod: Boolean(m.rod ?? m.tringle ?? m.hanging ?? m.penderie ?? false),
+    }));
+  }
+  const n = Math.max(1, parseInt(cabinet.nb_dividers ?? 4, 10) + 1);
+  const mw = width > 0 ? width / n : 50;
+  return Array.from({ length: n }, (_, i) => ({
+    id: i + 1, width: mw, shelves: 0, drawers: 0, doors: 1, rod: false
+  }));
+};
 
 export default function SketchEditor({ image, scanImage, initialResult, apiKey, onComplete, onCancel }) {
   const imgSrc = image || scanImage || null;
   const svgRef = useRef(null);
+  const initialCab = initialResult?.cabinet || {};
   
   // États
   const [tool, setTool] = useState('drawer');
+  const [baseView, setBaseView] = useState(imgSrc ? 'photo' : 'facade');
   const [elements, setElements] = useState([]);
   const [draggingId, setDraggingId] = useState(null);
   const [resizingId, setResizingId] = useState(null);
   const [imgSize, setImgSize] = useState({ w: 800, h: 600 });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [cabinetDims, setCabinetDims] = useState({
+    width: toNum(initialCab.width, 200),
+    height: toNum(initialCab.height, 240),
+    plinth: toNum(initialCab.plinth, 0),
+  });
+  const [moduleWidths, setModuleWidths] = useState(
+    () => normalizeModulesFromResult(initialResult, toNum(initialCab.width, 200)).map(m => m.width.toFixed(2))
+  );
 
   // Chargement de l'image pour déterminer la taille du canvas
   useEffect(() => {
+    if (baseView === 'facade') {
+      setImgSize({ w: 1200, h: 760 });
+      return;
+    }
     if (!imgSrc) return;
     const img = new window.Image();
     img.onload = () => {
@@ -38,7 +77,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
       });
     };
     img.src = imgSrc;
-  }, [imgSrc]);
+  }, [imgSrc, baseView]);
 
   // Coordonnées souris/touch relatives au SVG
   const getSVGCoords = useCallback((e) => {
@@ -154,6 +193,9 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
       });
     }
 
+    context += `- COTES MEUBLE CONFIRMÉES AVANT RELANCE : largeur ${cabinetDims.width} cm, hauteur ${cabinetDims.height} cm, plinthe ${cabinetDims.plinth} cm.\n`;
+    context += `- LARGEURS MODULES CONFIRMÉES : ${moduleWidths.join(' / ')} cm.\n`;
+
     context += "\nINSTRUCTION : Utilise ces zones pour déduire le nombre exact de tiroirs/portes et leurs dimensions réelles en fonction des dimensions totales du meuble que tu dois estimer.";
     return context;
   };
@@ -230,7 +272,22 @@ Retourne UNIQUEMENT un JSON valide avec la structure complète (pieces + cabinet
       setError(err.message);
       setLoading(false);
     }
-  }, [imgSize, onComplete, elements]); // Dépend de elements pour le contexte
+  }, [imgSize, onComplete, elements, cabinetDims, moduleWidths]); // Dépend de elements pour le contexte
+
+  const updateModuleWidth = (idx, value) => {
+    setModuleWidths(prev => prev.map((v, i) => i === idx ? value : v));
+  };
+
+  const facadeModules = moduleWidths
+    .map((w, i) => ({ id: i + 1, width: Math.max(1, toNum(w, 1)) }))
+    .filter(m => m.width > 0);
+
+  const normalizedFacadeModules = (() => {
+    const sum = facadeModules.reduce((a, m) => a + m.width, 0);
+    const target = Math.max(1, cabinetDims.width || sum || 1);
+    if (sum <= 0) return facadeModules;
+    return facadeModules.map(m => ({ ...m, drawWidth: (m.width / sum) * target }));
+  })();
 
   // Rendu des éléments
   const renderElement = (el) => {
@@ -291,6 +348,10 @@ Retourne UNIQUEMENT un JSON valide avec la structure complète (pieces + cabinet
 
       {/* TOOLBAR */}
       <div className="flex gap-2 p-2 bg-slate-800 overflow-x-auto">
+        <div className="flex items-center gap-1 mr-2">
+          <button onClick={() => setBaseView('photo')} className={`px-3 py-1 rounded text-xs font-bold ${baseView === 'photo' ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300'}`}>Photo</button>
+          <button onClick={() => setBaseView('facade')} className={`px-3 py-1 rounded text-xs font-bold ${baseView === 'facade' ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300'}`}>Plan façade</button>
+        </div>
         {TOOLS.map(t => (
           <button
             key={t.id}
@@ -308,6 +369,18 @@ Retourne UNIQUEMENT un JSON valide avec la structure complète (pieces + cabinet
         </div>
       </div>
 
+      {/* DIMENSIONS ÉDITABLES */}
+      <div className="bg-slate-900 border-y border-slate-700 p-2 flex flex-wrap gap-2 items-center text-xs">
+        <span className="text-slate-400">Cotes:</span>
+        <label className="text-slate-300">L <input value={cabinetDims.width} onChange={e => setCabinetDims(v => ({ ...v, width: toNum(e.target.value, 0) }))} className="w-20 ml-1 px-1 py-0.5 bg-slate-800 border border-slate-600 rounded" /> cm</label>
+        <label className="text-slate-300">H <input value={cabinetDims.height} onChange={e => setCabinetDims(v => ({ ...v, height: toNum(e.target.value, 0) }))} className="w-20 ml-1 px-1 py-0.5 bg-slate-800 border border-slate-600 rounded" /> cm</label>
+        <label className="text-slate-300">Plinthe <input value={cabinetDims.plinth} onChange={e => setCabinetDims(v => ({ ...v, plinth: toNum(e.target.value, 0) }))} className="w-20 ml-1 px-1 py-0.5 bg-slate-800 border border-slate-600 rounded" /> cm</label>
+        <span className="text-slate-500 ml-2">Modules:</span>
+        {moduleWidths.map((w, i) => (
+          <label key={i} className="text-slate-300">M{i + 1} <input value={w} onChange={e => updateModuleWidth(i, e.target.value)} className="w-16 ml-1 px-1 py-0.5 bg-slate-800 border border-slate-600 rounded" /></label>
+        ))}
+      </div>
+
       {/* CANVAS */}
       <div className="flex-1 overflow-auto bg-slate-950 flex justify-center p-4">
         <svg
@@ -323,7 +396,41 @@ Retourne UNIQUEMENT un JSON valide avec la structure complète (pieces + cabinet
           onTouchMove={handlePointerMove}
           onTouchEnd={handlePointerUp}
         >
-          <image href={imgSrc} width={imgSize.w} height={imgSize.h} preserveAspectRatio="xMidYMid meet" />
+          {baseView === 'photo' && imgSrc && (
+            <image href={imgSrc} width={imgSize.w} height={imgSize.h} preserveAspectRatio="xMidYMid meet" />
+          )}
+
+          {baseView === 'facade' && (
+            <g>
+              <rect x={40} y={60} width={imgSize.w - 80} height={imgSize.h - 160} fill="#e5e7eb" stroke="#64748b" strokeWidth="2" />
+              {(() => {
+                const fullW = imgSize.w - 80;
+                const fullH = imgSize.h - 160;
+                const originX = 40;
+                const originY = 60;
+                const pl = Math.max(0, cabinetDims.plinth);
+                const plPx = fullH * (pl / Math.max(1, cabinetDims.height));
+                let xCursor = originX;
+                return normalizedFacadeModules.map((m, i) => {
+                  const wPx = fullW * (m.drawWidth / Math.max(1, cabinetDims.width));
+                  const g = (
+                    <g key={i}>
+                      <rect x={xCursor} y={originY} width={wPx} height={fullH} fill="none" stroke="#475569" />
+                      <circle cx={xCursor + wPx / 2} cy={originY + fullH * 0.5} r="16" fill="none" stroke="#b91c1c" />
+                      <text x={xCursor + wPx / 2} y={originY + fullH * 0.5 + 5} textAnchor="middle" fill="#b91c1c" fontWeight="700">{i + 1}</text>
+                      <text x={xCursor + wPx / 2} y={originY + fullH + 24} textAnchor="middle" fill="#b45309" fontWeight="700">{m.width.toFixed(2)} cm</text>
+                      {plPx > 2 && <line x1={xCursor} y1={originY + fullH - plPx} x2={xCursor + wPx} y2={originY + fullH - plPx} stroke="#7e22ce" />}
+                    </g>
+                  );
+                  xCursor += wPx;
+                  return g;
+                });
+              })()}
+              <text x={imgSize.w / 2} y={30} textAnchor="middle" fill="#f59e0b" fontWeight="700">{cabinetDims.width} cm</text>
+              <text x={imgSize.w - 12} y={imgSize.h / 2} transform={`rotate(90 ${imgSize.w - 12} ${imgSize.h / 2})`} textAnchor="middle" fill="#f59e0b" fontWeight="700">{cabinetDims.height} cm</text>
+            </g>
+          )}
+
           {elements.map(renderElement)}
         </svg>
       </div>
