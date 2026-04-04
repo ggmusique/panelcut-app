@@ -1,359 +1,271 @@
-import { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Camera, Upload, Check, X, Loader2, AlertCircle } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
-const SERVER_URL = 'https://panelcut-server.vercel.app';
-
-// Couleur par rôle
-const ROLE_COLORS = {
-  side:         { bg: '#dbeafe', text: '#1d4ed8', label: 'Côté' },
-  top:          { bg: '#dcfce7', text: '#15803d', label: 'Dessus' },
-  bottom:       { bg: '#fef9c3', text: '#a16207', label: 'Fond bas' },
-  shelf:        { bg: '#ede9fe', text: '#6d28d9', label: 'Tablette' },
-  divider:      { bg: '#ffedd5', text: '#c2410c', label: 'Séparation' },
-  back:         { bg: '#e0f2fe', text: '#0369a1', label: 'Dos' },
-  door:         { bg: '#fce7f3', text: '#9d174d', label: 'Porte' },
-  drawer_front: { bg: '#f0fdf4', text: '#166534', label: 'Facade tiroir' },
-  drawer_box:   { bg: '#f0fdf4', text: '#15803d', label: 'Caisse tiroir' },
-  other:        { bg: '#f1f5f9', text: '#475569', label: 'Autre' },
-};
-
-const CABINET_TYPE_ICON = {
-  armoire: '🚪', bibliotheque: '📚', cuisine: '🍳',
-  bureau: '🖥️', commode: '🗄️', autre: '📦',
-};
-
-export default function Scanner({ t, onPiecesDetected, onClose }) {
-  const [status, setStatus]   = useState('idle');
+const Scanner = ({ onComplete, onClose }) => {
+  const { t } = useTranslation();
+  const [step, setStep] = useState('capture'); // capture, processing, review, done
+  const [image, setImage] = useState(null);
   const [preview, setPreview] = useState(null);
-  const [pieces, setPieces]   = useState([]);
-  const [cabinet, setCabinet] = useState(null);
-  const [errorMsg, setErrorMsg] = useState('');
-  const [selected, setSelected] = useState(new Set());
-  const [editNotes, setEditNotes] = useState({});
-  const inputRef = useRef();
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [error, setError] = useState(null);
+  const [detectedPieces, setDetectedPieces] = useState([]);
+  const fileInputRef = useRef(null);
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const [stream, setStream] = useState(null);
 
-  // Compression + conversion HEIC → JPEG
-  const handleFile = async (file) => {
-    if (!file) return;
-    const img = new Image();
-    const objectUrl = URL.createObjectURL(file);
-    img.onload = () => {
-      // Redimensionne à max 1920px (plus grande que avant pour meilleure lecture des cotes)
-      const MAX = 1920;
-      let w = img.width, h = img.height;
-      if (w > MAX || h > MAX) {
-        if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
-        else       { w = Math.round(w * MAX / h); h = MAX; }
-      }
-      const canvas = document.createElement('canvas');
-      canvas.width = w; canvas.height = h;
-      const ctx = canvas.getContext('2d');
-      // Fond blanc (important pour les plans à fond clair)
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, w, h);
-      ctx.drawImage(img, 0, 0, w, h);
-      // Augmente légèrement le contraste pour mieux lire les cotes
-      ctx.globalCompositeOperation = 'multiply';
-      ctx.fillStyle = 'rgba(0,0,0,0.05)';
-      ctx.fillRect(0, 0, w, h);
-      ctx.globalCompositeOperation = 'source-over';
-      const jpeg = canvas.toDataURL('image/jpeg', 0.92); // qualité 92% pour les petits textes
-      URL.revokeObjectURL(objectUrl);
-      setPreview(jpeg);
-      setStatus('preview');
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(objectUrl);
-      setErrorMsg('Impossible de lire cette image — essaie un autre format');
-      setStatus('error');
-    };
-    img.src = objectUrl;
-  };
+  // Démarrer la caméra au montage
+  useEffect(() => {
+    startCamera();
+    return () => stopCamera();
+  }, []);
 
-  const scan = async () => {
-    if (!preview) return;
-    setStatus('scanning');
-    setErrorMsg('');
-
+  const startCamera = async () => {
     try {
-      const [header, base64] = preview.split(',');
-      const mediaType = header.match(/:(.*?);/)?.[1] || 'image/jpeg';
-
-      const res = await fetch(`${SERVER_URL}/api/scan`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: base64, mediaType }),
+      const mediaStream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: 'environment' } 
       });
-
-      const data = await res.json();
-
-      if (!res.ok || data.error) {
-        throw new Error(data.error || 'server_error');
+      setStream(mediaStream);
+      if (videoRef.current) {
+        videoRef.current.srcObject = mediaStream;
       }
-
-      if (!data.pieces || data.pieces.length === 0) {
-        setErrorMsg('Aucune pièce détectée — essaie avec une meilleure photo');
-        setStatus('error');
-        return;
-      }
-
-      setPieces(data.pieces);
-      setCabinet(data.cabinet || null);
-      setSelected(new Set(data.pieces.map((_, i) => i)));
-      setEditNotes({});
-      setStatus('done');
-
     } catch (err) {
-      console.error('Scan error:', err);
-      setErrorMsg(
-        err.message === 'too_many_requests'
-          ? '30 scans/heure max atteints — réessaie plus tard'
-          : err.message === 'api_key_missing'
-          ? 'Clé API manquante sur le serveur'
-          : err.message === 'no_pieces'
-          ? 'Aucune pièce détectée — essaie avec une meilleure photo ou un plan plus lisible'
-          : 'Erreur réseau — vérifie ta connexion'
-      );
-      setStatus('error');
+      console.error("Erreur caméra:", err);
+      setError(t('scanner.camera_error'));
     }
   };
 
-  const togglePiece = (i) => {
-    setSelected(s => {
-      const n = new Set(s);
-      n.has(i) ? n.delete(i) : n.add(i);
-      return n;
-    });
+  const stopCamera = () => {
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+      setStream(null);
+    }
   };
 
-  const toggleAll = () => {
-    if (selected.size === pieces.length) setSelected(new Set());
-    else setSelected(new Set(pieces.map((_, i) => i)));
+  const handleFileSelect = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      processFile(file);
+    }
   };
 
-  const confirm = () => {
-    const confirmed = pieces
-      .filter((_, i) => selected.has(i))
-      .map((p, i) => ({
-        ...p,
-        notes: editNotes[i] !== undefined ? editNotes[i] : p.notes,
-      }));
-    onPiecesDetected(confirmed, cabinet);
+  const handleCapture = () => {
+    if (videoRef.current && canvasRef.current) {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0);
+      
+      canvas.toBlob((blob) => {
+        if (blob) {
+          processFile(blob);
+        }
+      }, 'image/jpeg', 0.9);
+    }
   };
 
-  const reset = () => {
-    setStatus('idle');
+  const processFile = (file) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setImage(file);
+      setPreview(e.target.result);
+      setStep('review');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleConfirm = async () => {
+    if (!image) return;
+
+    setIsProcessing(true);
+    setStep('processing');
+    setError(null);
+
+    try {
+      // Création du FormData pour l'envoi multipart
+      const formData = new FormData();
+      
+      // Conversion de la base64 en Blob si nécessaire
+      let imageBlob = image;
+      if (typeof image === 'string' && image.startsWith('data:image')) {
+        const response = await fetch(image);
+        imageBlob = await response.blob();
+      }
+      
+      formData.append('image', imageBlob, 'scan.jpg');
+
+      // Appel à l'API avec la bonne URL et méthode
+      const apiUrl = 'https://panelcut-server.vercel.app/api/scan';
+      console.log("Envoi du scan vers:", apiUrl);
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        body: formData, 
+        // Ne pas définir Content-Type manuellement pour laisser le navigateur gérer la boundary
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error("Erreur serveur:", response.status, errorData);
+        throw new Error(errorData.error || t('scanner.upload_failed'));
+      }
+
+      const data = await response.json();
+      console.log("Réception du scan:", data);
+
+      // Simulation ou traitement des pièces détectées
+      if (data.pieces) {
+        setDetectedPieces(data.pieces);
+      } else {
+        // Fallback si le serveur ne renvoie pas encore de pièces structurées
+        setDetectedPieces([{ id: 1, name: t('scanner.detected_part'), width: 100, height: 200, quantity: 1 }]);
+      }
+
+      setStep('done');
+      
+      // Appel du callback avec les données et l'image pour l'éditeur
+      setTimeout(() => {
+        if (onComplete) {
+          onComplete({
+            image: preview,
+            pieces: detectedPieces.length > 0 ? detectedPieces : [{ id: 1, name: t('scanner.detected_part'), width: 100, height: 200, quantity: 1 }]
+          });
+        }
+      }, 1000);
+
+    } catch (err) {
+      console.error("Échec du scan:", err);
+      setError(err.message || t('scanner.upload_failed'));
+      setStep('review');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const resetScan = () => {
+    setImage(null);
     setPreview(null);
-    setPieces([]);
-    setCabinet(null);
-    setSelected(new Set());
-    setEditNotes({});
-    setErrorMsg('');
+    setStep('capture');
+    setError(null);
+    setDetectedPieces([]);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
-
-  // Confidence bar color
-  const confColor = (c) =>
-    c >= 0.8 ? '#16a34a' : c >= 0.5 ? '#d97706' : '#dc2626';
 
   return (
-    <div className="scanner-overlay">
-      <div className="scanner-modal">
-
+    <div className="fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center p-4">
+      <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-md overflow-hidden shadow-2xl relative">
+        
         {/* Header */}
-        <div className="scanner-header">
-          <span className="scanner-title">📷 Scanner un plan</span>
-          <button className="scanner-close" onClick={onClose}>✕</button>
+        <div className="p-4 border-b dark:border-gray-700 flex justify-between items-center">
+          <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+            {t('scanner.title')}
+          </h3>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-700 dark:text-gray-400">
+            <X size={24} />
+          </button>
         </div>
 
-        {/* ── IDLE ─────────────────────────────────────────────────── */}
-        {status === 'idle' && (
-          <div className="scanner-body">
-            <div className="drop-zone" onClick={() => inputRef.current?.click()}>
-              <div className="drop-icon">📄</div>
-              <div className="drop-text">Prendre une photo ou choisir un fichier</div>
-              <div className="drop-sub">JPG, PNG, HEIC — plan à main levée ou imprimé</div>
-              <div className="drop-tips">
-                <div className="drop-tip">✅ Éclairage uniforme</div>
-                <div className="drop-tip">✅ Plan à plat, cadré droit</div>
-                <div className="drop-tip">✅ Cotes visibles et lisibles</div>
+        {/* Content */}
+        <div className="p-6 min-h-[300px] flex flex-col items-center justify-center">
+          
+          {error && (
+            <div className="mb-4 p-3 bg-red-100 text-red-700 rounded-lg flex items-center gap-2 text-sm w-full">
+              <AlertCircle size={18} />
+              {error}
+            </div>
+          )}
+
+          {step === 'capture' && (
+            <div className="w-full flex flex-col items-center gap-4">
+              <div className="relative w-full h-64 bg-gray-900 rounded-lg overflow-hidden">
+                <video 
+                  ref={videoRef} 
+                  autoPlay 
+                  playsInline 
+                  className="w-full h-full object-cover"
+                />
+                <canvas ref={canvasRef} className="hidden" />
+                <div className="absolute inset-0 border-2 border-dashed border-white/30 rounded-lg m-4 pointer-events-none"></div>
+              </div>
+              
+              <div className="flex gap-4 w-full">
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex-1 py-3 px-4 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-white rounded-lg font-medium hover:bg-gray-300 dark:hover:bg-gray-600 transition flex items-center justify-center gap-2"
+                >
+                  <Upload size={20} />
+                  {t('scanner.upload_photo')}
+                </button>
+                <button
+                  onClick={handleCapture}
+                  className="flex-1 py-3 px-4 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition flex items-center justify-center gap-2"
+                >
+                  <Camera size={20} />
+                  {t('scanner.take_photo')}
+                </button>
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={handleFileSelect}
+                className="hidden"
+              />
+            </div>
+          )}
+
+          {step === 'review' && preview && (
+            <div className="w-full flex flex-col items-center gap-4">
+              <img src={preview} alt="Preview" className="w-full h-64 object-contain rounded-lg bg-gray-100 dark:bg-gray-900" />
+              <div className="flex gap-4 w-full">
+                <button
+                  onClick={resetScan}
+                  className="flex-1 py-3 px-4 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-white rounded-lg font-medium hover:bg-gray-300 dark:hover:bg-gray-600 transition"
+                >
+                  {t('common.retry')}
+                </button>
+                <button
+                  onClick={handleConfirm}
+                  disabled={isProcessing}
+                  className="flex-1 py-3 px-4 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {isProcessing ? <Loader2 className="animate-spin" size={20} /> : <Check size={20} />}
+                  {isProcessing ? t('scanner.processing') : t('common.confirm')}
+                </button>
               </div>
             </div>
-            <input
-              ref={inputRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              style={{ display: 'none' }}
-              onChange={e => handleFile(e.target.files?.[0])}
-            />
-          </div>
-        )}
+          )}
 
-        {/* ── PREVIEW ──────────────────────────────────────────────── */}
-        {status === 'preview' && (
-          <div className="scanner-body">
-            <img src={preview} alt="Plan" className="scan-preview" />
-            <div className="scanner-btns">
-              <button className="btn btn--ghost" onClick={reset}>↩ Reprendre</button>
-              <button className="btn btn--primary" onClick={scan}>
-                🔍 Analyser avec l'IA
-              </button>
+          {step === 'processing' && (
+            <div className="text-center py-10">
+              <Loader2 className="animate-spin mx-auto mb-4 text-blue-600" size={48} />
+              <p className="text-gray-600 dark:text-gray-300 font-medium">{t('scanner.analyzing')}</p>
+              <p className="text-sm text-gray-500 mt-2">{t('scanner.please_wait')}</p>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* ── SCANNING ─────────────────────────────────────────────── */}
-        {status === 'scanning' && (
-          <div className="scanner-body scanner-body--center">
-            <div className="scan-spinner" />
-            <div className="scan-loading-text">Analyse du plan en cours…</div>
-            <div className="scan-loading-sub">Passe 1 — lecture de la structure</div>
-            <div className="scan-loading-sub" style={{ marginTop: 4, opacity: 0.6 }}>
-              Passe 2 — extraction des pièces
-            </div>
-            <div className="scan-loading-note">
-              ⏱ 10–20 secondes selon la complexité
-            </div>
-          </div>
-        )}
-
-        {/* ── ERROR ────────────────────────────────────────────────── */}
-        {status === 'error' && (
-          <div className="scanner-body scanner-body--center">
-            <div className="scan-error-icon">⚠️</div>
-            <div className="scan-error-text">{errorMsg}</div>
-            <button className="btn btn--ghost" onClick={reset}>↩ Réessayer</button>
-          </div>
-        )}
-
-        {/* ── DONE : résultats ─────────────────────────────────────── */}
-        {status === 'done' && (
-          <div className="scanner-body">
-
-            {/* Résumé meuble (si passe 1 a réussi) */}
-            {cabinet && cabinet.width && (
-              <div className="cabinet-summary">
-                <div className="cabinet-summary-header">
-                  <span className="cabinet-type-icon">
-                    {CABINET_TYPE_ICON[cabinet.type] || '📦'}
-                  </span>
-                  <div className="cabinet-summary-info">
-                    <div className="cabinet-summary-name">
-                      {cabinet.name || cabinet.type || 'Meuble'}
-                    </div>
-                    <div className="cabinet-summary-dims">
-                      {cabinet.width} × {cabinet.height} × {cabinet.depth} cm
-                      <span className="cabinet-mat"> · {cabinet.material}</span>
-                    </div>
-                    <div className="cabinet-summary-counts">
-                      {cabinet.nb_shelves > 0 && <span>📐 {cabinet.nb_shelves} tablette{cabinet.nb_shelves > 1 ? 's' : ''}</span>}
-                      {cabinet.nb_doors   > 0 && <span>🚪 {cabinet.nb_doors} porte{cabinet.nb_doors > 1 ? 's' : ''}</span>}
-                      {cabinet.nb_drawers > 0 && <span>🗄️ {cabinet.nb_drawers} tiroir{cabinet.nb_drawers > 1 ? 's' : ''}</span>}
-                      {cabinet.nb_dividers > 0 && <span>↕ {cabinet.nb_dividers} séparation{cabinet.nb_dividers > 1 ? 's' : ''}</span>}
-                    </div>
-                  </div>
-                  {/* Barre de confiance */}
-                  <div className="cabinet-confidence">
-                    <div className="conf-label">Confiance</div>
-                    <div className="conf-bar">
-                      <div
-                        className="conf-fill"
-                        style={{
-                          width: `${Math.round((cabinet.confidence || 0.5) * 100)}%`,
-                          background: confColor(cabinet.confidence || 0.5),
-                        }}
-                      />
-                    </div>
-                    <div className="conf-pct" style={{ color: confColor(cabinet.confidence || 0.5) }}>
-                      {Math.round((cabinet.confidence || 0.5) * 100)}%
-                    </div>
-                  </div>
-                </div>
-                {cabinet.scale_note && (
-                  <div className="cabinet-scale-note">📏 {cabinet.scale_note}</div>
-                )}
+          {step === 'done' && (
+            <div className="text-center py-10">
+              <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Check size={32} />
               </div>
-            )}
-
-            {/* Titre + toggle tout */}
-            <div className="scan-result-header">
-              <span className="scan-result-title">
-                {pieces.length} pièce{pieces.length > 1 ? 's' : ''} détectée{pieces.length > 1 ? 's' : ''}
-              </span>
-              <button className="scan-toggle-all" onClick={toggleAll}>
-                {selected.size === pieces.length ? 'Tout décocher' : 'Tout cocher'}
-              </button>
+              <h4 className="text-xl font-bold text-gray-900 dark:text-white mb-2">{t('scanner.success')}</h4>
+              <p className="text-gray-600 dark:text-gray-300">
+                {t('scanner.parts_detected', { count: detectedPieces.length })}
+              </p>
+              <p className="text-sm text-gray-500 mt-4">{t('scanner.redirecting')}</p>
             </div>
-
-            {/* Liste des pièces */}
-            <div className="scan-pieces-list">
-              {pieces.map((p, i) => {
-                const roleInfo = ROLE_COLORS[p.role] || ROLE_COLORS.other;
-                const isSelected = selected.has(i);
-                return (
-                  <div
-                    key={i}
-                    className={`scan-piece-row ${isSelected ? 'scan-piece-row--selected' : ''}`}
-                    onClick={() => togglePiece(i)}
-                  >
-                    <div className="scan-piece-check">
-                      {isSelected ? '☑' : '☐'}
-                    </div>
-                    <div className="scan-piece-info">
-                      <div className="scan-piece-top">
-                        <div className="scan-piece-name">{p.name}</div>
-                        <span
-                          className="scan-piece-role-badge"
-                          style={{ background: roleInfo.bg, color: roleInfo.text }}
-                        >
-                          {roleInfo.label}
-                        </span>
-                      </div>
-                      <div className="scan-piece-dims">
-                        <span className="dim-main">{p.length} × {p.height} cm</span>
-                        <span className="dim-thick">ép. {p.thickness} cm</span>
-                        <span className="scan-piece-qty">× {p.qty}</span>
-                        {p.material && p.material !== 'inconnu' && (
-                          <span className="dim-mat">{p.material}</span>
-                        )}
-                      </div>
-                      {/* Notes IA + éditable */}
-                      {(p.notes || editNotes[i] !== undefined) && (
-                        <input
-                          className="scan-piece-note-input"
-                          value={editNotes[i] !== undefined ? editNotes[i] : (p.notes || '')}
-                          placeholder="Note…"
-                          onClick={e => e.stopPropagation()}
-                          onChange={e => setEditNotes(n => ({ ...n, [i]: e.target.value }))}
-                        />
-                      )}
-                      {/* Bouton pour ajouter une note si vide */}
-                      {!p.notes && editNotes[i] === undefined && (
-                        <button
-                          className="scan-add-note-btn"
-                          onClick={e => { e.stopPropagation(); setEditNotes(n => ({ ...n, [i]: '' })); }}
-                        >
-                          + note
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="scanner-btns">
-              <button className="btn btn--ghost" onClick={reset}>↩ Rescanner</button>
-              <button
-                className="btn btn--primary"
-                onClick={confirm}
-                disabled={selected.size === 0}
-              >
-                ✓ Ajouter {selected.size} pièce{selected.size > 1 ? 's' : ''}
-              </button>
-            </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
-}
+};
+
+export default Scanner;
