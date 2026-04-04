@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 
 export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoManual, onCancel }) {
-  // ── Refs stables pour éviter les boucles de rendu ──
+  // ── 🔥 FIX CRITIQUE : Refs pour éviter boucles infinies + perte de données ──
   const projectRef = useRef(project);
   const onChangeRef = useRef(onChange);
   
@@ -37,7 +37,7 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
   const fileInputRef = useRef(null);
   const [scanning, setScanning] = useState(false);
 
-  // ── Sync vers le parent ──
+  // ── 🔥 Sync vers le parent (via refs stables) ──
   useEffect(() => {
     const currentProject = projectRef.current;
     onChangeRef.current({
@@ -47,14 +47,21 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
       grainDirection, edgeType, supplierRef,
       kerf, tolerance, pricePerPanel,
     });
-  }, [name, client, company, devisNum, panelW, panelH, panelThickness, panelLabel, grainDirection, edgeType, supplierRef, kerf, tolerance, pricePerPanel]);
+  }, [
+    name, client, company, devisNum,
+    panelW, panelH, panelThickness, panelLabel,
+    grainDirection, edgeType, supplierRef,
+    kerf, tolerance, pricePerPanel
+  ]);
 
-  // ── Calcul prix auto ──
+  // ── Calcul automatique du prix ──
   useEffect(() => {
     if (pricePerM2 > 0) {
       const newArea = (panelW * panelH) / 10000;
       const newPrice = parseFloat((newArea * pricePerM2).toFixed(2));
-      if (newPrice !== pricePerPanel) setPricePerPanel(newPrice);
+      if (newPrice !== pricePerPanel) {
+        setPricePerPanel(newPrice);
+      }
     }
   }, [panelW, panelH, pricePerM2]);
 
@@ -74,7 +81,48 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
     if (area > 0 && p > 0) setPricePerM2(parseFloat((p / area).toFixed(2)));
   };
 
-  // ── 🔥 FIX CRITIQUE : Retour à l'envoi JSON Base64 compatible avec le serveur actuel ──
+  // ── 🎨 NOUVEAU : Pré-traitement de l'image (Noir & Blanc + Contraste) ──
+  const preprocessImage = (dataUrl) => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        
+        // Dessiner l'image originale
+        ctx.drawImage(img, 0, 0);
+        
+        // Appliquer le filtre pixel par pixel
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imageData.data;
+        
+        for (let i = 0; i < data.length; i += 4) {
+          // 1. Conversion Noir & Blanc (moyenne des canaux RGB)
+          const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+          
+          // 2. Augmentation du contraste (facteur 1.4)
+          // Formule : 128 + (valeur - 128) * facteur
+          const contrasted = 128 + (avg - 128) * 1.4;
+          
+          // Appliquer aux 3 canaux (R, G, B)
+          data[i] = contrasted;     // R
+          data[i + 1] = contrasted; // G
+          data[i + 2] = contrasted; // B
+          // Alpha reste inchangé
+        }
+        
+        ctx.putImageData(imageData, 0, 0);
+        
+        // Retourner en Base64 qualité 0.9
+        resolve(canvas.toDataURL('image/jpeg', 0.9));
+      };
+      img.src = dataUrl;
+    });
+  };
+
+  // ── Flux Scan ──
   const triggerFilePicker = () => fileInputRef.current?.click();
 
   const handleFileSelect = async (event) => {
@@ -83,57 +131,62 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
     
     setScanning(true);
     try {
-      // 1. Conversion en Base64 (avec header data:image/...)
-      const base64Full = await new Promise((resolve, reject) => {
+      // 1. Lire le fichier original pour l'affichage local (optionnel, mais utile pour debug)
+      const originalBase64 = await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result);
         reader.onerror = reject;
         reader.readAsDataURL(file);
       });
 
-      // 2. Extraction du Base64 pur (sans header) pour l'API
-      const base64Data = base64Full.split(',')[1];
+      // 2. PRÉ-TRAITER L'IMAGE POUR L'IA (Noir & Blanc + Contraste)
+      console.log("🔄 Pré-traitement de l'image pour l'IA...");
+      const processedBase64 = await preprocessImage(originalBase64);
+      
+      // Extraire la partie pure Base64 (sans "data:image/jpeg;base64,")
+      const base64Data = processedBase64.split(',')[1];
+
+      // 3. Préparer l'envoi en JSON (Format attendu par le serveur)
+      const payload = {
+        image: base64Data,
+        mediaType: file.type || 'image/jpeg'
+      };
 
       const apiUrl = 'https://panelcut-server.vercel.app/api/scan';
-      console.log("Envoi du scan (JSON) vers:", apiUrl);
+      console.log("🚀 Envoi du scan vers:", apiUrl);
 
-      // 3. Envoi en JSON (Format attendu par le serveur actuel)
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: { 
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/json' 
         },
-        body: JSON.stringify({ 
-          image: base64Data, 
-          mediaType: file.type 
-        }),
+        body: JSON.stringify(payload),
       });
 
-      // 4. Gestion détaillée des erreurs
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
-        console.error("Détails erreur serveur:", response.status, errData);
-        throw new Error(errData.error || `Erreur HTTP ${response.status}`);
+        console.error("❌ Erreur API détaillée:", errData);
+        throw new Error(errData.error || `Erreur serveur (${response.status})`);
       }
 
       const scanResult = await response.json();
-      console.log("✅ Succès du scan:", scanResult);
+      console.log("✅ Résultat du scan reçu:", scanResult);
 
-      // 5. Callback avec résultat + image originale pour l'affichage
+      // 4. Callback avec le résultat ET l'image traitée (pour affichage si besoin)
       if (onGoScan) {
-        onGoScan(scanResult, base64Full);
+        onGoScan(scanResult, processedBase64);
       }
 
     } catch (err) {
-      console.error('❌ Échec complet du scan:', err);
-      alert(`Échec du scan : ${err.message}\nVérifiez la console (F12) pour plus de détails.`);
+      console.error('💥 Échec complet du scan:', err);
+      alert(`❌ Échec du scan : ${err.message}`);
     } finally {
       setScanning(false);
-      if (fileInputRef.current) fileInputRef.current.value = null;
+      event.target.value = null;
     }
   };
 
-  // ── Options (inchangées) ──
+  // ── Options ──
   const thicknessOptions = [
     { value: 0.8, label: '8 mm' }, { value: 1.2, label: '12 mm' }, { value: 1.8, label: '18 mm' },
     { value: 2.2, label: '22 mm' }, { value: 2.5, label: '25 mm' }, { value: 3.0, label: '30 mm' },
