@@ -34,41 +34,62 @@ const toCm = (value) => {
   return value;                          // déjà en cm
 };
 
-const readModules = (scanResult) => {
-  const rawModules =
-    scanResult?.modules ||
-    scanResult?.cabinet?.modules ||
-    scanResult?.furniture?.modules ||
-    scanResult?.data?.modules ||
-    [];
-  if (!Array.isArray(rawModules)) return [];
-  return rawModules
-    .map((entry) => {
-      let raw;
-      if (typeof entry === 'number' || typeof entry === 'string') {
-        raw = toNumber(entry, NaN);
-      } else {
-        raw = pickFirstNumber([entry?.width, entry?.w, entry?.largeur, entry?.moduleWidth], NaN);
-      }
-      return Number.isFinite(raw) ? toCm(raw) : NaN;
-    })
-    .filter((v) => Number.isFinite(v) && v > 0);
+/**
+ * Lit les modules détaillés depuis cabinet.modules[]
+ * Chaque module a : { x, width, shelves, drawers, doors, rod }
+ * Retourne un tableau de bodies { width, shelves, drawers, doors, rod }
+ * ou null si absent/vide.
+ */
+const readBodiesFromModules = (scanResult) => {
+  const src = scanResult?.cabinet || scanResult?.furniture || scanResult || {};
+
+  // Priorité 1 : modules détaillés (format serveur)
+  const rawModules = src?.modules || scanResult?.modules || [];
+  if (Array.isArray(rawModules) && rawModules.length > 0) {
+    const detailed = rawModules.filter(m => typeof m === 'object' && m !== null);
+    if (detailed.length > 0) {
+      return detailed.map(m => ({
+        width:   toCm(toNumber(m?.width ?? m?.w ?? m?.largeur, 0)),
+        shelves: Math.max(0, parseInt(m?.shelves  ?? m?.nb_shelves  ?? 0, 10)),
+        drawers: Math.max(0, parseInt(m?.drawers  ?? m?.nb_drawers  ?? 0, 10)),
+        doors:   Math.max(0, parseInt(m?.doors    ?? m?.nb_doors    ?? 0, 10)),
+        rod:     pickFirstBool([m?.rod, m?.tringle, m?.hanging, m?.penderie], false),
+      }));
+    }
+  }
+
+  // Priorité 2 : bodies explicites
+  const rawBodies = src?.bodies || scanResult?.bodies || [];
+  if (Array.isArray(rawBodies) && rawBodies.length > 0) {
+    return rawBodies.map(b => ({
+      width:   toCm(toNumber(b?.width ?? b?.w ?? 0, 0)),
+      shelves: Math.max(0, parseInt(b?.shelves ?? b?.nb_shelves ?? 0, 10)),
+      drawers: Math.max(0, parseInt(b?.drawers ?? b?.nb_drawers ?? 0, 10)),
+      doors:   Math.max(0, parseInt(b?.doors   ?? b?.nb_doors   ?? 0, 10)),
+      rod:     pickFirstBool([b?.rod, b?.tringle, b?.hanging], false),
+    }));
+  }
+
+  return null; // pas de données détaillées
 };
 
-/** Lit les corps (bodies) si le serveur les retourne directement */
-const readBodies = (scanResult) => {
-  const raw =
-    scanResult?.bodies ||
-    scanResult?.cabinet?.bodies ||
-    scanResult?.furniture?.bodies ||
-    [];
-  if (!Array.isArray(raw) || raw.length === 0) return null;
-  return raw.map(b => ({
-    width:   toCm(toNumber(b?.width  || b?.w   || b?.largeur, 0)),
-    shelves: Math.max(0, parseInt(b?.shelves  ?? b?.nb_shelves  ?? 0, 10)),
-    drawers: Math.max(0, parseInt(b?.drawers  ?? b?.nb_drawers  ?? 0, 10)),
-    rod:     pickFirstBool([b?.rod, b?.tringle, b?.hanging], false),
-  }));
+/**
+ * Lit uniquement les largeurs (pour rétrocompatibilité buildCabinetModel)
+ */
+const readModuleWidths = (scanResult) => {
+  const src = scanResult?.cabinet || scanResult?.furniture || scanResult || {};
+  const rawModules = src?.modules || scanResult?.modules || [];
+  if (!Array.isArray(rawModules)) return [];
+  return rawModules
+    .map(entry => {
+      if (typeof entry === 'number') return toCm(entry);
+      if (typeof entry === 'object' && entry !== null) {
+        const w = toNumber(entry?.width ?? entry?.w ?? entry?.largeur, NaN);
+        return Number.isFinite(w) ? toCm(w) : NaN;
+      }
+      return NaN;
+    })
+    .filter(v => Number.isFinite(v) && v > 0);
 };
 
 export function interpretScan(scanResult) {
@@ -96,14 +117,14 @@ export function interpretScan(scanResult) {
     scanResult?.rod, scanResult?.tringle, scanResult?.hanging,
   ], false);
 
-  const bodies = readBodies(scanResult);
+  const bodies = readBodiesFromModules(scanResult);
 
   return {
     width:     toCm(rawWidth),
     height:    toCm(rawHeight),
     depth:     toCm(rawDepth),
     plinth:    toCm(rawPlinth),
-    modules:   readModules(scanResult),
+    modules:   readModuleWidths(scanResult),
     nbShelves,
     nbDrawers,
     hasRod,

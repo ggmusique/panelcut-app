@@ -110,14 +110,27 @@ export default function CabinetPlan3D({ model, cabinet: cabinetProp, pieces = []
     const rawModules = Array.isArray(cab.modules) && cab.modules.length > 0 ? cab.modules : null;
 
     if (rawModules) {
-      // Le serveur retourne les modules explicitement → on les utilise directement
-      nbBodies = rawModules.length;
-      bodies = rawModules.map(m => ({
-        width:   parseFloat(m.width || m.w) || (dims.width / nbBodies), // cm
-        shelves: Math.max(0, parseInt(m.shelves ?? m.nb_shelves ?? 2, 10)),
-        drawers: Math.max(0, parseInt(m.drawers ?? m.nb_drawers ?? 0, 10)),
-        rod:     Boolean(m.rod ?? m.tringle ?? m.hanging ?? false),
-      }));
+      const detailedModules = rawModules.filter(m => typeof m === 'object' && m !== null);
+      if (detailedModules.length > 0) {
+        nbBodies = detailedModules.length;
+        bodies = detailedModules.map(m => ({
+          width:   parseFloat(m.width ?? m.w ?? 0) || (dims.width / nbBodies), // cm
+          shelves: Math.max(0, parseInt(m.shelves ?? m.nb_shelves ?? 2, 10)),
+          drawers: Math.max(0, parseInt(m.drawers ?? m.nb_drawers ?? 0, 10)),
+          doors:   Math.max(0, parseInt(m.doors   ?? m.nb_doors   ?? 0, 10)),
+          rod:     Boolean(m.rod ?? m.tringle ?? m.hanging ?? false),
+        }));
+      } else {
+        // Modules = tableau de nombres (largeurs seulement)
+        nbBodies = rawModules.length;
+        bodies = rawModules.map(mw => ({
+          width:   parseFloat(mw) || (dims.width / nbBodies),
+          shelves: cab.nb_shelves ?? 2,
+          drawers: cab.nb_drawers ?? 0,
+          doors:   0,
+          rod:     false,
+        }));
+      }
     } else {
       // Fallback : nb_dividers ou comptage dans pieces
       const nbDiv  = cab.nb_dividers ||
