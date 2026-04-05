@@ -5,6 +5,7 @@ import CabinetPlan2D from './CabinetPlan2D';
 import CabinetPlan3D from './CabinetPlan3D';
 import CabinetElevationFront from './CabinetElevationFront';
 import BoardList from './BoardList';
+import ProfessionalRealisticViewer from '../visualization/ProfessionalRealisticViewer';
 
 const PIECE_COLORS = [
   { fill: 'rgba(245,158,11,0.25)',  stroke: '#f59e0b', glow: 'rgba(245,158,11,0.4)' },
@@ -163,15 +164,21 @@ function CutList({ panel }) {
 
 function PlanSubTabs({ active, onChange }) {
   return (
-    <div className="flex bg-[#0a0a0a] border border-white/5 rounded-lg p-0.5 gap-0.5 mb-4">
+    <div className="flex bg-[#0a0a0a] border border-white/5 rounded-lg p-0.5 gap-0.5 mb-4 overflow-x-auto">
       {[
-        { id: 'facade', label: '🧱 Façade — style croquis' },
-        { id: '2d', label: '📐 Vue 2D — 3 vues ortho' },
-        { id: '3d', label: '📦 Vue 3D — Isométrique' },
+        { id: 'facade',   label: '🧱 Façade — style croquis' },
+        { id: '2d',       label: '📐 Vue 2D — 3 vues ortho' },
+        { id: '3d',       label: '📦 Vue 3D — Isométrique' },
+        { id: 'realistic', label: '🌟 Vue Réaliste Client' },   // ← NOUVEL ONGLET
       ].map(t => (
-        <button key={t.id} onClick={() => onChange(t.id)}
-          className={'flex-1 py-2 rounded-md text-xs font-bold transition-all ' +
-            (active === t.id ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white')}
+        <button 
+          key={t.id} 
+          onClick={() => onChange(t.id)}
+          className={'flex-1 py-2.5 px-4 rounded-md text-xs font-bold transition-all whitespace-nowrap ' +
+            (active === t.id 
+              ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-lg' 
+              : 'text-slate-400 hover:text-white hover:bg-white/5')
+          }
         >
           {t.label}
         </button>
@@ -368,55 +375,36 @@ export default function Results({ t, results, project }) {
         {tab === 'plans' && (
           <div className="space-y-4">
             {hasCabinet ? (
-              <>
-                <PlanSubTabs active={planView} onChange={setPlanView} />
+  <>
+    <PlanSubTabs active={planView} onChange={setPlanView} />
 
-                {/* Vue façade */}
-                <div style={planView !== 'facade' ? { display: 'none' } : {}}>
-                  <div className="flex items-center gap-2 text-xs text-slate-500 px-1 mb-3">
-                    <Map className="w-3 h-3" />
-                    <span>Élévation frontale cotée — modules numérotés et largeurs par colonne</span>
-                  </div>
-                  <CabinetElevationFront cabinet={cabinet} name={project.name} />
-                </div>
+    {/* Vue façade (existante) */}
+    <div style={planView !== 'facade' ? { display: 'none' } : {}}>
+      <CabinetElevationFront cabinet={cabinet} name={project.name} />
+    </div>
 
-                {/* Vue 2D */}
-                <div style={planView !== '2d' ? { display: 'none' } : {}}>
-                  <div className="flex items-center gap-2 text-xs text-slate-500 px-1 mb-3">
-                    <Map className="w-3 h-3" />
-                    <span>Plan orthogonal : face + côté + dessus — cotations en cm</span>
-                  </div>
-                  <CabinetPlan2D cabinet={cabinet} name={project.name} />
-                  <div className="bg-[#111] border border-white/5 rounded-xl p-4 text-xs text-slate-500 space-y-1 mt-3">
-                    <p className="font-bold text-slate-400">Légende</p>
-                    <div className="flex flex-wrap gap-3">
-                      {[
-                        { color: '#94a3b8', label: 'Montant / Côté' },
-                        { color: '#38bdf8', label: 'Tablette / Fond bas / Dessus' },
-                        { color: '#f97316', label: 'Porte' },
-                        { color: '#7dd3fc', label: 'Séparation' },
-                        { color: '#a855f7', label: 'Tiroir' },
-                        { color: '#475569', label: 'Fond arrière' },
-                      ].map(({ color, label }) => (
-                        <div key={label} className="flex items-center gap-1.5">
-                          <div className="w-3 h-3 rounded-sm" style={{ background: color }} />
-                          <span>{label}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
+    {/* Vue 2D (existante) */}
+    <div style={planView !== '2d' ? { display: 'none' } : {}}>
+      <CabinetPlan2D cabinet={cabinet} name={project.name} />
+      {/* ta légende existante */}
+    </div>
 
-                {/* Vue 3D */}
-                <div style={planView !== '3d' ? { display: 'none' } : {}}>
-                  <div className="flex items-center gap-2 text-xs text-slate-500 px-1 mb-3">
-                    <Box className="w-3 h-3" />
-                    <span>Vue isométrique — cliquer-glisser pour tourner — molette pour zoomer</span>
-                  </div>
-                  <CabinetPlan3D cabinet={cabinet} name={project.name} />
-                </div>
-              </>
-            ) : (
+    {/* Vue 3D (existante) */}
+    <div style={planView !== '3d' ? { display: 'none' } : {}}>
+      <CabinetPlan3D cabinet={cabinet} name={project.name} />
+    </div>
+
+    {/* === NOUVELLE VUE RÉALISTE === */}
+    <div style={planView !== 'realistic' ? { display: 'none' } : {}}>
+      <div className="flex items-center gap-2 text-xs text-slate-500 px-1 mb-3">
+        <span className="text-amber-400">🌟</span>
+        <span>Vue photoréaliste 3D — tournable et zoomable pour présentation client</span>
+      </div>
+      
+      <ProfessionalRealisticViewer cabinet={cabinet} name={project.name} />
+    </div>
+  </>
+) : (
               /* ─ Pas de cabinet : inviter à faire un scan */
               <div className="flex flex-col items-center justify-center py-16 gap-4 text-center">
                 <div className="text-5xl">📐</div>

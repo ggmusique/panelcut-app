@@ -5,9 +5,13 @@ const TOOLS = [
   { id: 'drawer', icon: '🗄️', label: 'Tiroirs', color: '#fbbf24' }, // Amber
   { id: 'door',   icon: '🚪', label: 'Porte',   color: '#60a5fa' }, // Blue
   { id: 'shelf',  icon: '📦', label: 'Tablette',color: '#34d399' }, // Emerald
+  { id: 'rod',    icon: '👔', label: 'Tringle',  color: '#f472b6' }, // Pink
   { id: 'dim',    icon: '📏', label: 'Cote',    color: '#22d3ee' }, // Cyan
+  { id: 'note',   icon: '📝', label: 'Note',    color: '#fb923c' }, // Orange
   { id: 'erase',  icon: '🧹', label: 'Effacer', color: '#f87171' }, // Red
 ];
+
+const LS_SKETCH_KEY = 'pc_sketch_editor';
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 const toNum = (v, d = 0) => {
@@ -41,23 +45,42 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
   const svgRef = useRef(null);
   const initialCab = initialResult?.cabinet || {};
   
+  // Chargement de l'état persisté
+  const savedState = (() => {
+    try {
+      const raw = localStorage.getItem(LS_SKETCH_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  })();
+
   // États
   const [tool, setTool] = useState('drawer');
   const [baseView, setBaseView] = useState(imgSrc ? 'photo' : 'facade');
-  const [elements, setElements] = useState([]);
+  const [elements, setElements] = useState(savedState?.elements || []);
   const [draggingId, setDraggingId] = useState(null);
   const [resizingId, setResizingId] = useState(null);
   const [imgSize, setImgSize] = useState({ w: 800, h: 600 });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [cabinetDims, setCabinetDims] = useState({
-    width: toNum(initialCab.width, 200),
-    height: toNum(initialCab.height, 240),
-    plinth: toNum(initialCab.plinth, 0),
-  });
-  const [moduleWidths, setModuleWidths] = useState(
-    () => normalizeModulesFromResult(initialResult, toNum(initialCab.width, 200)).map(m => m.width.toFixed(2))
+  const [generalNotes, setGeneralNotes] = useState(savedState?.generalNotes || '');
+  const [editingNoteId, setEditingNoteId] = useState(null);
+  const [editingDimId, setEditingDimId] = useState(null);
+  const [cabinetDims, setCabinetDims] = useState(
+    savedState?.cabinetDims || {
+      width: toNum(initialCab.width, 200),
+      height: toNum(initialCab.height, 240),
+      plinth: toNum(initialCab.plinth, 0),
+    }
   );
+  const [moduleWidths, setModuleWidths] = useState(
+    () => savedState?.moduleWidths || normalizeModulesFromResult(initialResult, toNum(initialCab.width, 200)).map(m => m.width.toFixed(2))
+  );
+
+  // Persistance automatique
+  useEffect(() => {
+    const state = { elements, cabinetDims, moduleWidths, generalNotes };
+    localStorage.setItem(LS_SKETCH_KEY, JSON.stringify(state));
+  }, [elements, cabinetDims, moduleWidths, generalNotes]);
 
   // Chargement de l'image pour déterminer la taille du canvas
   useEffect(() => {
@@ -114,11 +137,23 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
       };
       setElements(prev => [...prev, newEl]);
       setResizingId(newEl.id); // On passe directement en mode redimensionnement
+    } else if (tool === 'rod') {
+      // Tringle : ligne horizontale (penderie)
+      const newEl = { id: uid(), type: 'rod', x1: x, y1: y, x2: x, y2: y, label: 'Tringle' };
+      setElements(prev => [...prev, newEl]);
+      setResizingId(newEl.id);
     } else if (tool === 'dim') {
       // Mode cote (simple ligne)
       const newEl = { id: uid(), type: 'dim', x1: x, y1: y, x2: x, y2: y, label: '' };
       setElements(prev => [...prev, newEl]);
       setResizingId(newEl.id); // On redimensionne la ligne
+    } else if (tool === 'note') {
+      // Note : petite zone avec texte
+      const text = prompt('Texte de la note :');
+      if (text) {
+        const newEl = { id: uid(), type: 'note', x, y, text };
+        setElements(prev => [...prev, newEl]);
+      }
     }
   }, [tool, getSVGCoords]);
 
@@ -131,8 +166,8 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     if (resizingId) {
       setElements(prev => prev.map(el => {
         if (el.id !== resizingId) return el;
-        if (el.type === 'dim') {
-          return { ...el, x2: x, y2: y };
+        if (el.type === 'dim' || el.type === 'rod') {
+          return { ...el, x2: x, y2: el.type === 'rod' ? el.y1 : y }; // rod stays horizontal
         } else {
           // Forme rectangulaire : on ajuste w et h
           return { 
@@ -153,9 +188,21 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
   }, [resizingId, draggingId, getSVGCoords]);
 
   const handlePointerUp = useCallback(() => {
+    // After drawing a dim line, prompt for value
+    if (resizingId) {
+      const el = elements.find(e => e.id === resizingId);
+      if (el && el.type === 'dim') {
+        // Check the line has meaningful length
+        const dx = (el.x2 - el.x1);
+        const dy = (el.y2 - el.y1);
+        if (Math.sqrt(dx*dx + dy*dy) > 15) {
+          setEditingDimId(resizingId);
+        }
+      }
+    }
     setResizingId(null);
     setDraggingId(null);
-  }, []);
+  }, [resizingId, elements]);
 
   // Supprimer un élément
   const eraseElement = (id) => {
@@ -166,10 +213,12 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
   const buildContextPrompt = () => {
     const shapes = elements.filter(e => ['drawer', 'door', 'shelf'].includes(e.type));
     const dims = elements.filter(e => e.type === 'dim');
+    const rods = elements.filter(e => e.type === 'rod');
+    const notes = elements.filter(e => e.type === 'note');
 
     let context = "ANNOTATIONS UTILISATEUR SUR LE PLAN :\n";
     
-    if (shapes.length === 0 && dims.length === 0) {
+    if (shapes.length === 0 && dims.length === 0 && rods.length === 0 && notes.length === 0 && !generalNotes) {
       return "Aucune annotation. Analyse le plan brut.";
     }
 
@@ -186,11 +235,35 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
       });
     }
 
+    if (rods.length > 0) {
+      context += "- TRINGLES (penderie/vêtements) — IMPORTANT, mettre rod: true pour ces modules :\n";
+      rods.forEach((r, i) => {
+        const posX = Math.round(((r.x1 + r.x2) / 2 / imgSize.w) * 100);
+        const posY = Math.round((r.y1 / imgSize.h) * 100);
+        // Estimate which module number based on horizontal position
+        const moduleIdx = Math.min(moduleWidths.length, Math.max(1, Math.ceil(posX / (100 / moduleWidths.length))));
+        context += `  ${i+1}. Tringle dans le module ~${moduleIdx} (position: ${posX}% gauche, ${posY}% haut)\n`;
+      });
+    }
+
     if (dims.length > 0) {
       context += "- COTES INDICATIVES :\n";
       dims.forEach(d => {
-        if(d.label) context += `  - ${d.label}\n`;
+        if(d.label) context += `  - ${d.label} cm\n`;
       });
+    }
+
+    if (notes.length > 0) {
+      context += "- NOTES SUR LE PLAN :\n";
+      notes.forEach((n, i) => {
+        const posX = Math.round((n.x / imgSize.w) * 100);
+        const posY = Math.round((n.y / imgSize.h) * 100);
+        context += `  ${i+1}. "${n.text}" (à ${posX}% gauche, ${posY}% haut)\n`;
+      });
+    }
+
+    if (generalNotes.trim()) {
+      context += `- NOTES GÉNÉRALES DE L'UTILISATEUR :\n  ${generalNotes.trim()}\n`;
     }
 
     context += `- COTES MEUBLE CONFIRMÉES AVANT RELANCE : largeur ${cabinetDims.width} cm, hauteur ${cabinetDims.height} cm, plinthe ${cabinetDims.plinth} cm.\n`;
@@ -228,39 +301,64 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
 
         // 2. Construction du prompt enrichi
         const userContext = buildContextPrompt();
-        const fullPrompt = `Tu es un expert menuisier.
-Analyse ce plan de meuble.
-J'ai ajouté des formes colorées par dessus pour t'aider :
-- JAUNE = Tiroirs
-- BLEU = Portes
-- VERT = Tablettes/Cases
+        const fullPrompt = `Tu es un expert menuisier-agenceur. Analyse ce plan/croquis de meuble avec MES ANNOTATIONS VISUELLES.
+
+LÉGENDE DES ANNOTATIONS COLORÉES SUR L'IMAGE :
+- JAUNE (rectangles) = Tiroirs — chaque rectangle jaune = 1 tiroir
+- BLEU (rectangles) = Portes
+- VERT (rectangles) = Tablettes / Étagères fixes
+- ROSE (lignes horizontales) = Tringles de penderie (rod/hanging bar)
+- ORANGE (étiquettes texte) = Notes de l'utilisateur — LIS-LES ATTENTIVEMENT
+- CYAN (lignes pointillées) = Cotes / dimensions en cm
+
+INSTRUCTIONS PRIORITAIRES :
+1. Les annotations sont EXACTES — elles ont priorité sur ton analyse visuelle
+2. Si tu vois une LIGNE ROSE = il y a obligatoirement un rod/tringle dans ce module (rod: true)
+3. Si tu vois un RECTANGLE VERT = tablette fixe dans ce module (ajouter +1 au nb_shelves)
+4. Si tu vois un RECTANGLE JAUNE = tiroir (ajouter +1 au nb_drawers) 
+5. Les NOTES ORANGE contiennent des instructions précises — respecte-les
+6. Chaque module doit avoir rod: true/false selon qu'une tringle rose est visible dedans
 
 ${userContext}
 
-Retourne UNIQUEMENT un JSON valide avec la structure complète (pieces + cabinet) comme demandé précédemment.`;
+Retourne UNIQUEMENT un JSON valide avec cette structure :
+{
+  "pieces": [...],
+  "cabinet": {
+    "width": number, "height": number, "depth": number,
+    "thickness": number, "plinth": number,
+    "nb_dividers": number,
+    "modules": [
+      { "width": number, "shelves": number, "drawers": number, "doors": number, "rod": boolean },
+      ...
+    ]
+  }
+}`;
 
-        // 3. Appel API
-        const res = await fetch('https://panelcut-server.vercel.app/api/scan', {
+        // 3. Appel API — utilise /api/refine pour envoyer le prompt enrichi avec les annotations
+        const SERVER_URL = 'https://panelcut-server.vercel.app';
+        let res = await fetch(`${SERVER_URL}/api/refine`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
             image: base64, 
             mediaType: 'image/png',
-            // Optionnel : on pourrait aussi envoyer le contexte texte séparément si le serveur le gère
-            // Mais ici on compte sur le prompt système ou on modifie le serveur pour accepter un champ 'context'
+            prompt: fullPrompt,
+            context: initialResult || null,
           }),
         });
 
+        // Fallback sur /api/scan si /api/refine n'existe pas
+        if (res.status === 404 || res.status === 405) {
+          res = await fetch(`${SERVER_URL}/api/scan`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image: base64, mediaType: 'image/png' }),
+          });
+        }
+
         if (!res.ok) throw new Error(`Erreur serveur (${res.status})`);
         const data = await res.json();
-        
-        // NOTE IMPORTANTE : Comme le serveur actuel n'accepte pas de champ 'context' supplémentaire dans le body,
-        // le prompt personnalisé ci-dessus n'est PAS envoyé tel quel au serveur actuel.
-        // Le serveur utilise son propre prompt codé en dur.
-        // SOLUTION TEMPORAIRE : On renvoie juste l'image améliorée. 
-        // Pour que le contexte texte fonctionne, il faudrait modifier api/scan.js pour accepter un champ 'userNotes'.
-        
-        // Pour l'instant, on renvoie le résultat tel quel basé sur l'image plus claire.
         if (onComplete) onComplete(data);
         setLoading(false);
       };
@@ -272,7 +370,7 @@ Retourne UNIQUEMENT un JSON valide avec la structure complète (pieces + cabinet
       setError(err.message);
       setLoading(false);
     }
-  }, [imgSize, onComplete, elements, cabinetDims, moduleWidths]); // Dépend de elements pour le contexte
+  }, [imgSize, onComplete, elements, cabinetDims, moduleWidths, generalNotes, initialResult]); // Dépend de elements pour le contexte
 
   const updateModuleWidth = (idx, value) => {
     setModuleWidths(prev => prev.map((v, i) => i === idx ? value : v));
@@ -315,16 +413,50 @@ Retourne UNIQUEMENT un JSON valide avec la structure complète (pieces + cabinet
       );
     }
     
+    if (el.type === 'rod') {
+      return (
+        <g {...commonProps}>
+          <line x1={el.x1} y1={el.y1} x2={el.x2} y2={el.y2} stroke="#f472b6" strokeWidth="4" strokeLinecap="round" />
+          <circle cx={el.x1} cy={el.y1} r="4" fill="#f472b6" />
+          <circle cx={el.x2} cy={el.y2} r="4" fill="#f472b6" />
+          <text x={(el.x1+el.x2)/2} y={el.y1 - 8} textAnchor="middle" fill="#f472b6" fontSize="11" fontWeight="bold" pointerEvents="none">👔 Tringle</text>
+        </g>
+      );
+    }
+
     if (el.type === 'dim') {
       return (
         <g {...commonProps}>
           <line x1={el.x1} y1={el.y1} x2={el.x2} y2={el.y2} stroke="#22d3ee" strokeWidth="2" strokeDasharray="4" />
-          {el.label && (
-            <text x={(el.x1+el.x2)/2} y={(el.y1+el.y2)/2 - 5} textAnchor="middle" fill="#22d3ee" fontSize="12" fontWeight="bold">{el.label}</text>
-          )}
+          {/* Flèches aux extrémités */}
+          <circle cx={el.x1} cy={el.y1} r="3" fill="#22d3ee" />
+          <circle cx={el.x2} cy={el.y2} r="3" fill="#22d3ee" />
+          {/* Label (valeur) */}
+          <rect 
+            x={(el.x1+el.x2)/2 - 24} y={(el.y1+el.y2)/2 - 14} width="48" height="18" rx="3"
+            fill={el.label ? '#0e7490' : '#164e63'} stroke="#22d3ee" strokeWidth="1"
+            style={{ cursor: 'pointer' }}
+            onClick={(e) => { e.stopPropagation(); setEditingDimId(el.id); }}
+          />
+          <text 
+            x={(el.x1+el.x2)/2} y={(el.y1+el.y2)/2 - 2} 
+            textAnchor="middle" fill="#22d3ee" fontSize="11" fontWeight="bold" pointerEvents="none"
+          >
+            {el.label ? `${el.label} cm` : '? cm'}
+          </text>
         </g>
       );
     }
+
+    if (el.type === 'note') {
+      return (
+        <g key={el.id} onClick={(e) => { e.stopPropagation(); if(tool==='erase') eraseElement(el.id); else setEditingNoteId(el.id); }} style={{ cursor: tool === 'erase' ? 'pointer' : 'pointer' }}>
+          <rect x={el.x - 2} y={el.y - 14} width={Math.max(60, el.text.length * 7 + 12)} height="20" rx="3" fill="#fb923c" opacity="0.85" />
+          <text x={el.x + 4} y={el.y} fill="white" fontSize="11" fontWeight="bold" pointerEvents="none">📝 {el.text}</text>
+        </g>
+      );
+    }
+
     return null;
   };
 
@@ -365,7 +497,7 @@ Retourne UNIQUEMENT un JSON valide avec la structure complète (pieces + cabinet
           </button>
         ))}
         <div className="ml-auto text-xs text-slate-400 self-center px-2">
-          💡 Astuce: Cliquez pour créer, glissez le coin blanc pour redimensionner.
+          💡 Cliquez pour créer, glissez le coin pour redimensionner. Cote: cliquez la valeur pour la modifier.
         </div>
       </div>
 
@@ -434,6 +566,103 @@ Retourne UNIQUEMENT un JSON valide avec la structure complète (pieces + cabinet
           {elements.map(renderElement)}
         </svg>
       </div>
+
+      {/* NOTES GÉNÉRALES */}
+      <div className="bg-slate-900 border-t border-slate-700 p-2">
+        <textarea
+          value={generalNotes}
+          onChange={e => setGeneralNotes(e.target.value)}
+          placeholder="📝 Notes pour Claude (ex: 2 tiroirs en bas du module 3, porte vitrée à gauche...)"
+          className="w-full h-16 px-3 py-2 bg-slate-800 border border-slate-600 rounded text-sm text-slate-200 placeholder-slate-500 resize-none"
+        />
+      </div>
+
+      {/* MODAL : saisie valeur de cote */}
+      {editingDimId && (() => {
+        const dim = elements.find(e => e.id === editingDimId);
+        if (!dim) return null;
+        return (
+          <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center" onClick={() => setEditingDimId(null)}>
+            <div className="bg-slate-800 rounded-xl p-4 border border-slate-600 shadow-xl min-w-[260px]" onClick={e => e.stopPropagation()}>
+              <h3 className="text-white font-bold mb-3">📏 Valeur de la cote (cm)</h3>
+              <input
+                autoFocus
+                type="number"
+                defaultValue={dim.label || ''}
+                placeholder="ex: 120"
+                className="w-full px-3 py-2 bg-slate-900 border border-slate-500 rounded text-white text-lg"
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    const val = e.target.value.trim();
+                    setElements(prev => prev.map(el => el.id === editingDimId ? { ...el, label: val } : el));
+                    setEditingDimId(null);
+                  }
+                  if (e.key === 'Escape') setEditingDimId(null);
+                }}
+              />
+              <div className="flex gap-2 mt-3">
+                <button
+                  className="flex-1 px-3 py-1.5 bg-cyan-700 hover:bg-cyan-600 text-white rounded font-bold text-sm"
+                  onClick={e => {
+                    const input = e.target.closest('div').parentElement.querySelector('input');
+                    const val = input.value.trim();
+                    setElements(prev => prev.map(el => el.id === editingDimId ? { ...el, label: val } : el));
+                    setEditingDimId(null);
+                  }}
+                >
+                  ✓ Valider
+                </button>
+                <button className="px-3 py-1.5 bg-slate-700 text-slate-300 rounded text-sm" onClick={() => setEditingDimId(null)}>Annuler</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* MODAL : édition d'une note */}
+      {editingNoteId && (() => {
+        const note = elements.find(e => e.id === editingNoteId);
+        if (!note) return null;
+        return (
+          <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center" onClick={() => setEditingNoteId(null)}>
+            <div className="bg-slate-800 rounded-xl p-4 border border-slate-600 shadow-xl min-w-[280px]" onClick={e => e.stopPropagation()}>
+              <h3 className="text-white font-bold mb-3">📝 Modifier la note</h3>
+              <input
+                autoFocus
+                type="text"
+                defaultValue={note.text}
+                className="w-full px-3 py-2 bg-slate-900 border border-slate-500 rounded text-white"
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    const val = e.target.value.trim();
+                    if (val) {
+                      setElements(prev => prev.map(el => el.id === editingNoteId ? { ...el, text: val } : el));
+                    }
+                    setEditingNoteId(null);
+                  }
+                  if (e.key === 'Escape') setEditingNoteId(null);
+                }}
+              />
+              <div className="flex gap-2 mt-3">
+                <button
+                  className="flex-1 px-3 py-1.5 bg-orange-600 hover:bg-orange-500 text-white rounded font-bold text-sm"
+                  onClick={e => {
+                    const input = e.target.closest('div').parentElement.querySelector('input');
+                    const val = input.value.trim();
+                    if (val) {
+                      setElements(prev => prev.map(el => el.id === editingNoteId ? { ...el, text: val } : el));
+                    }
+                    setEditingNoteId(null);
+                  }}
+                >
+                  ✓ Valider
+                </button>
+                <button className="px-3 py-1.5 bg-slate-700 text-slate-300 rounded text-sm" onClick={() => setEditingNoteId(null)}>Annuler</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
