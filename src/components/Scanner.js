@@ -1,6 +1,35 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Camera, Upload, Check, X, Loader2, AlertCircle } from 'lucide-react';
 
+// ─── Prompt Claude Vision — format JSON structuré avec positions ────────────
+const VISION_PROMPT = `Tu es un expert en ébénisterie et menuiserie. Analyse cette image d'un meuble et retourne UNIQUEMENT un objet JSON valide (sans markdown, sans \`\`\`json) avec cette structure exacte :
+
+{
+  "width": <largeur totale du meuble en cm>,
+  "height": <hauteur totale du meuble en cm>,
+  "depth": <profondeur estimée en cm>,
+  "plinth": <hauteur du socle/plinthe en cm, 0 si absent>,
+  "thickness": 3,
+  "modules": [
+    {
+      "x_start": <position X du bord gauche intérieur depuis le bord gauche du meuble en cm>,
+      "width": <largeur intérieure nette du module en cm>,
+      "shelves": [ { "y": <hauteur de la tablette depuis le bas intérieur du module en cm> } ],
+      "drawers": [ { "y": <hauteur du bas du tiroir depuis le bas intérieur en cm>, "height": <hauteur du tiroir en cm> } ],
+      "rod": { "y": <hauteur de la tringle depuis le bas intérieur en cm> } ou null,
+      "doors": <nombre de portes dans ce module>
+    }
+  ]
+}
+
+Règles strictes :
+- thickness = 3 (panneaux structurels de 30 mm, toujours)
+- x_start du premier module = 3 (épaisseur du panneau côté gauche)
+- x_start de chaque module suivant = x_start précédent + width précédent + 3
+- Les positions y sont mesurées depuis le bas intérieur du meuble (au-dessus du fond bas)
+- Si un élément est absent : shelves = [], drawers = [], rod = null
+- Retourne UNIQUEMENT le JSON brut, sans aucun texte autour.`;
+
 const Scanner = ({ onComplete, onClose }) => {
   const [step, setStep] = useState('capture');
   const [image, setImage] = useState(null);
@@ -134,6 +163,7 @@ const Scanner = ({ onComplete, onClose }) => {
       const formData = new FormData();
       formData.append('image', base64Data);
       formData.append('mediaType', mediaType);
+      formData.append('prompt', VISION_PROMPT);
 
       const apiUrl = 'https://panelcut-server.vercel.app/api/scan';
       console.log("Envoi du scan vers:", apiUrl);

@@ -3,7 +3,11 @@
   "version": "1.0.0",
   "private": true,
   "dependencies": {
+    "@react-three/drei": "^9.122.0",
+    "@react-three/fiber": "^8.18.0",
+    "@react-three/postprocessing": "^2.19.1",
     "@supabase/supabase-js": "^2.99.3",
+    "html2canvas": "^1.4.1",
     "i18next": "^23.7.6",
     "jspdf": "^4.2.1",
     "lucide-react": "^1.0.1",
@@ -12,8 +16,12 @@
     "react-i18next": "^13.5.0",
     "react-router-dom": "^6.20.0",
     "react-scripts": "5.0.1",
+<<<<<<< HEAD
     "tesseract.js": "^7.0.0",
     "three": "^0.160.0"
+=======
+    "three": "^0.169.0"
+>>>>>>> fresh-start
   },
   "scripts": {
     "prestart": "node scripts/version.js",

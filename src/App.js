@@ -9,6 +9,8 @@ import SketchEditor from './components/SketchEditor';
 import LandingScreen    from './components/LandingScreen';
 import NewProjectWizard from './components/NewProjectWizard';
 import HistoryScreen    from './components/HistoryScreen';
+import CabinetElevationFront from './components/CabinetElevationFront';
+import RealisticFacadeViewer from './visualization/RealisticFacadeViewer';
 import { ChevronLeft, ChevronRight, LogOut, Disc, Moon, Sun } from 'lucide-react';
 import './App.css';
 
@@ -20,6 +22,8 @@ const SCREENS = {
   SKETCH:   'sketch',
   PIECES:   'pieces',
   RESULTS:  'results',
+  FACADE:   'facade',
+  FACADE_REALISTIC: 'facade_realistic',
 };
 
 const DEFAULT_PROJECT = {
@@ -52,7 +56,6 @@ export default function App() {
   const lang = useLang();
   const [langOverride, setLangOverride] = useState(lang);
   
-  // ── Dark Mode State ──
   const [isDark, setIsDark] = useState(() => {
     const stored = localStorage.getItem('pc_darkmode');
     if (stored !== null) return stored === 'true';
@@ -72,7 +75,6 @@ export default function App() {
   const [computing, setComputing] = useState(false);
   const [saving,    setSaving]    = useState(false);
   const [saveMsg,   setSaveMsg]   = useState('');
-
   const [apiKey, setApiKey] = useState(
     process.env.REACT_APP_ANTHROPIC_KEY || lsGet('pc_apikey', '')
   );
@@ -81,7 +83,6 @@ export default function App() {
   const setProject = (p) => { setProjectRaw(p); lsSet(LS_PROJECT, p); };
   const setResults = (r) => { setResultsRaw(r); lsSet(LS_RESULTS, r); };
 
-  // ── Dark Mode: Sync with DOM ──
   useEffect(() => {
     if (isDark) {
       document.documentElement.classList.add('dark');
@@ -91,10 +92,8 @@ export default function App() {
     localStorage.setItem('pc_darkmode', String(isDark));
   }, [isDark]);
 
-  // ── Toggle Dark Mode ──
   const toggleDarkMode = () => setIsDark(prev => !prev);
 
-  // ── Supabase Auth ──
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
@@ -128,12 +127,14 @@ export default function App() {
   };
 
   const goBack = () => {
-    if      (screen === SCREENS.WIZARD)  setScreen(SCREENS.LANDING);
-    else if (screen === SCREENS.SKETCH)  setScreen(SCREENS.WIZARD);
-    else if (screen === SCREENS.PIECES)  setScreen(SCREENS.WIZARD);
-    else if (screen === SCREENS.RESULTS) setScreen(SCREENS.PIECES);
-    else if (screen === SCREENS.HISTORY) setScreen(SCREENS.LANDING);
-    else if (screen === SCREENS.AUTH)    setScreen(SCREENS.LANDING);
+    if      (screen === SCREENS.FACADE_REALISTIC) setScreen(SCREENS.FACADE);
+    else if (screen === SCREENS.FACADE)           setScreen(SCREENS.RESULTS);
+    else if (screen === SCREENS.WIZARD)           setScreen(SCREENS.LANDING);
+    else if (screen === SCREENS.SKETCH)           setScreen(SCREENS.WIZARD);
+    else if (screen === SCREENS.PIECES)           setScreen(SCREENS.WIZARD);
+    else if (screen === SCREENS.RESULTS)          setScreen(SCREENS.PIECES);
+    else if (screen === SCREENS.HISTORY)          setScreen(SCREENS.LANDING);
+    else if (screen === SCREENS.AUTH)             setScreen(SCREENS.LANDING);
   };
 
   const handleOptimize = useCallback(() => {
@@ -150,8 +151,7 @@ export default function App() {
     }, 50);
   }, [project, user]);
 
-  const canGoNext =
-    screen === SCREENS.PIECES && project.pieces.length > 0 && !computing;
+  const canGoNext = screen === SCREENS.PIECES && project.pieces.length > 0 && !computing;
   const showNext = screen === SCREENS.PIECES;
 
   const goNext = () => {
@@ -220,28 +220,33 @@ export default function App() {
   const toggleLang = () => setLangOverride(l => l === 'fr' ? 'en' : 'fr');
   const [devisNum] = useState(() => 'DV-' + new Date().getFullYear() + '-' + String(Math.floor(Math.random() * 9000) + 1000));
 
-  const showBack = [SCREENS.PIECES, SCREENS.RESULTS].includes(screen);
+  const showBack = [SCREENS.PIECES, SCREENS.RESULTS, SCREENS.FACADE, SCREENS.FACADE_REALISTIC].includes(screen);
   const showSave = user && [SCREENS.PIECES, SCREENS.RESULTS].includes(screen);
   const canAnnotate = screen === SCREENS.PIECES && !!project.scanImage;
 
   let headerTitle = 'PanelCut Pro', headerSubtitle = '', steps = [];
   if (screen === SCREENS.PIECES)  { headerTitle = project.name || 'Nouveau projet'; steps = [{ label: 'Panneau', active: true }, { label: 'Pièces', active: true }, { label: 'Résultats', active: false }]; }
   else if (screen === SCREENS.RESULTS) { headerTitle = 'Résultats'; steps = [{ label: 'Panneau', active: true }, { label: 'Pièces', active: true }, { label: 'Résultats', active: true }]; }
+  else if (screen === SCREENS.FACADE || screen === SCREENS.FACADE_REALISTIC) { 
+    headerTitle = 'Façade — ' + (screen === SCREENS.FACADE ? 'Croquis' : 'Vue Client'); 
+    steps = [{ label: 'Panneau', active: true }, { label: 'Pièces', active: true }, { label: 'Façade', active: true }]; 
+  }
 
   const hasHeader = ![SCREENS.AUTH, SCREENS.SKETCH, SCREENS.LANDING, SCREENS.WIZARD, SCREENS.HISTORY].includes(screen);
   const hasSteps  = steps.length > 0;
+  
+  // ← LOG CABINET (déjà présent)
+  console.log('🔍 Cabinet data:', project.cabinet);
 
   return (
     <div className="app min-h-screen bg-[#0f1620] text-slate-200 font-sans dark:bg-slate-950 dark:text-slate-100 transition-colors duration-300">
 
-      {/* ── Standalone full-screen components ── */}
       {screen === SCREENS.LANDING  && <LandingScreen onNew={() => startNew(devisNum)} onHistory={() => setScreen(user ? SCREENS.HISTORY : SCREENS.AUTH)} onAuth={() => setScreen(SCREENS.AUTH)} user={user} />}
 
       {screen === SCREENS.WIZARD   && <NewProjectWizard t={tr} project={project} onChange={setProject} onGoScan={handleScanComplete} onGoManual={() => setScreen(SCREENS.PIECES)} onCancel={() => setScreen(SCREENS.LANDING)} />}
 
       {screen === SCREENS.HISTORY  && <HistoryScreen user={user} onNew={() => startNew(devisNum)} onLoad={handleLoadProject} onScanComplete={handleScanComplete} onBack={() => setScreen(SCREENS.LANDING)} />}
 
-      {/* ── SKETCH EDITOR ── */}
       {screen === SCREENS.SKETCH && (
         <SketchEditor
           image={project.scanImage}
@@ -317,7 +322,15 @@ export default function App() {
                   </button>
                 )}
                 
-                {/* Toggle Dark Mode */}
+                {(screen === SCREENS.FACADE || screen === SCREENS.FACADE_REALISTIC) && (
+                  <button
+                    onClick={() => setScreen(screen === SCREENS.FACADE ? SCREENS.FACADE_REALISTIC : SCREENS.FACADE)}
+                    className="px-3 py-1.5 text-xs font-bold rounded-lg bg-purple-600/20 text-purple-400 border border-purple-500/30 hover:bg-purple-600/30 transition-all"
+                  >
+                    {screen === SCREENS.FACADE ? '🖼️ Vue Client' : '📐 Croquis'}
+                  </button>
+                )}
+                
                 <button
                   onClick={toggleDarkMode}
                   title={tr.toggle_dark_mode || 'Mode sombre'}
@@ -365,6 +378,24 @@ export default function App() {
                 </div>
               )
             }
+            
+            {screen === SCREENS.FACADE && (
+              <div className="max-w-4xl mx-auto">
+                <CabinetElevationFront cabinet={project.cabinet} name={project.name || 'Meuble'} />
+                <div className="mt-4 flex justify-center">
+                  <button
+                    onClick={() => setScreen(SCREENS.FACADE_REALISTIC)}
+                    className="px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl font-bold transition-all shadow-lg flex items-center gap-2"
+                  >
+                    🖼️ Voir en vue réaliste client
+                  </button>
+                </div>
+              </div>
+            )}
+            
+            {screen === SCREENS.FACADE_REALISTIC && (
+              <RealisticFacadeViewer cabinet={project.cabinet} projectName={project.name} />
+            )}
           </main>
         </>
       )}
