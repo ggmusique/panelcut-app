@@ -246,21 +246,13 @@ Retourne UNIQUEMENT un JSON valide avec la structure complète (pieces + cabinet
           body: JSON.stringify({ 
             image: base64, 
             mediaType: 'image/png',
-            // Optionnel : on pourrait aussi envoyer le contexte texte séparément si le serveur le gère
-            // Mais ici on compte sur le prompt système ou on modifie le serveur pour accepter un champ 'context'
+            userNotes: buildContextPrompt(),
           }),
         });
 
         if (!res.ok) throw new Error(`Erreur serveur (${res.status})`);
         const data = await res.json();
         
-        // NOTE IMPORTANTE : Comme le serveur actuel n'accepte pas de champ 'context' supplémentaire dans le body,
-        // le prompt personnalisé ci-dessus n'est PAS envoyé tel quel au serveur actuel.
-        // Le serveur utilise son propre prompt codé en dur.
-        // SOLUTION TEMPORAIRE : On renvoie juste l'image améliorée. 
-        // Pour que le contexte texte fonctionne, il faudrait modifier api/scan.js pour accepter un champ 'userNotes'.
-        
-        // Pour l'instant, on renvoie le résultat tel quel basé sur l'image plus claire.
         if (onComplete) onComplete(data);
         setLoading(false);
       };

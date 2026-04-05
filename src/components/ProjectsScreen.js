@@ -152,41 +152,7 @@ export default function ProjectsScreen({ onLoad, onNew, user, onScanComplete }) 
               </button>
             </div>
 
-            {/* Toggle 2D / 3D si modèle meuble disponible */}
-            {cabinetModel && (
-              <div className="flex gap-2 mb-4">
-                <button
-                  onClick={() => setView3D(false)}
-                  className={"px-4 py-2 rounded-lg text-sm font-bold transition-colors " + (!view3D ? 'bg-orange-500 text-white' : 'bg-white/5 text-slate-400 hover:text-white')}
-                >
-                  Plan 2D
-                </button>
-                <button
-                  onClick={() => setView3D(true)}
-                  className={"px-4 py-2 rounded-lg text-sm font-bold transition-colors " + (view3D ? 'bg-orange-500 text-white' : 'bg-white/5 text-slate-400 hover:text-white')}
-                >
-                  Vue 3D
-                </button>
-              </div>
-              {lastResult.cabinet && (
-                <>
-                  <div className="bg-white/5 backdrop-blur-sm border border-white/5 p-4 rounded-xl text-center hover:bg-white/10 transition-colors">
-                    <div className="text-xl font-bold text-orange-400 mb-1">{lastResult.cabinet.width}×{lastResult.cabinet.height}</div>
-                    <div className="text-xs text-slate-400 uppercase tracking-wider font-semibold">L×H (cm)</div>
-                  </div>
-                  <div className="bg-white/5 backdrop-blur-sm border border-white/5 p-4 rounded-xl text-center hover:bg-white/10 transition-colors">
-                    <div className="text-xl font-bold text-sky-400 mb-1">P {lastResult.cabinet.depth ?? '?'} cm</div>
-                    <div className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Profondeur</div>
-                  </div>
-                </>
-              )}
-              <div className="bg-white/5 backdrop-blur-sm border border-white/5 p-4 rounded-xl text-center hover:bg-white/10 transition-colors">
-                <div className="text-3xl font-bold text-green-400 mb-1">
-                  {lastResult.confidence ? Math.round(lastResult.confidence * 100) + '%' : '—'}
-                </div>
-                <div className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Confiance IA</div>
-              </div>
-            )}
+
 
             <div className="mt-4 flex items-center gap-2 text-xs text-slate-500">
               <Activity className="w-3 h-3 text-orange-500" />

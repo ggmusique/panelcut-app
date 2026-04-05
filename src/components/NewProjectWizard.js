@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { prepareImageForScan } from '../utils/ocrExtract';
 
 export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoManual, onCancel }) {
   // ── 🔥 FIX CRITIQUE : Refs pour éviter boucles infinies + perte de données ──
@@ -128,10 +129,9 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
   const handleFileSelect = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    
     setScanning(true);
+
     try {
-      // 1. Lire le fichier original pour l'affichage local (optionnel, mais utile pour debug)
       const originalBase64 = await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result);
@@ -139,43 +139,29 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
         reader.readAsDataURL(file);
       });
 
-      // 2. PRÉ-TRAITER L'IMAGE POUR L'IA (Noir & Blanc + Contraste)
-      console.log("🔄 Pré-traitement de l'image pour l'IA...");
-      const processedBase64 = await preprocessImage(originalBase64);
-      
-      // Extraire la partie pure Base64 (sans "data:image/jpeg;base64,")
-      const base64Data = processedBase64.split(',')[1];
+      // Pipeline : préprocess + OCR en parallèle
+      const { processedImage, ocrNumbers } = await prepareImageForScan(originalBase64);
+      console.log(`🔢 OCR détecte ${ocrNumbers.length} cotes :`, ocrNumbers);
 
-      // 3. Préparer l'envoi en JSON (Format attendu par le serveur)
-      const payload = {
-        image: base64Data,
-        mediaType: file.type || 'image/jpeg'
-      };
+      const base64Data = processedImage.split(',')[1];
 
-      const apiUrl = 'https://panelcut-server.vercel.app/api/scan';
-      console.log("🚀 Envoi du scan vers:", apiUrl);
-
-      const response = await fetch(apiUrl, {
+      const response = await fetch('https://panelcut-server.vercel.app/api/scan', {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json' 
-        },
-        body: JSON.stringify(payload),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          image: base64Data,
+          mediaType: 'image/jpeg',
+          ocrNumbers,
+        }),
       });
 
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
-        console.error("❌ Erreur API détaillée:", errData);
         throw new Error(errData.error || `Erreur serveur (${response.status})`);
       }
-
       const scanResult = await response.json();
-      console.log("✅ Résultat du scan reçu:", scanResult);
 
-      // 4. Callback avec le résultat ET l'image traitée (pour affichage si besoin)
-      if (onGoScan) {
-        onGoScan(scanResult, processedBase64);
-      }
+      if (onGoScan) onGoScan(scanResult, processedImage);
 
     } catch (err) {
       console.error('💥 Échec complet du scan:', err);
