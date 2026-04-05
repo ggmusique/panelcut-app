@@ -343,12 +343,7 @@ Retourne UNIQUEMENT un JSON valide avec cette structure :
           body: JSON.stringify({ 
             image: base64, 
             mediaType: 'image/png',
-<<<<<<< HEAD
             userNotes: buildContextPrompt(),
-=======
-            prompt: fullPrompt,
-            context: initialResult || null,
->>>>>>> fresh-start
           }),
         });
 
@@ -363,10 +358,7 @@ Retourne UNIQUEMENT un JSON valide avec cette structure :
 
         if (!res.ok) throw new Error(`Erreur serveur (${res.status})`);
         const data = await res.json();
-<<<<<<< HEAD
         
-=======
->>>>>>> fresh-start
         if (onComplete) onComplete(data);
         setLoading(false);
       };

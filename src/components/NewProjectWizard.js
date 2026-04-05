@@ -202,16 +202,7 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
       const { processedImage, ocrNumbers } = await prepareImageForScan(originalBase64);
       console.log(`🔢 OCR détecte ${ocrNumbers.length} cotes :`, ocrNumbers);
 
-<<<<<<< HEAD
       const base64Data = processedImage.split(',')[1];
-=======
-      // 3. Préparer l'envoi en JSON (Format attendu par le serveur)
-      const payload = {
-        image:     base64Data,
-        mediaType: file.type || 'image/jpeg',
-        prompt:    getVisionPrompt(panelThickness),
-      };
->>>>>>> fresh-start
 
       const response = await fetch('https://panelcut-server.vercel.app/api/scan', {
         method: 'POST',
@@ -229,29 +220,7 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
       }
       const scanResult = await response.json();
 
-<<<<<<< HEAD
       if (onGoScan) onGoScan(scanResult, processedImage);
-=======
-      // 4. Injecter l'épaisseur choisie par l'utilisateur (priorité sur la valeur IA)
-      //    Cela garantit que engineV2 et le plan 2D utilisent la bonne épaisseur.
-      const correctedResult = {
-        ...scanResult,
-        cabinet: {
-          ...(scanResult?.cabinet || {}),
-          thickness: panelThickness,
-        },
-        thickness: panelThickness,
-      };
-
-      // 5. Mémoriser le résultat et l'image pour une éventuelle rectification
-      processedImageRef.current = processedBase64;
-      setLastScanResult(correctedResult);
-
-      // 6. Callback avec le résultat corrigé ET l'image traitée
-      if (onGoScan) {
-        onGoScan(correctedResult, processedBase64);
-      }
->>>>>>> fresh-start
 
     } catch (err) {
       console.error('💥 Échec complet du scan:', err);
