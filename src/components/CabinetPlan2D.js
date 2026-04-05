@@ -486,19 +486,21 @@ export default function CabinetPlan2D({ cabinet, name = 'Meuble' }) {
     );
   }
 
-  const cab = {
+  const cabBase = {
     ...cabinet,
     depth:     cabinet.depth     || 60,
     thickness: cabinet.thickness || 1.8,
     plinth:    cabinet.plinth    || 0,
-    // ← NOUVEAU : si panels vide/absent, on les génère depuis modules ou dimensions
+  };
+  const cab = {
+    ...cabBase,
     panels: (cabinet.panels && cabinet.panels.length > 0)
       ? cabinet.panels
-      : buildPanelsFromModules(cab) ?? buildPanelsFromDimensions({
+      : buildPanelsFromModules(cabBase) ?? buildPanelsFromDimensions({
           width:     cabinet.width,
           height:    cabinet.height,
-          depth:     cabinet.depth     || 60,
-          thickness: cabinet.thickness || 1.8,
+          depth:     cabBase.depth,
+          thickness: cabBase.thickness,
         }),
   };
 

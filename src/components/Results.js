@@ -180,14 +180,14 @@ function PlanSubTabs({ active, onChange }) {
   );
 }
 
-// ── TabBar : Plans TOUJOURS visible — on affiche un message si pas de cabinet
-function TabBar({ active, onChange }) {
+// ── TabBar : Plans visible seulement si cabinet disponible
+function TabBar({ active, onChange, hasCabinet }) {
   const tabs = [
     { id: 'resume',  label: 'Résumé',   icon: <BarChart2 className="w-4 h-4" /> },
     { id: 'visual',  label: 'Visuel',   icon: <Maximize2 className="w-4 h-4" /> },
     { id: 'cuts',    label: 'Coupes',   icon: <Scissors  className="w-4 h-4" /> },
     { id: 'boards',  label: 'Planches', icon: <List      className="w-4 h-4" /> },
-    { id: 'plans',   label: 'Plans',    icon: <Map       className="w-4 h-4" /> },
+    ...(hasCabinet ? [{ id: 'plans', label: 'Plans', icon: <Map className="w-4 h-4" /> }] : []),
   ];
   return (
     <div className="flex bg-[#111] border border-white/5 rounded-xl p-1 gap-1 overflow-x-auto">
@@ -227,7 +227,7 @@ export default function Results({ t, results, project }) {
   const panel      = results.panels[currentPanel];
   const panelW     = Math.round(project.panel.w * 10);
   const panelH     = Math.round(project.panel.h * 10);
-  const kerf       = Math.round((project.kerf ?? 3) * 10);
+  const kerf       = Math.round((project.kerf ?? 3) * 1);
   const totalCost  = (results.summary.totalPanels * (project.pricePerPanel || 0)).toFixed(2);
   const utilization = panel.utilizationPct;
 
@@ -251,7 +251,7 @@ export default function Results({ t, results, project }) {
   return (
     <div className="min-h-screen bg-[#050505] text-slate-200 pb-32 font-sans">
       <div className="sticky top-16 z-20 bg-[#050505]/95 backdrop-blur-xl pt-3 pb-2 px-4">
-        <TabBar active={tab} onChange={setTab} />
+        <TabBar active={tab} onChange={setTab} hasCabinet={hasCabinet} />
       </div>
 
       <div className="px-4 py-4 max-w-7xl mx-auto">

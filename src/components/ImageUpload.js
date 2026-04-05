@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Upload, X, FileImage, CheckCircle, AlertCircle } from 'lucide-react';
+import { prepareImageForScan } from '../utils/ocrExtract';
 
 export default function ImageUpload({ onScanComplete, onCancel }) {
   const [dragActive, setDragActive] = useState(false);
@@ -44,28 +45,19 @@ export default function ImageUpload({ onScanComplete, onCancel }) {
     if (!file || !preview) return;
     setLoading(true);
     setError(null);
-
     try {
-      const base64Image = preview.split(',')[1];
+      const { processedImage, ocrNumbers } = await prepareImageForScan(preview);
+      const base64Image = processedImage.split(',')[1];
 
       const response = await fetch('https://panelcut-server.vercel.app/api/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: base64Image, mediaType: file.type }),
+        body: JSON.stringify({ image: base64Image, mediaType: file.type, ocrNumbers }),
       });
-
-      if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.message || "Erreur lors de l'analyse");
-      }
-
+      if (!response.ok) throw new Error("Erreur lors de l'analyse");
       const data = await response.json();
       console.log('SCAN RESULT:', JSON.stringify(data, null, 2));
-
-      // ✅ FIX : on transmet l'image base64 complète (avec header data:image/...)
-      // pour que ScanWithEditor → SketchEditor puisse l'afficher
-      onScanComplete(data, preview);
-
+      onScanComplete(data, processedImage);
     } catch (err) {
       console.error(err);
       setError('Échec de la connexion au serveur. Vérifiez votre connexion.');

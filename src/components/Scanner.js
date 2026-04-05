@@ -1,9 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Camera, Upload, Check, X, Loader2, AlertCircle } from 'lucide-react';
-import { useTranslation } from 'react-i18next';
 
 const Scanner = ({ onComplete, onClose }) => {
-  const { t } = useTranslation();
   const [step, setStep] = useState('capture');
   const [image, setImage] = useState(null);
   const [preview, setPreview] = useState(null);
@@ -36,7 +34,7 @@ const Scanner = ({ onComplete, onClose }) => {
       }
     } catch (err) {
       console.error("Erreur caméra:", err);
-      setError(t('scanner.camera_error') || "Erreur d'accès à la caméra");
+      setError("Erreur d'accès à la caméra");
     }
   };
 
@@ -148,7 +146,7 @@ const Scanner = ({ onComplete, onClose }) => {
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         console.error("Erreur serveur:", response.status, errorData);
-        throw new Error(errorData.error || t('scanner.upload_failed'));
+        throw new Error(errorData.error || "Échec de l'envoi");
       }
 
       const data = await response.json();
@@ -157,7 +155,7 @@ const Scanner = ({ onComplete, onClose }) => {
       if (data.pieces) {
         setDetectedPieces(data.pieces);
       } else {
-        setDetectedPieces([{ id: 1, name: t('scanner.detected_part'), width: 100, height: 200, quantity: 1 }]);
+        setDetectedPieces([{ id: 1, name: 'Pièce détectée', width: 100, height: 200, quantity: 1 }]);
       }
 
       setStep('done');
@@ -165,8 +163,8 @@ const Scanner = ({ onComplete, onClose }) => {
       setTimeout(() => {
         if (onComplete) {
           onComplete({
-            image: preview, // On renvoie l'image originale pour l'affichage
-            pieces: detectedPieces.length > 0 ? detectedPieces : [{ id: 1, name: t('scanner.detected_part'), width: 100, height: 200, quantity: 1 }],
+            image: preview,
+            pieces: detectedPieces.length > 0 ? detectedPieces : [{ id: 1, name: 'Pièce détectée', width: 100, height: 200, quantity: 1 }],
             cabinet: data.cabinet
           });
         }
@@ -174,7 +172,7 @@ const Scanner = ({ onComplete, onClose }) => {
 
     } catch (err) {
       console.error("Échec du scan:", err);
-      setError(err.message || t('scanner.upload_failed'));
+      setError(err.message || "Échec de l'envoi");
       setStep('review');
     } finally {
       setIsProcessing(false);
@@ -198,7 +196,7 @@ const Scanner = ({ onComplete, onClose }) => {
         
         <div className="p-4 border-b dark:border-gray-700 flex justify-between items-center">
           <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-            {t('scanner.title')}
+            Scanner un plan
           </h3>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-700 dark:text-gray-400">
             <X size={24} />
@@ -233,14 +231,14 @@ const Scanner = ({ onComplete, onClose }) => {
                   className="flex-1 py-3 px-4 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-white rounded-lg font-medium hover:bg-gray-300 dark:hover:bg-gray-600 transition flex items-center justify-center gap-2"
                 >
                   <Upload size={20} />
-                  {t('scanner.upload_photo')}
+                  Choisir une photo
                 </button>
                 <button
                   onClick={handleCapture}
                   className="flex-1 py-3 px-4 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition flex items-center justify-center gap-2"
                 >
                   <Camera size={20} />
-                  {t('scanner.take_photo')}
+                  Prendre une photo
                 </button>
               </div>
               <input
@@ -262,7 +260,7 @@ const Scanner = ({ onComplete, onClose }) => {
                   onClick={resetScan}
                   className="flex-1 py-3 px-4 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-white rounded-lg font-medium hover:bg-gray-300 dark:hover:bg-gray-600 transition"
                 >
-                  {t('common.retry')}
+                  Réessayer
                 </button>
                 <button
                   onClick={handleConfirm}
@@ -270,7 +268,7 @@ const Scanner = ({ onComplete, onClose }) => {
                   className="flex-1 py-3 px-4 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition flex items-center justify-center gap-2 disabled:opacity-50"
                 >
                   {isProcessing ? <Loader2 className="animate-spin" size={20} /> : <Check size={20} />}
-                  {isProcessing ? t('scanner.processing') : t('common.confirm')}
+                  {isProcessing ? 'Analyse en cours...' : 'Confirmer'}
                 </button>
               </div>
             </div>
@@ -279,8 +277,8 @@ const Scanner = ({ onComplete, onClose }) => {
           {step === 'processing' && (
             <div className="text-center py-10">
               <Loader2 className="animate-spin mx-auto mb-4 text-blue-600" size={48} />
-              <p className="text-gray-600 dark:text-gray-300 font-medium">{t('scanner.analyzing')}</p>
-              <p className="text-sm text-gray-500 mt-2">{t('scanner.please_wait')}</p>
+              <p className="text-gray-600 dark:text-gray-300 font-medium">Claude Vision analyse...</p>
+              <p className="text-sm text-gray-500 mt-2">Cela prend ~10 secondes</p>
             </div>
           )}
 
@@ -289,11 +287,11 @@ const Scanner = ({ onComplete, onClose }) => {
               <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Check size={32} />
               </div>
-              <h4 className="text-xl font-bold text-gray-900 dark:text-white mb-2">{t('scanner.success')}</h4>
+              <h4 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Analyse réussie !</h4>
               <p className="text-gray-600 dark:text-gray-300">
-                {t('scanner.parts_detected', { count: detectedPieces.length })}
+                {detectedPieces.length} pièce(s) détectée(s)
               </p>
-              <p className="text-sm text-gray-500 mt-4">{t('scanner.redirecting')}</p>
+              <p className="text-sm text-gray-500 mt-4">Chargement...</p>
             </div>
           )}
         </div>
