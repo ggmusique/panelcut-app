@@ -182,15 +182,7 @@ export default function App() {
       pieces,
       cabinet,
       scanImage:  scanImageBase64 || null,
-      scanResult: {
-        ...scanResult,
-        // Flag : true si les dims viennent du wizard (panelW/H déjà saisis)
-        _dimensionsFromWizard: Boolean(
-          prev.panel?.w > 0 &&
-          prev.panel?.h > 0 &&
-          prev.name?.trim().length > 0
-        ),
-      },
+      scanResult: scanResult,
     }));
     setResults(null);
     setScreen(SCREENS.SKETCH);
