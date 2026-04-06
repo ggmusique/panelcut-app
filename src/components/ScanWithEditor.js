@@ -66,9 +66,10 @@ export default function ScanWithEditor({ initialScanResult, scanImage, apiKey, o
         <div className="flex flex-col gap-4">
           <SketchEditor
             scanImage={scanImage}
-            scanResult={scanResult}
+            initialResult={scanResult}
             onExport={handleEditorExport}
             onCancel={onBackToScan}
+            onComplete={handleRefinementDone}
           />
 
           {/* Bouton bypass : utiliser le scan initial sans corriger */}
