@@ -51,10 +51,11 @@ function lsSet(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
 }
 function lsClear() {
-  [LS_SCREEN, LS_PROJECT, LS_RESULTS].forEach(k => localStorage.removeItem(k));
+  // ← inclut maintenant LS_SKETCH_KEY pour la déconnexion
+  [LS_SCREEN, LS_PROJECT, LS_RESULTS, LS_SKETCH_KEY].forEach(k => localStorage.removeItem(k));
 }
 
-// ─── Constantes SVG façade (doit correspondre à SketchEditor) ────────────────
+// ─── Constantes SVG façade ────────────────────────────────────────────────────
 const WOOD_FILL   = '#f5ede0';
 const WOOD_STROKE = '#8b6914';
 const DIM_COLOR   = '#dc2626';
@@ -62,7 +63,6 @@ const DOUBLE_COLOR = '#d97706';
 const MARGIN      = { l: 65, r: 52, t: 55, b: 65 };
 const toNum = (v, d = 0) => { const n = Number(v); return Number.isFinite(n) ? n : d; };
 
-// ─── Calcul géométrie modules ─────────────────────────────────────────────────
 function computeMRects(facadeModules, joints, thPx, drawW, drawH, mL, mT, plPx) {
   const innerH     = drawH - plPx;
   const totalSepPx = joints.reduce((acc, j) => acc + (j ? 2 * thPx : thPx), 0) + 2 * thPx;
@@ -84,12 +84,10 @@ function computeMRects(facadeModules, joints, thPx, drawW, drawH, mL, mT, plPx) 
   });
 }
 
-// ─── Vue façade SVG (lecture seule, identique à l'éditeur) ───────────────────
 function FacadeCroquisView({ editorState, cabinet }) {
   const svgW = 1100;
   const svgH = 650;
 
-  // Priorité : état éditeur sauvegardé
   const facadeModules = editorState?.facadeModules;
   const facadeItems   = editorState?.facadeItems   || [];
   const joints        = editorState?.joints        || [];
@@ -100,7 +98,6 @@ function FacadeCroquisView({ editorState, cabinet }) {
   };
 
   if (!facadeModules || facadeModules.length === 0) {
-    // Fallback vers le composant legacy
     return <CabinetElevationFront cabinet={cabinet} name="Meuble" />;
   }
 
@@ -160,12 +157,10 @@ function FacadeCroquisView({ editorState, cabinet }) {
           </marker>
         </defs>
 
-        {/* Titre */}
         <text x={svgW/2} y={22} textAnchor="middle" fontSize={13} fontWeight="700" fill="#334155">
           {cabW} × {cabH} cm{plinth > 0 ? ` + ${plinth} cm plinthe` : ''}
         </text>
 
-        {/* Corps principal */}
         <rect x={mL} y={mT} width={drawW} height={drawH} fill="url(#fcGW)" stroke={WOOD_STROKE} strokeWidth="2.5"/>
         <rect x={mL+thPx} y={mT+thPx} width={drawW-2*thPx} height={innerH-thPx} fill="#ede4d3"/>
         {plPx > 2 && (
@@ -179,7 +174,6 @@ function FacadeCroquisView({ editorState, cabinet }) {
         <rect x={mL} y={mT}              width={drawW}  height={thPx}  fill="url(#fcGT)" stroke={WOOD_STROKE} strokeWidth="1.5"/>
         <rect x={mL} y={mT+innerH-thPx}  width={drawW}  height={thPx}  fill="url(#fcGT)" stroke={WOOD_STROKE} strokeWidth="1.5"/>
 
-        {/* Séparateurs */}
         {mRects.map(({ x, w, i }) => {
           if (i >= facadeModules.length - 1) return null;
           const isDouble = joints[i];
@@ -197,7 +191,6 @@ function FacadeCroquisView({ editorState, cabinet }) {
           );
         })}
 
-        {/* Modules */}
         {mRects.map(({ x, w, m, i, intTop, intBottom, intH: iH }) => {
           const nbD     = m.drawers || 0;
           const drawerH = Math.min(iH * 0.15, 46);
@@ -237,7 +230,6 @@ function FacadeCroquisView({ editorState, cabinet }) {
               {portes}
               <circle cx={x+w/2} cy={numY} r="20" fill="none" stroke={DIM_COLOR} strokeWidth="2"/>
               <text x={x+w/2} y={numY+6} textAnchor="middle" fill={DIM_COLOR} fontWeight="700" fontSize="17">{i+1}</text>
-              {/* Cote largeur */}
               <line x1={x}   y1={mT+drawH+10} x2={x+w} y2={mT+drawH+10} stroke="#b45309" strokeWidth="1"
                 markerStart="url(#fcArrL)" markerEnd="url(#fcArrR)"/>
               <line x1={x}   y1={mT+drawH+6}  x2={x}   y2={mT+drawH+14} stroke="#b45309" strokeWidth="1"/>
@@ -247,7 +239,6 @@ function FacadeCroquisView({ editorState, cabinet }) {
           );
         })}
 
-        {/* Items libres : tablettes + tringles */}
         {facadeItems.map(item => {
           const mr = mRects[item.modIdx];
           if (!mr) return null;
@@ -275,7 +266,6 @@ function FacadeCroquisView({ editorState, cabinet }) {
           return null;
         })}
 
-        {/* Cotes générales */}
         <line x1={mL} y1={mT-26} x2={mL+drawW} y2={mT-26} stroke={DIM_COLOR} strokeWidth="1.5"
           markerStart="url(#fcArrL)" markerEnd="url(#fcArrR)"/>
         <line x1={mL}       y1={mT-32} x2={mL}       y2={mT-20} stroke={DIM_COLOR} strokeWidth="1.5"/>
@@ -289,7 +279,6 @@ function FacadeCroquisView({ editorState, cabinet }) {
           transform={`rotate(90 ${mL+drawW+40} ${mT+drawH/2})`}>{cabH} cm</text>
       </svg>
 
-      {/* Badge source */}
       <div className="mt-2 flex justify-center">
         <span className="text-xs text-slate-500 bg-slate-100 px-3 py-1 rounded-full border border-slate-200">
           ✏️ Plan depuis l'éditeur intelligent — modifiez-le pour mettre à jour cette vue
@@ -318,10 +307,7 @@ export default function App() {
   const [project, setProjectRaw] = useState(() => lsGet(LS_PROJECT, { ...DEFAULT_PROJECT }));
   const [results, setResultsRaw] = useState(() => lsGet(LS_RESULTS, null));
 
-  // ─ Source d'appel de SketchEditor (pour savoir où revenir)
   const sketchCalledFrom = useRef(SCREENS.WIZARD);
-
-  // ─ État éditeur lu depuis localStorage (mis à jour à chaque affichage FACADE)
   const [editorState, setEditorState] = useState(null);
 
   useEffect(() => {
@@ -381,12 +367,14 @@ export default function App() {
   }, []);
 
   const startNew = (devisNum = '') => {
+    // ← Vide l'éditeur façade : on repart de zéro
+    localStorage.removeItem(LS_SKETCH_KEY);
+    setEditorState(null);
     setProject({ ...DEFAULT_PROJECT, devisNum });
     setResults(null);
     setScreen(SCREENS.WIZARD);
   };
 
-  // ─ Ouvre l'éditeur intelligent depuis la façade
   const openEditorFromFacade = () => {
     sketchCalledFrom.current = SCREENS.FACADE;
     setScreen(SCREENS.SKETCH);
@@ -397,7 +385,6 @@ export default function App() {
     else if (screen === SCREENS.FACADE)           setScreen(SCREENS.RESULTS);
     else if (screen === SCREENS.WIZARD)           setScreen(SCREENS.LANDING);
     else if (screen === SCREENS.SKETCH) {
-      // Retour vers la source d'appel
       setScreen(sketchCalledFrom.current || SCREENS.WIZARD);
       sketchCalledFrom.current = SCREENS.WIZARD;
     }
@@ -431,6 +418,9 @@ export default function App() {
   const handleLoadProject = async (id) => {
     const { data, error } = await loadProject(id);
     if (error || !data) return;
+    // ← Vide l'éditeur façade : chaque projet chargé repart proprement
+    localStorage.removeItem(LS_SKETCH_KEY);
+    setEditorState(null);
     const p = { ...data.project_data, supabaseId: data.id };
     setProject(p);
     if (data.results_data) { setResults(data.results_data); setScreen(SCREENS.RESULTS); }
@@ -446,6 +436,10 @@ export default function App() {
     })).filter(p => p.length > 0 && p.height > 0);
 
     const cabinet = scanResult.cabinet || null;
+
+    // ← Vide l'ancien plan façade avant le nouveau scan
+    localStorage.removeItem(LS_SKETCH_KEY);
+    setEditorState(null);
 
     setProject(prev => ({
       ...prev,
@@ -470,7 +464,6 @@ export default function App() {
     const cabinet = newScanResult.cabinet || project.cabinet;
     setProject(p => ({ ...p, pieces, cabinet, scanResult: newScanResult }));
 
-    // Retour vers la source (FACADE ou PIECES)
     const dest = sketchCalledFrom.current === SCREENS.FACADE ? SCREENS.FACADE : SCREENS.PIECES;
     sketchCalledFrom.current = SCREENS.WIZARD;
     setScreen(dest);
@@ -594,7 +587,6 @@ export default function App() {
                   </button>
                 )}
 
-                {/* ─ Bouton Modifier dans éditeur (visible sur écran FACADE) */}
                 {screen === SCREENS.FACADE && (
                   <button
                     onClick={openEditorFromFacade}
@@ -661,7 +653,6 @@ export default function App() {
               )
             }
             
-            {/* ─── FAÇADE CROQUIS : plan de l'éditeur intelligent ─── */}
             {screen === SCREENS.FACADE && (
               <div className="max-w-5xl mx-auto">
                 <FacadeCroquisView
