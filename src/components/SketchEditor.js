@@ -559,19 +559,50 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
 
   // ─── Relance Claude : capture TOUJOURS le SVG façade édité ───────────────────
   const handleRelancer = useCallback(async () => {
-    setLoading(true); setError(null);
+    setLoading(true);
+    setError(null);
+
     try {
-      // On capture le SVG façade dédié (toujours monté hors-écran)
-      const facadeSvg = facadeSvgRef.current;
-      if (!facadeSvg) throw new Error('SVG façade introuvable');
+      // 1. Mémoriser la vue active pour la restaurer après
+      const previousView = baseView;
 
-      const svgStr = new XMLSerializer().serializeToString(facadeSvg);
-      const blob   = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
-      const url    = URL.createObjectURL(blob);
+      // 2. Si on n'est pas déjà en vue façade, y basculer le temps
+      //    de la capture (le SVG principal doit afficher FacadeRealisteSVG)
+      if (baseView !== 'facade') {
+        setBaseView('facade');
+        // Attendre que React re-rende le SVG avec la vue façade
+        await new Promise(resolve => setTimeout(resolve, 120));
+      }
 
+      // 3. Capturer le SVG principal (svgRef) — celui que l'utilisateur voit
+      const mainSvg = svgRef.current;
+      if (!mainSvg) throw new Error('SVG principal introuvable');
+
+      // 4. Cloner le SVG et forcer les dimensions pour l'export
+      const clone = mainSvg.cloneNode(true);
+      clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+      const vb = mainSvg.viewBox?.baseVal;
+      const exportW = vb && vb.width  > 0 ? vb.width  : imgSize.w;
+      const exportH = vb && vb.height > 0 ? vb.height : imgSize.h;
+      clone.setAttribute('width',  exportW);
+      clone.setAttribute('height', exportH);
+
+      // 5. Ajouter un fond blanc explicite (évite fond transparent)
+      const bgRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      bgRect.setAttribute('width',  '100%');
+      bgRect.setAttribute('height', '100%');
+      bgRect.setAttribute('fill',   '#f8fafc');
+      clone.insertBefore(bgRect, clone.firstChild);
+
+      // 6. Sérialiser → base64 data URL (pas de blob URL → pas de CORS)
+      const svgStr  = new XMLSerializer().serializeToString(clone);
+      const b64svg  = btoa(unescape(encodeURIComponent(svgStr)));
+      const dataUrl = 'data:image/svg+xml;base64,' + b64svg;
+
+      // 7. Dessiner sur canvas haute résolution
       const canvas = document.createElement('canvas');
-      canvas.width  = FACADE_W * 2;
-      canvas.height = FACADE_H * 2;
+      canvas.width  = exportW * 2;
+      canvas.height = exportH * 2;
       const ctx2d = canvas.getContext('2d');
 
       await new Promise((resolve, reject) => {
@@ -580,36 +611,54 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
           ctx2d.fillStyle = '#f8fafc';
           ctx2d.fillRect(0, 0, canvas.width, canvas.height);
           ctx2d.drawImage(img, 0, 0, canvas.width, canvas.height);
-          URL.revokeObjectURL(url);
           resolve();
         };
         img.onerror = reject;
-        img.src = url;
+        img.src = dataUrl;
       });
 
       const base64 = canvas.toDataURL('image/png').split(',')[1];
-      const SERVER = 'https://panelcut-server.vercel.app';
 
+      // 8. Restaurer la vue précédente si on l'avait changée
+      if (previousView !== 'facade') {
+        setBaseView(previousView);
+      }
+
+      // 9. Appel API
+      const SERVER = 'https://panelcut-server.vercel.app';
       let res = await fetch(`${SERVER}/api/refine`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: base64, mediaType: 'image/png', userNotes: buildContextPrompt() }),
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          image:     base64,
+          mediaType: 'image/png',
+          userNotes: buildContextPrompt(),
+          prompt:    buildContextPrompt(),
+        }),
       });
-      if (res.status === 404 || res.status === 405)
+      if (res.status === 404 || res.status === 405) {
         res = await fetch(`${SERVER}/api/scan`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ image: base64, mediaType: 'image/png' }),
         });
+      }
       if (!res.ok) throw new Error(`Erreur serveur (${res.status})`);
 
       const data = await res.json();
       if (onComplete) onComplete(data);
-      setLoading(false);
+
     } catch (err) {
-      console.error(err);
+      console.error('handleRelancer error:', err);
       setError(err.message);
+    } finally {
       setLoading(false);
     }
-  }, [onComplete, elements, cabinetDims, facadeModules, facadeItems, generalNotes, joints]);
+  }, [
+    onComplete, baseView, imgSize,
+    elements, cabinetDims, facadeModules,
+    facadeItems, generalNotes, joints,
+  ]);
 
   const renderElement = (el) => {
     if (el.type === 'dim') return (
