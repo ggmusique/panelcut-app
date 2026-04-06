@@ -557,52 +557,34 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     return ctx;
   };
 
-  // ─── Relance Claude : capture TOUJOURS le SVG façade édité ───────────────────
+  // ─── Relance Claude : capture TOUJOURS facadeSvgRef (SVG hors-écran dédié) ──
+  // FIX: on n'utilise PLUS svgRef (le SVG principal visible, dépendant de baseView).
+  // facadeSvgRef est toujours monté avec FacadeRealisteSVG à jour, indépendamment
+  // de la vue active ('photo' ou 'facade'). Plus de switch de vue, plus de setTimeout.
   const handleRelancer = useCallback(async () => {
     setLoading(true);
     setError(null);
 
     try {
-      // 1. Mémoriser la vue active pour la restaurer après
-      const previousView = baseView;
+      // 1. Cibler le SVG façade hors-écran (toujours à jour)
+      const facadeSvg = facadeSvgRef.current;
+      if (!facadeSvg) throw new Error('SVG façade hors-écran introuvable');
 
-      // 2. Si on n'est pas déjà en vue façade, y basculer le temps
-      //    de la capture (le SVG principal doit afficher FacadeRealisteSVG)
-      if (baseView !== 'facade') {
-        setBaseView('facade');
-        // Attendre que React re-rende le SVG avec la vue façade
-        await new Promise(resolve => setTimeout(resolve, 120));
-      }
-
-      // 3. Capturer le SVG principal (svgRef) — celui que l'utilisateur voit
-      const mainSvg = svgRef.current;
-      if (!mainSvg) throw new Error('SVG principal introuvable');
-
-      // 4. Cloner le SVG et forcer les dimensions pour l'export
-      const clone = mainSvg.cloneNode(true);
+      // 2. Cloner le SVG et forcer les dimensions pour l'export
+      const clone = facadeSvg.cloneNode(true);
       clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-      const vb = mainSvg.viewBox?.baseVal;
-      const exportW = vb && vb.width  > 0 ? vb.width  : imgSize.w;
-      const exportH = vb && vb.height > 0 ? vb.height : imgSize.h;
-      clone.setAttribute('width',  exportW);
-      clone.setAttribute('height', exportH);
+      clone.setAttribute('width',  FACADE_W);
+      clone.setAttribute('height', FACADE_H);
 
-      // 5. Ajouter un fond blanc explicite (évite fond transparent)
-      const bgRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-      bgRect.setAttribute('width',  '100%');
-      bgRect.setAttribute('height', '100%');
-      bgRect.setAttribute('fill',   '#f8fafc');
-      clone.insertBefore(bgRect, clone.firstChild);
-
-      // 6. Sérialiser → base64 data URL (pas de blob URL → pas de CORS)
+      // 3. Sérialiser → base64 data URL (pas de blob URL → pas de CORS)
       const svgStr  = new XMLSerializer().serializeToString(clone);
       const b64svg  = btoa(unescape(encodeURIComponent(svgStr)));
       const dataUrl = 'data:image/svg+xml;base64,' + b64svg;
 
-      // 7. Dessiner sur canvas haute résolution
+      // 4. Dessiner sur canvas haute résolution
       const canvas = document.createElement('canvas');
-      canvas.width  = exportW * 2;
-      canvas.height = exportH * 2;
+      canvas.width  = FACADE_W * 2;
+      canvas.height = FACADE_H * 2;
       const ctx2d = canvas.getContext('2d');
 
       await new Promise((resolve, reject) => {
@@ -619,12 +601,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
 
       const base64 = canvas.toDataURL('image/png').split(',')[1];
 
-      // 8. Restaurer la vue précédente si on l'avait changée
-      if (previousView !== 'facade') {
-        setBaseView(previousView);
-      }
-
-      // 9. Appel API
+      // 5. Appel API
       const SERVER = 'https://panelcut-server.vercel.app';
       let res = await fetch(`${SERVER}/api/refine`, {
         method:  'POST',
@@ -655,7 +632,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
       setLoading(false);
     }
   }, [
-    onComplete, baseView, imgSize,
+    onComplete, imgSize,
     elements, cabinetDims, facadeModules,
     facadeItems, generalNotes, joints,
   ]);
@@ -736,7 +713,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
       <div className="flex justify-between items-center p-3 bg-slate-900 border-b border-slate-700">
         <div className="flex items-center gap-2">
           <h2 className="text-white font-bold">✏️ Éditeur Intelligent</h2>
-          <span className="text-[10px] font-mono font-black text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/30">v3.4</span>
+          <span className="text-[10px] font-mono font-black text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/30">v3.5</span>
         </div>
         <div className="flex gap-2">
           {error && <span className="text-red-400 text-sm self-center mr-2">{error}</span>}
