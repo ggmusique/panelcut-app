@@ -380,11 +380,17 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
   const totalJointsWidth   = joints.reduce((s, d) => s + jointThickness(d, thickness), 0);
   const totalInteriorWidth = Math.max(1, toNum(cabinetDims.width, 200) - thickness * 2 - totalJointsWidth);
 
-  useEffect(() => {
+  const saveToStorage = useCallback(() => {
     localStorage.setItem(LS_SKETCH_KEY, JSON.stringify({
       elements, cabinetDims, facadeModules, facadeItems, generalNotes, joints,
     }));
   }, [elements, cabinetDims, facadeModules, facadeItems, generalNotes, joints]);
+
+  useEffect(() => {
+    saveToStorage();
+  }, [saveToStorage]);
+
+  const handleSave = saveToStorage;
 
   useEffect(() => {
     const cabinet = initialResult?.cabinet;
@@ -566,6 +572,9 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     setError(null);
 
     try {
+      // 0. Attendre que React ait terminé le rendu avant de capturer le SVG
+      await new Promise(resolve => requestAnimationFrame(resolve));
+
       // 1. Cibler le SVG façade hors-écran (toujours à jour)
       const facadeSvg = facadeSvgRef.current;
       if (!facadeSvg) throw new Error('SVG façade hors-écran introuvable');
@@ -718,6 +727,10 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
         <div className="flex gap-2">
           {error && <span className="text-red-400 text-sm self-center mr-2">{error}</span>}
           <button onClick={onCancel} className="px-3 py-1 bg-slate-700 text-white rounded">Annuler</button>
+          <button onClick={handleSave}
+            className="px-4 py-1 rounded font-bold text-white bg-green-600 hover:bg-green-500">
+            💾 Enregistrer
+          </button>
           <button onClick={handleRelancer} disabled={loading}
             className={`px-4 py-1 rounded font-bold text-white ${loading?'bg-orange-800':'bg-orange-600 hover:bg-orange-500'}`}>
             {loading ? 'Analyse...' : '🚀 Relancer Claude'}
