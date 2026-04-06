@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { optimise } from './engineV2';
 import { I18N, useLang } from './i18n';
 import { supabase, saveProject, loadProject, signOut } from './supabase';
@@ -26,6 +26,8 @@ const SCREENS = {
   FACADE_REALISTIC: 'facade_realistic',
 };
 
+const LS_SKETCH_KEY = 'pc_sketch_editor';
+
 const DEFAULT_PROJECT = {
   name: '', client: '', company: '', devisNum: '',
   panel: { w: 244, h: 122, thickness: 1.8, label: 'MDF 18mm' },
@@ -52,6 +54,251 @@ function lsClear() {
   [LS_SCREEN, LS_PROJECT, LS_RESULTS].forEach(k => localStorage.removeItem(k));
 }
 
+// ─── Constantes SVG façade (doit correspondre à SketchEditor) ────────────────
+const WOOD_FILL   = '#f5ede0';
+const WOOD_STROKE = '#8b6914';
+const DIM_COLOR   = '#dc2626';
+const DOUBLE_COLOR = '#d97706';
+const MARGIN      = { l: 65, r: 52, t: 55, b: 65 };
+const toNum = (v, d = 0) => { const n = Number(v); return Number.isFinite(n) ? n : d; };
+
+// ─── Calcul géométrie modules ─────────────────────────────────────────────────
+function computeMRects(facadeModules, joints, thPx, drawW, drawH, mL, mT, plPx) {
+  const innerH     = drawH - plPx;
+  const totalSepPx = joints.reduce((acc, j) => acc + (j ? 2 * thPx : thPx), 0) + 2 * thPx;
+  const avail      = drawW - totalSepPx;
+  const totalModW  = facadeModules.reduce((a, m) => a + m.width, 0);
+  const scale      = avail / Math.max(1, totalModW);
+  let xCur = mL + thPx;
+  return facadeModules.map((m, i) => {
+    const wPx = m.width * scale;
+    const r = {
+      x: xCur, w: wPx, m, i,
+      intTop:    mT + thPx,
+      intBottom: mT + innerH - thPx,
+      intH:      innerH - 2 * thPx,
+      innerH,
+    };
+    xCur += wPx + (i < facadeModules.length - 1 ? (joints[i] ? 2 * thPx : thPx) : 0);
+    return r;
+  });
+}
+
+// ─── Vue façade SVG (lecture seule, identique à l'éditeur) ───────────────────
+function FacadeCroquisView({ editorState, cabinet }) {
+  const svgW = 1100;
+  const svgH = 650;
+
+  // Priorité : état éditeur sauvegardé
+  const facadeModules = editorState?.facadeModules;
+  const facadeItems   = editorState?.facadeItems   || [];
+  const joints        = editorState?.joints        || [];
+  const cabinetDims   = editorState?.cabinetDims   || {
+    width:  toNum(cabinet?.width,  200),
+    height: toNum(cabinet?.height, 240),
+    plinth: toNum(cabinet?.plinth,   0),
+  };
+
+  if (!facadeModules || facadeModules.length === 0) {
+    // Fallback vers le composant legacy
+    return <CabinetElevationFront cabinet={cabinet} name="Meuble" />;
+  }
+
+  const cabW  = cabinetDims.width;
+  const cabH  = cabinetDims.height;
+  const plinth = cabinetDims.plinth;
+  const thick  = toNum(cabinet?.thickness ?? cabinet?.panel_thickness, 1.8);
+
+  const drawW = svgW - MARGIN.l - MARGIN.r;
+  const drawH = svgH - MARGIN.t  - MARGIN.b;
+  const thPx  = thick * (drawW / Math.max(1, cabW));
+  const plPx  = plinth * (drawH / Math.max(1, cabH));
+  const innerH = drawH - plPx;
+  const mL = MARGIN.l;
+  const mT = MARGIN.t;
+  const mRects = computeMRects(facadeModules, joints, thPx, drawW, drawH, mL, mT, plPx);
+
+  return (
+    <div className="relative">
+      <div className="absolute -inset-0.5 bg-gradient-to-r from-orange-600/20 to-blue-600/20 rounded-xl blur-lg" />
+      <svg
+        viewBox={`0 0 ${svgW} ${svgH}`}
+        className="relative w-full h-auto bg-white rounded-xl border border-slate-200 shadow-xl"
+      >
+        <defs>
+          <linearGradient id="fcGW" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%"   stopColor="#dcc89a"/>
+            <stop offset="45%"  stopColor="#f5ede0"/>
+            <stop offset="100%" stopColor="#dcc89a"/>
+          </linearGradient>
+          <linearGradient id="fcGT" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"   stopColor="#c4a87a"/>
+            <stop offset="100%" stopColor="#e8d5b0"/>
+          </linearGradient>
+          <linearGradient id="fcGDoor" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%"   stopColor="#e8dcc8" stopOpacity="0.75"/>
+            <stop offset="50%"  stopColor="#f8f0e4" stopOpacity="0.9"/>
+            <stop offset="100%" stopColor="#ddd0ba" stopOpacity="0.75"/>
+          </linearGradient>
+          <linearGradient id="fcGDouble" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%"   stopColor="#dcc89a"/>
+            <stop offset="48%"  stopColor="#e8d5b0"/>
+            <stop offset="52%"  stopColor="#c9b068"/>
+            <stop offset="100%" stopColor="#dcc89a"/>
+          </linearGradient>
+          <marker id="fcArrR" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto">
+            <path d="M0 0L8 4L0 8Z" fill="#dc2626" />
+          </marker>
+          <marker id="fcArrL" viewBox="0 0 8 8" refX="1" refY="4" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+            <path d="M8 0L0 4L8 8Z" fill="#dc2626" />
+          </marker>
+          <marker id="fcArrU" viewBox="0 0 8 8" refX="4" refY="1" markerWidth="5" markerHeight="5" orient="auto">
+            <path d="M0 8L4 0L8 8Z" fill="#dc2626" />
+          </marker>
+          <marker id="fcArrD" viewBox="0 0 8 8" refX="4" refY="7" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+            <path d="M0 0L4 8L8 0Z" fill="#dc2626" />
+          </marker>
+        </defs>
+
+        {/* Titre */}
+        <text x={svgW/2} y={22} textAnchor="middle" fontSize={13} fontWeight="700" fill="#334155">
+          {cabW} × {cabH} cm{plinth > 0 ? ` + ${plinth} cm plinthe` : ''}
+        </text>
+
+        {/* Corps principal */}
+        <rect x={mL} y={mT} width={drawW} height={drawH} fill="url(#fcGW)" stroke={WOOD_STROKE} strokeWidth="2.5"/>
+        <rect x={mL+thPx} y={mT+thPx} width={drawW-2*thPx} height={innerH-thPx} fill="#ede4d3"/>
+        {plPx > 2 && (
+          <g>
+            <rect x={mL} y={mT+innerH} width={drawW} height={plPx} fill="#c8b07c" stroke={WOOD_STROKE} strokeWidth="1.5"/>
+            <line x1={mL} y1={mT+innerH} x2={mL+drawW} y2={mT+innerH} stroke={WOOD_STROKE} strokeWidth="2"/>
+          </g>
+        )}
+        <rect x={mL}             y={mT} width={thPx}  height={innerH} fill="url(#fcGW)" stroke={WOOD_STROKE} strokeWidth="1.5"/>
+        <rect x={mL+drawW-thPx}  y={mT} width={thPx}  height={innerH} fill="url(#fcGW)" stroke={WOOD_STROKE} strokeWidth="1.5"/>
+        <rect x={mL} y={mT}              width={drawW}  height={thPx}  fill="url(#fcGT)" stroke={WOOD_STROKE} strokeWidth="1.5"/>
+        <rect x={mL} y={mT+innerH-thPx}  width={drawW}  height={thPx}  fill="url(#fcGT)" stroke={WOOD_STROKE} strokeWidth="1.5"/>
+
+        {/* Séparateurs */}
+        {mRects.map(({ x, w, i }) => {
+          if (i >= facadeModules.length - 1) return null;
+          const isDouble = joints[i];
+          const sepX = x + w;
+          return isDouble ? (
+            <g key={`sep-${i}`}>
+              <rect x={sepX}      y={mT} width={thPx} height={innerH} fill="url(#fcGDouble)" stroke={WOOD_STROKE} strokeWidth="1"/>
+              <rect x={sepX+thPx} y={mT} width={thPx} height={innerH} fill="url(#fcGDouble)" stroke={WOOD_STROKE} strokeWidth="1"/>
+              <line x1={sepX+thPx} y1={mT+2} x2={sepX+thPx} y2={mT+innerH-2}
+                stroke={DOUBLE_COLOR} strokeWidth="1.5" strokeDasharray="4 3" opacity="0.9"/>
+            </g>
+          ) : (
+            <rect key={`sep-${i}`} x={sepX} y={mT} width={thPx} height={innerH}
+              fill="url(#fcGW)" stroke={WOOD_STROKE} strokeWidth="1"/>
+          );
+        })}
+
+        {/* Modules */}
+        {mRects.map(({ x, w, m, i, intTop, intBottom, intH: iH }) => {
+          const nbD     = m.drawers || 0;
+          const drawerH = Math.min(iH * 0.15, 46);
+          const drawPx  = nbD * drawerH;
+          const nbDoors = m.doors || 0;
+          const numY    = intTop + Math.max(30, (iH - drawPx) * 0.45);
+
+          const tiroirs = Array.from({ length: nbD }, (_, di) => {
+            const dy = intBottom - drawPx + di * drawerH;
+            return (
+              <g key={`dr-${i}-${di}`}>
+                <rect x={x+2} y={dy+1} width={w-4} height={drawerH-2} fill="rgba(139,92,246,0.08)" stroke="#6d28d9" strokeWidth="1.3" rx="1"/>
+                <rect x={x+w/2-14} y={dy+drawerH/2-3.5} width="28" height="7" fill="none" stroke="#4c1d95" strokeWidth="1.8" rx="3"/>
+              </g>
+            );
+          });
+
+          const nd     = Math.min(nbDoors, 2);
+          const portes = Array.from({ length: nd }, (_, di) => {
+            const dw  = nd === 2 ? w / 2 : w;
+            const dx  = nd === 2 && di === 1 ? x + w / 2 : x;
+            const pad = Math.max(8, dw * 0.08);
+            const hx2 = di === 0 ? dx + dw - 14 : dx + 10;
+            return (
+              <g key={`door-${i}-${di}`}>
+                <rect x={dx+2} y={intTop+2} width={dw-4} height={iH-4} fill="url(#fcGDoor)" stroke={WOOD_STROKE} strokeWidth="1.5" rx="1"/>
+                <rect x={dx+pad} y={intTop+pad} width={dw-2*pad} height={iH-2*pad} fill="none" stroke={WOOD_STROKE} strokeWidth="0.8" opacity="0.5"/>
+                <rect x={hx2-4} y={intTop+iH/2-10} width="8" height="20" fill="#a0a0a0" stroke="#666" strokeWidth="0.8" rx="3"/>
+              </g>
+            );
+          });
+
+          return (
+            <g key={`mod-${i}`}>
+              <rect x={x} y={intTop} width={w} height={iH} fill="#faf5ed" stroke={WOOD_STROKE} strokeWidth="0.7"/>
+              {tiroirs}
+              {portes}
+              <circle cx={x+w/2} cy={numY} r="20" fill="none" stroke={DIM_COLOR} strokeWidth="2"/>
+              <text x={x+w/2} y={numY+6} textAnchor="middle" fill={DIM_COLOR} fontWeight="700" fontSize="17">{i+1}</text>
+              {/* Cote largeur */}
+              <line x1={x}   y1={mT+drawH+10} x2={x+w} y2={mT+drawH+10} stroke="#b45309" strokeWidth="1"
+                markerStart="url(#fcArrL)" markerEnd="url(#fcArrR)"/>
+              <line x1={x}   y1={mT+drawH+6}  x2={x}   y2={mT+drawH+14} stroke="#b45309" strokeWidth="1"/>
+              <line x1={x+w} y1={mT+drawH+6}  x2={x+w} y2={mT+drawH+14} stroke="#b45309" strokeWidth="1"/>
+              <text x={x+w/2} y={mT+drawH+28} textAnchor="middle" fill="#b45309" fontWeight="700" fontSize="11">{m.width.toFixed(2)} cm</text>
+            </g>
+          );
+        })}
+
+        {/* Items libres : tablettes + tringles */}
+        {facadeItems.map(item => {
+          const mr = mRects[item.modIdx];
+          if (!mr) return null;
+          const { x, w, intTop, intH: iH } = mr;
+          const ey = intTop + item.yRatio * iH;
+          if (item.type === 'shelf') {
+            return (
+              <g key={item.id}>
+                <rect x={x} y={ey-3.5} width={w} height={6.5} fill={WOOD_FILL} stroke={WOOD_STROKE} strokeWidth="1"/>
+                <circle cx={x+9}   cy={ey} r="2.5" fill={WOOD_STROKE}/>
+                <circle cx={x+w-9} cy={ey} r="2.5" fill={WOOD_STROKE}/>
+              </g>
+            );
+          }
+          if (item.type === 'rod') {
+            return (
+              <g key={item.id}>
+                <rect x={x+8}    y={ey-10} width="7"  height="18" fill="#6b7280" rx="2"/>
+                <rect x={x+w-15} y={ey-10} width="7"  height="18" fill="#6b7280" rx="2"/>
+                <line x1={x+16} y1={ey} x2={x+w-15} y2={ey} stroke="#4b5563" strokeWidth="6" strokeLinecap="round"/>
+                <line x1={x+16} y1={ey-2} x2={x+w-15} y2={ey-2} stroke="#d1d5db" strokeWidth="2" strokeLinecap="round" opacity="0.7"/>
+              </g>
+            );
+          }
+          return null;
+        })}
+
+        {/* Cotes générales */}
+        <line x1={mL} y1={mT-26} x2={mL+drawW} y2={mT-26} stroke={DIM_COLOR} strokeWidth="1.5"
+          markerStart="url(#fcArrL)" markerEnd="url(#fcArrR)"/>
+        <line x1={mL}       y1={mT-32} x2={mL}       y2={mT-20} stroke={DIM_COLOR} strokeWidth="1.5"/>
+        <line x1={mL+drawW} y1={mT-32} x2={mL+drawW} y2={mT-20} stroke={DIM_COLOR} strokeWidth="1.5"/>
+        <text x={mL+drawW/2} y={mT-30} textAnchor="middle" fill={DIM_COLOR} fontSize="13" fontWeight="700">{cabW} cm</text>
+        <line x1={mL+drawW+24} y1={mT}       x2={mL+drawW+24} y2={mT+drawH} stroke={DIM_COLOR} strokeWidth="1.5"
+          markerStart="url(#fcArrU)" markerEnd="url(#fcArrD)"/>
+        <line x1={mL+drawW+18} y1={mT}       x2={mL+drawW+30} y2={mT}       stroke={DIM_COLOR} strokeWidth="1.5"/>
+        <line x1={mL+drawW+18} y1={mT+drawH} x2={mL+drawW+30} y2={mT+drawH} stroke={DIM_COLOR} strokeWidth="1.5"/>
+        <text x={mL+drawW+40} y={mT+drawH/2} textAnchor="middle" fill={DIM_COLOR} fontSize="13" fontWeight="700"
+          transform={`rotate(90 ${mL+drawW+40} ${mT+drawH/2})`}>{cabH} cm</text>
+      </svg>
+
+      {/* Badge source */}
+      <div className="mt-2 flex justify-center">
+        <span className="text-xs text-slate-500 bg-slate-100 px-3 py-1 rounded-full border border-slate-200">
+          ✏️ Plan depuis l'éditeur intelligent — modifiez-le pour mettre à jour cette vue
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const lang = useLang();
   const [langOverride, setLangOverride] = useState(lang);
@@ -70,6 +317,19 @@ export default function App() {
   });
   const [project, setProjectRaw] = useState(() => lsGet(LS_PROJECT, { ...DEFAULT_PROJECT }));
   const [results, setResultsRaw] = useState(() => lsGet(LS_RESULTS, null));
+
+  // ─ Source d'appel de SketchEditor (pour savoir où revenir)
+  const sketchCalledFrom = useRef(SCREENS.WIZARD);
+
+  // ─ État éditeur lu depuis localStorage (mis à jour à chaque affichage FACADE)
+  const [editorState, setEditorState] = useState(null);
+
+  useEffect(() => {
+    if (screen === SCREENS.FACADE) {
+      const state = lsGet(LS_SKETCH_KEY, null);
+      setEditorState(state);
+    }
+  }, [screen]);
 
   const [user,      setUser]      = useState(null);
   const [computing, setComputing] = useState(false);
@@ -126,11 +386,21 @@ export default function App() {
     setScreen(SCREENS.WIZARD);
   };
 
+  // ─ Ouvre l'éditeur intelligent depuis la façade
+  const openEditorFromFacade = () => {
+    sketchCalledFrom.current = SCREENS.FACADE;
+    setScreen(SCREENS.SKETCH);
+  };
+
   const goBack = () => {
     if      (screen === SCREENS.FACADE_REALISTIC) setScreen(SCREENS.FACADE);
     else if (screen === SCREENS.FACADE)           setScreen(SCREENS.RESULTS);
     else if (screen === SCREENS.WIZARD)           setScreen(SCREENS.LANDING);
-    else if (screen === SCREENS.SKETCH)           setScreen(SCREENS.WIZARD);
+    else if (screen === SCREENS.SKETCH) {
+      // Retour vers la source d'appel
+      setScreen(sketchCalledFrom.current || SCREENS.WIZARD);
+      sketchCalledFrom.current = SCREENS.WIZARD;
+    }
     else if (screen === SCREENS.PIECES)           setScreen(SCREENS.WIZARD);
     else if (screen === SCREENS.RESULTS)          setScreen(SCREENS.PIECES);
     else if (screen === SCREENS.HISTORY)          setScreen(SCREENS.LANDING);
@@ -185,6 +455,7 @@ export default function App() {
       scanResult: scanResult,
     }));
     setResults(null);
+    sketchCalledFrom.current = SCREENS.WIZARD;
     setScreen(SCREENS.SKETCH);
   };
 
@@ -198,7 +469,11 @@ export default function App() {
 
     const cabinet = newScanResult.cabinet || project.cabinet;
     setProject(p => ({ ...p, pieces, cabinet, scanResult: newScanResult }));
-    setScreen(SCREENS.PIECES);
+
+    // Retour vers la source (FACADE ou PIECES)
+    const dest = sketchCalledFrom.current === SCREENS.FACADE ? SCREENS.FACADE : SCREENS.PIECES;
+    sketchCalledFrom.current = SCREENS.WIZARD;
+    setScreen(dest);
   };
 
   const handleSave = async () => {
@@ -228,15 +503,12 @@ export default function App() {
   if (screen === SCREENS.PIECES)  { headerTitle = project.name || 'Nouveau projet'; steps = [{ label: 'Panneau', active: true }, { label: 'Pièces', active: true }, { label: 'Résultats', active: false }]; }
   else if (screen === SCREENS.RESULTS) { headerTitle = 'Résultats'; steps = [{ label: 'Panneau', active: true }, { label: 'Pièces', active: true }, { label: 'Résultats', active: true }]; }
   else if (screen === SCREENS.FACADE || screen === SCREENS.FACADE_REALISTIC) { 
-    headerTitle = 'Façade — ' + (screen === SCREENS.FACADE ? 'Croquis' : 'Vue Client'); 
+    headerTitle = screen === SCREENS.FACADE ? '📐 Façade — Plan éditeur' : '🖼️ Vue Réaliste Client';
     steps = [{ label: 'Panneau', active: true }, { label: 'Pièces', active: true }, { label: 'Façade', active: true }]; 
   }
 
   const hasHeader = ![SCREENS.AUTH, SCREENS.SKETCH, SCREENS.LANDING, SCREENS.WIZARD, SCREENS.HISTORY].includes(screen);
   const hasSteps  = steps.length > 0;
-  
-  // ← LOG CABINET (déjà présent)
-  console.log('🔍 Cabinet data:', project.cabinet);
 
   return (
     <div className="app min-h-screen bg-[#0f1620] text-slate-200 font-sans dark:bg-slate-950 dark:text-slate-100 transition-colors duration-300">
@@ -253,7 +525,7 @@ export default function App() {
           initialResult={project.scanResult}
           apiKey={apiKey}
           onComplete={handleRefinementComplete}
-          onCancel={() => setScreen(SCREENS.PIECES)}
+          onCancel={goBack}
         />
       )}
 
@@ -315,10 +587,20 @@ export default function App() {
               <div className="flex items-center gap-1.5 flex-shrink-0">
                 {canAnnotate && (
                   <button
-                    onClick={() => setScreen(SCREENS.SKETCH)}
+                    onClick={() => { sketchCalledFrom.current = SCREENS.PIECES; setScreen(SCREENS.SKETCH); }}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-cyan-600/20 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-600/30 hover:text-cyan-300 transition-all"
                     title="Annoter le croquis et relancer Claude">
                     ✏️ <span className="hidden sm:inline">Annoter</span>
+                  </button>
+                )}
+
+                {/* ─ Bouton Modifier dans éditeur (visible sur écran FACADE) */}
+                {screen === SCREENS.FACADE && (
+                  <button
+                    onClick={openEditorFromFacade}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-orange-600/20 text-orange-400 border border-orange-500/30 hover:bg-orange-600/30 hover:text-orange-300 transition-all"
+                    title="Modifier dans l'éditeur intelligent">
+                    ✏️ <span className="hidden sm:inline">Modifier</span>
                   </button>
                 )}
                 
@@ -327,7 +609,7 @@ export default function App() {
                     onClick={() => setScreen(screen === SCREENS.FACADE ? SCREENS.FACADE_REALISTIC : SCREENS.FACADE)}
                     className="px-3 py-1.5 text-xs font-bold rounded-lg bg-purple-600/20 text-purple-400 border border-purple-500/30 hover:bg-purple-600/30 transition-all"
                   >
-                    {screen === SCREENS.FACADE ? '🖼️ Vue Client' : '📐 Croquis'}
+                    {screen === SCREENS.FACADE ? '🖼️ Vue Client' : '📐 Façade'}
                   </button>
                 )}
                 
@@ -379,10 +661,20 @@ export default function App() {
               )
             }
             
+            {/* ─── FAÇADE CROQUIS : plan de l'éditeur intelligent ─── */}
             {screen === SCREENS.FACADE && (
-              <div className="max-w-4xl mx-auto">
-                <CabinetElevationFront cabinet={project.cabinet} name={project.name || 'Meuble'} />
-                <div className="mt-4 flex justify-center">
+              <div className="max-w-5xl mx-auto">
+                <FacadeCroquisView
+                  editorState={editorState}
+                  cabinet={project.cabinet}
+                />
+                <div className="mt-6 flex flex-wrap justify-center gap-4">
+                  <button
+                    onClick={openEditorFromFacade}
+                    className="px-6 py-3 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white rounded-xl font-bold transition-all shadow-lg flex items-center gap-2"
+                  >
+                    ✏️ Modifier dans l'éditeur intelligent
+                  </button>
                   <button
                     onClick={() => setScreen(SCREENS.FACADE_REALISTIC)}
                     className="px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl font-bold transition-all shadow-lg flex items-center gap-2"
