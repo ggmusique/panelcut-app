@@ -538,7 +538,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
 
   const eraseElement = (id) => setElements(prev => prev.filter(el => el.id !== id));
 
-  const buildContextPrompt = () => {
+  const buildContextPrompt = useCallback(() => {
     const dims  = elements.filter(e => e.type === 'dim');
     const notes = elements.filter(e => e.type === 'note');
     let ctx = '';
@@ -550,10 +550,12 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     ctx += `  Total joints=${totalJointsWidth.toFixed(1)} cm (${nD} double, ${joints.length-nD} simple)  Net=${totalInteriorWidth.toFixed(1)} cm\n\n`;
     ctx += 'MODULES (façade éditée par l\'utilisateur) :\n';
     facadeModules.forEach((m, i) => {
-      const items    = facadeItems.filter(it => it.modIdx === i);
+      const items    = facadeItems.filter(it => Number(it.modIdx) === i);
       const nbShelf  = items.filter(it => it.type === 'shelf').length;
       const nbRod    = items.filter(it => it.type === 'rod').length;
-      ctx += `  M${i+1}: L=${m.width.toFixed(2)}cm  tiroirs=${m.drawers}  tablettes=${nbShelf}  tringles=${nbRod}  portes=${m.doors}\n`;
+      const nbDrawers = typeof m.drawers === 'number' ? m.drawers : 0;
+      const nbDoors   = typeof m.doors   === 'number' ? m.doors   : 0;
+      ctx += `  M${i+1}: L=${m.width.toFixed(2)}cm  tiroirs=${nbDrawers}  tablettes=${nbShelf}  tringles=${nbRod}  portes=${nbDoors}\n`;
     });
     if (dims.length > 0) { ctx += 'COTES :\n'; dims.forEach(d => { if(d.label) ctx += `  ${d.label} cm\n`; }); }
     if (notes.length > 0) { ctx += 'NOTES :\n'; notes.forEach((n,i) => ctx += `  ${i+1}. "${n.text}"\n`); }
@@ -561,7 +563,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     ctx += `\nCOTES MEUBLE: L=${cabinetDims.width} H=${cabinetDims.height} plinthe=${cabinetDims.plinth} cm\n`;
     ctx += `INSTRUCTION: Tiens compte des doubles montants pour les largeurs nettes.`;
     return ctx;
-  };
+  }, [elements, dimensionsFromWizard, cabinetDims, thickness, joints, totalJointsWidth, totalInteriorWidth, facadeModules, facadeItems, generalNotes]);
 
   // ─── Relance Claude : capture TOUJOURS facadeSvgRef (SVG hors-écran dédié) ──
   // FIX: on n'utilise PLUS svgRef (le SVG principal visible, dépendant de baseView).
@@ -644,6 +646,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     onComplete, imgSize,
     elements, cabinetDims, facadeModules,
     facadeItems, generalNotes, joints,
+    buildContextPrompt,
   ]);
 
   const renderElement = (el) => {
