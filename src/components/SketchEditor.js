@@ -215,7 +215,6 @@ function FacadeRealisteSVG({
 
         const numY = intTop + Math.max(30, (iH - drawPx) * 0.45);
 
-        // Zone hit pour ajouter tiroir/porte ou placer tablette/tringle
         const hitZone = (isPlace || isAdd) ? (
           <rect key={`hit-${i}`} x={x} y={intTop} width={w} height={iH}
             fill="transparent" style={{ cursor: 'cell' }}
@@ -251,7 +250,6 @@ function FacadeRealisteSVG({
         if (!mr) return null;
         const { x, w, intTop, intH: iH } = mr;
         const ey = intTop + item.yRatio * iH;
-        const canDrag = !isErase && (activeTool === 'erase' || activeTool === item.type || activeTool === 'shelf' || activeTool === 'rod' || activeTool === 'drawer' || activeTool === 'door' || activeTool === 'dim' || activeTool === 'note');
 
         if (item.type === 'shelf') {
           return (
@@ -262,7 +260,6 @@ function FacadeRealisteSVG({
               <rect x={x} y={ey-3.5} width={w} height={6.5} fill={WOOD_FILL} stroke={WOOD_STROKE} strokeWidth="1"/>
               <circle cx={x+9}   cy={ey} r="2.5" fill={WOOD_STROKE}/>
               <circle cx={x+w-9} cy={ey} r="2.5" fill={WOOD_STROKE}/>
-              {/* zone hit large pour drag */}
               <rect x={x} y={ey-10} width={w} height="20" fill="transparent"/>
               {isErase && <rect x={x} y={ey-8} width={w} height="16" fill="red" opacity="0.2"/>}
             </g>
@@ -278,7 +275,6 @@ function FacadeRealisteSVG({
               <rect x={x+w-15} y={ey-10} width="7"  height="18" fill="#6b7280" rx="2"/>
               <line x1={x+16} y1={ey} x2={x+w-15} y2={ey} stroke="#4b5563" strokeWidth="6" strokeLinecap="round"/>
               <line x1={x+16} y1={ey-2} x2={x+w-15} y2={ey-2} stroke="#d1d5db" strokeWidth="2" strokeLinecap="round" opacity="0.7"/>
-              {/* zone hit */}
               <rect x={x+8} y={ey-12} width={w-20} height="24" fill="transparent"/>
               {isErase && <rect x={x+8} y={ey-12} width={w-20} height="24" fill="red" opacity="0.18" rx="4"/>}
             </g>
@@ -305,9 +301,10 @@ function FacadeRealisteSVG({
 export default function SketchEditor({ image, scanImage, initialResult, apiKey, onComplete, onCancel }) {
   const rawImg             = image || scanImage || null;
   const svgRef             = useRef(null);
+  // ← ref dédié au SVG façade (toujours monté hors écran pour capture)
+  const facadeSvgRef       = useRef(null);
   const facadeContainerRef = useRef(null);
   const drag               = useRef({ on: false, startX: 0, startY: 0, elStartX: 0, elStartY: 0 });
-  // pour le drag des items façade
   const facadeDrag         = useRef({ active: false, itemId: null, startY: 0, startYRatio: 0, modIdx: -1 });
 
   const [facadePng, setFacadePng] = useState(null);
@@ -339,19 +336,16 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     }
   );
 
-  // ─── facadeModules : tiroirs + portes (compteurs) ────────────────────────────
   const [facadeModules, setFacadeModules] = useState(() => {
     if (savedState?.facadeModules) return savedState.facadeModules;
     return normalizeModulesFromResult(initialResult, toNum(initialCab.width, 200));
   });
 
-  // ─── widthInputs : state local string pour les inputs largeur (évite bug controlled) ─
   const [widthInputs, setWidthInputs] = useState(
     () => (savedState?.facadeModules || normalizeModulesFromResult(initialResult, toNum(initialCab.width, 200)))
       .map(m => String(m.width))
   );
 
-  // Sync widthInputs si nb modules change
   useEffect(() => {
     setWidthInputs(facadeModules.map(m => String(m.width)));
   }, [facadeModules.length]);
@@ -362,13 +356,11 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     setWidthInputs(prev => prev.map((v, i) => i === idx ? String(n) : v));
   };
 
-  // ─── facadeItems : tablettes + tringles libres ────────────────────────────────
   const [facadeItems, setFacadeItems] = useState(() => {
     if (savedState?.facadeItems) return savedState.facadeItems;
     return normalizeItemsFromResult(initialResult);
   });
 
-  // ─── Joints ──────────────────────────────────────────────────────────────────
   const nbJoints = Math.max(0, facadeModules.length - 1);
   const [joints, setJoints] = useState(
     () => savedState?.joints || Array(nbJoints).fill(true)
@@ -388,14 +380,12 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
   const totalJointsWidth   = joints.reduce((s, d) => s + jointThickness(d, thickness), 0);
   const totalInteriorWidth = Math.max(1, toNum(cabinetDims.width, 200) - thickness * 2 - totalJointsWidth);
 
-  // ─── Persistance ─────────────────────────────────────────────────────────────
   useEffect(() => {
     localStorage.setItem(LS_SKETCH_KEY, JSON.stringify({
       elements, cabinetDims, facadeModules, facadeItems, generalNotes, joints,
     }));
   }, [elements, cabinetDims, facadeModules, facadeItems, generalNotes, joints]);
 
-  // ─── Capture façade SVG → PNG ─────────────────────────────────────────────
   useEffect(() => {
     const cabinet = initialResult?.cabinet;
     if (!cabinet?.width || !cabinet?.height) return;
@@ -406,7 +396,6 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     return () => clearTimeout(timer);
   }, [initialResult]);
 
-  // ─── Taille canvas ───────────────────────────────────────────────────────────
   useEffect(() => {
     if (baseView === 'facade') { setImgSize({ w: 1140, h: 700 }); return; }
     if (!imgSrc) return;
@@ -419,7 +408,9 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     img.src = imgSrc;
   }, [imgSrc, baseView]);
 
-  // ─── Helpers géométrie SVG (pour convertir Y souris → yRatio dans module) ────
+  const FACADE_W = 1140;
+  const FACADE_H = 700;
+
   const getFacadeGeometry = useCallback(() => {
     const drawW = imgSize.w - MARGIN.l - MARGIN.r;
     const drawH = imgSize.h - MARGIN.t  - MARGIN.b;
@@ -428,7 +419,6 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     return computeMRects(facadeModules, joints, thPx, drawW, drawH, MARGIN.l, MARGIN.t, plPx);
   }, [imgSize, thickness, cabinetDims, facadeModules, joints]);
 
-  // ─── Coordonnées SVG ──────────────────────────────────────────────────────────
   const getSVGCoords = useCallback((e) => {
     const svg = svgRef.current;
     if (!svg) return { x: 0, y: 0 };
@@ -443,7 +433,6 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     };
   }, [imgSize]);
 
-  // ─── Placement tablette/tringle (mousedown sur zone module) ─────────────────
   const handleFacadePointerDown = useCallback((e, modIdx) => {
     e.stopPropagation();
     const { y } = getSVGCoords(e);
@@ -453,11 +442,9 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     const yRatio = clamp((y - mr.intTop) / mr.intH, 0.02, 0.98);
     const newItem = { id: uid(), type: tool, modIdx, yRatio };
     setFacadeItems(prev => [...prev, newItem]);
-    // démarrer drag immédiatement
     facadeDrag.current = { active: true, itemId: newItem.id, startY: y, startYRatio: yRatio, modIdx, intTop: mr.intTop, intH: mr.intH };
   }, [tool, getSVGCoords, getFacadeGeometry]);
 
-  // ─── Drag item existant (mousedown sur item) ─────────────────────────────────
   const handleItemPointerDown = useCallback((e, itemId) => {
     e.stopPropagation();
     const { y } = getSVGCoords(e);
@@ -469,7 +456,6 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     facadeDrag.current = { active: true, itemId, startY: y, startYRatio: item.yRatio, modIdx: item.modIdx, intTop: mr.intTop, intH: mr.intH };
   }, [getSVGCoords, getFacadeGeometry, facadeItems]);
 
-  // ─── Callbacks tiroir/porte (compteurs) ──────────────────────────────────────
   const handleModuleClick = useCallback((modIdx, activeTool) => {
     setFacadeModules(prev => prev.map((m, i) => {
       if (i !== modIdx) return m;
@@ -492,9 +478,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     setFacadeItems(prev => prev.filter(it => it.id !== itemId));
   }, []);
 
-  // ─── Mouse move global (drag item façade + annotations) ──────────────────────
   const handlePointerMove = useCallback((e) => {
-    // drag item façade
     if (facadeDrag.current.active) {
       const { y } = getSVGCoords(e);
       const { itemId, intTop, intH } = facadeDrag.current;
@@ -531,9 +515,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     setResizingId(null); setDraggingId(null);
   }, [resizingId, elements]);
 
-  // ─── Pointeur down (annotations photo / cotes / notes) ───────────────────────
   const handlePointerDown = useCallback((e) => {
-    // si mode façade avec outil placement, tout est géré par handleFacadePointerDown
     if (baseView === 'facade' && ['shelf','rod','drawer','door','erase'].includes(tool)) return;
     if (tool === 'erase') return;
     e.preventDefault();
@@ -550,7 +532,6 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
 
   const eraseElement = (id) => setElements(prev => prev.filter(el => el.id !== id));
 
-  // ─── Prompt contextuel ────────────────────────────────────────────────────────
   const buildContextPrompt = () => {
     const dims  = elements.filter(e => e.type === 'dim');
     const notes = elements.filter(e => e.type === 'note');
@@ -576,41 +557,60 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     return ctx;
   };
 
-  // ─── Relance Claude ───────────────────────────────────────────────────────────
+  // ─── Relance Claude : capture TOUJOURS le SVG façade édité ───────────────────
   const handleRelancer = useCallback(async () => {
-    const svg = svgRef.current; if (!svg) return;
     setLoading(true); setError(null);
     try {
-      const svgStr = new XMLSerializer().serializeToString(svg);
-      const url    = URL.createObjectURL(new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' }));
-      const canvas = document.createElement('canvas');
-      canvas.width = imgSize.w * 2; canvas.height = imgSize.h * 2;
-      const ctx = canvas.getContext('2d');
-      const img = new window.Image();
-      img.onload = async () => {
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        URL.revokeObjectURL(url);
-        const base64 = canvas.toDataURL('image/png').split(',')[1];
-        const SERVER = 'https://panelcut-server.vercel.app';
-        let res = await fetch(`${SERVER}/api/refine`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ image: base64, mediaType: 'image/png', userNotes: buildContextPrompt() }),
-        });
-        if (res.status === 404 || res.status === 405)
-          res = await fetch(`${SERVER}/api/scan`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ image: base64, mediaType: 'image/png' }),
-          });
-        if (!res.ok) throw new Error(`Erreur serveur (${res.status})`);
-        const data = await res.json();
-        if (onComplete) onComplete(data);
-        setLoading(false);
-      };
-      img.src = url;
-    } catch (err) { console.error(err); setError(err.message); setLoading(false); }
-  }, [imgSize, onComplete, elements, cabinetDims, facadeModules, facadeItems, generalNotes, joints, initialResult]);
+      // On capture le SVG façade dédié (toujours monté hors-écran)
+      const facadeSvg = facadeSvgRef.current;
+      if (!facadeSvg) throw new Error('SVG façade introuvable');
 
-  // ─── Rendu éléments annotations ──────────────────────────────────────────────
+      const svgStr = new XMLSerializer().serializeToString(facadeSvg);
+      const blob   = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
+      const url    = URL.createObjectURL(blob);
+
+      const canvas = document.createElement('canvas');
+      canvas.width  = FACADE_W * 2;
+      canvas.height = FACADE_H * 2;
+      const ctx2d = canvas.getContext('2d');
+
+      await new Promise((resolve, reject) => {
+        const img = new window.Image();
+        img.onload = () => {
+          ctx2d.fillStyle = '#f8fafc';
+          ctx2d.fillRect(0, 0, canvas.width, canvas.height);
+          ctx2d.drawImage(img, 0, 0, canvas.width, canvas.height);
+          URL.revokeObjectURL(url);
+          resolve();
+        };
+        img.onerror = reject;
+        img.src = url;
+      });
+
+      const base64 = canvas.toDataURL('image/png').split(',')[1];
+      const SERVER = 'https://panelcut-server.vercel.app';
+
+      let res = await fetch(`${SERVER}/api/refine`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: base64, mediaType: 'image/png', userNotes: buildContextPrompt() }),
+      });
+      if (res.status === 404 || res.status === 405)
+        res = await fetch(`${SERVER}/api/scan`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image: base64, mediaType: 'image/png' }),
+        });
+      if (!res.ok) throw new Error(`Erreur serveur (${res.status})`);
+
+      const data = await res.json();
+      if (onComplete) onComplete(data);
+      setLoading(false);
+    } catch (err) {
+      console.error(err);
+      setError(err.message);
+      setLoading(false);
+    }
+  }, [onComplete, elements, cabinetDims, facadeModules, facadeItems, generalNotes, joints]);
+
   const renderElement = (el) => {
     if (el.type === 'dim') return (
       <g key={el.id} data-id={el.id}
@@ -636,7 +636,6 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     return null;
   };
 
-  // ─── Hint barre ──────────────────────────────────────────────────────────────
   const hint = baseView === 'facade'
     ? tool === 'erase'   ? '🧹 Clic sur un élément pour le supprimer'
     : tool === 'shelf'   ? '📦 Clic dans un module pour placer · glisser pour déplacer'
@@ -646,9 +645,36 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     : '💡 Dim/Note : tracez sur la façade'
     : '💡 Cliquez pour créer · glissez pour déplacer';
 
-  // ─── JSX ─────────────────────────────────────────────────────────────────────
   return (
     <div className="fixed inset-0 z-50 bg-black/90 flex flex-col">
+
+      {/* SVG façade hors-écran dédié à la capture "Relancer Claude" */}
+      <svg
+        ref={facadeSvgRef}
+        xmlns="http://www.w3.org/2000/svg"
+        width={FACADE_W}
+        height={FACADE_H}
+        style={{ position: 'absolute', left: '-9999px', top: 0, pointerEvents: 'none' }}
+        aria-hidden="true"
+      >
+        <rect width={FACADE_W} height={FACADE_H} fill="#f8fafc"/>
+        <FacadeRealisteSVG
+          svgW={FACADE_W} svgH={FACADE_H}
+          cabW={cabinetDims.width} cabH={cabinetDims.height}
+          plinth={cabinetDims.plinth} thick={thickness}
+          facadeModules={facadeModules}
+          facadeItems={facadeItems}
+          joints={joints}
+          onFacadePointerDown={() => {}}
+          onItemPointerDown={() => {}}
+          onItemErase={() => {}}
+          onModuleClick={() => {}}
+          onModuleErase={() => {}}
+          activeTool="none"
+        />
+        {elements.filter(el => ['dim','note'].includes(el.type)).map(renderElement)}
+      </svg>
+
       {initialResult?.cabinet?.width && initialResult?.cabinet?.height && (
         <div ref={facadeContainerRef}
           style={{position:'absolute',left:'-9999px',top:0,width:`${FACADE_CAPTURE_WIDTH}px`,visibility:'hidden',pointerEvents:'none'}}
@@ -661,7 +687,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
       <div className="flex justify-between items-center p-3 bg-slate-900 border-b border-slate-700">
         <div className="flex items-center gap-2">
           <h2 className="text-white font-bold">✏️ Éditeur Intelligent</h2>
-          <span className="text-[10px] font-mono font-black text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/30">v3.3</span>
+          <span className="text-[10px] font-mono font-black text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/30">v3.4</span>
         </div>
         <div className="flex gap-2">
           {error && <span className="text-red-400 text-sm self-center mr-2">{error}</span>}
@@ -741,7 +767,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
         ))}
       </div>
 
-      {/* CANVAS SVG */}
+      {/* CANVAS SVG principal */}
       <div className="flex-1 overflow-auto bg-slate-950 flex justify-center p-4">
         <svg ref={svgRef} width={imgSize.w} height={imgSize.h}
           className="shadow-2xl"
