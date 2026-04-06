@@ -51,11 +51,10 @@ function lsSet(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
 }
 function lsClear() {
-  // ← inclut maintenant LS_SKETCH_KEY pour la déconnexion
   [LS_SCREEN, LS_PROJECT, LS_RESULTS, LS_SKETCH_KEY].forEach(k => localStorage.removeItem(k));
 }
 
-// ─── Constantes SVG façade ────────────────────────────────────────────────────
+// ─── Constantes SVG façade ────────────────────────────────────────────
 const WOOD_FILL   = '#f5ede0';
 const WOOD_STROKE = '#8b6914';
 const DIM_COLOR   = '#dc2626';
@@ -367,7 +366,6 @@ export default function App() {
   }, []);
 
   const startNew = (devisNum = '') => {
-    // ← Vide l'éditeur façade : on repart de zéro
     localStorage.removeItem(LS_SKETCH_KEY);
     setEditorState(null);
     setProject({ ...DEFAULT_PROJECT, devisNum });
@@ -418,7 +416,6 @@ export default function App() {
   const handleLoadProject = async (id) => {
     const { data, error } = await loadProject(id);
     if (error || !data) return;
-    // ← Vide l'éditeur façade : chaque projet chargé repart proprement
     localStorage.removeItem(LS_SKETCH_KEY);
     setEditorState(null);
     const p = { ...data.project_data, supabaseId: data.id };
@@ -437,7 +434,6 @@ export default function App() {
 
     const cabinet = scanResult.cabinet || null;
 
-    // ← Vide l'ancien plan façade avant le nouveau scan
     localStorage.removeItem(LS_SKETCH_KEY);
     setEditorState(null);
 
@@ -453,16 +449,26 @@ export default function App() {
     setScreen(SCREENS.SKETCH);
   };
 
+  // ─── Retour depuis l'éditeur intelligent ("Relancer Claude") ────────────────────
+  // Si Claude ne retourne pas de pièces (ex: il analyse un SVG façade), on garde
+  // les pièces existantes du projet. Seul cabinet peut être mis à jour.
   const handleRefinementComplete = (newScanResult) => {
-    const pieces = (newScanResult.pieces || []).map(p => ({
-      name:   String(p.name   || 'Pièce').trim(),
-      length: Math.abs(parseFloat(p.length) || 0),
-      height: Math.abs(parseFloat(p.height) || 0),
-      qty:    Math.max(1, parseInt(p.qty, 10) || 1),
-    })).filter(p => p.length > 0 && p.height > 0);
+    const rawPieces = newScanResult.pieces || [];
+    const newPieces = rawPieces
+      .map(p => ({
+        name:   String(p.name   || 'Pièce').trim(),
+        length: Math.abs(parseFloat(p.length) || 0),
+        height: Math.abs(parseFloat(p.height) || 0),
+        qty:    Math.max(1, parseInt(p.qty, 10) || 1),
+      }))
+      .filter(p => p.length > 0 && p.height > 0);
 
     const cabinet = newScanResult.cabinet || project.cabinet;
-    setProject(p => ({ ...p, pieces, cabinet, scanResult: newScanResult }));
+
+    // ← CLÉ : si Claude ne renvoie pas de pièces, on garde celles du projet
+    const piecesToUse = newPieces.length > 0 ? newPieces : project.pieces;
+
+    setProject(p => ({ ...p, pieces: piecesToUse, cabinet, scanResult: newScanResult }));
 
     const dest = sketchCalledFrom.current === SCREENS.FACADE ? SCREENS.FACADE : SCREENS.PIECES;
     sketchCalledFrom.current = SCREENS.WIZARD;
