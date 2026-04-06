@@ -188,6 +188,7 @@ export default function App() {
     setScreen(SCREENS.SKETCH);
   };
 
+  // FIX: redirige vers FACADE (plans) et non PIECES après relance Claude
   const handleRefinementComplete = (newScanResult) => {
     const pieces = (newScanResult.pieces || []).map(p => ({
       name:   String(p.name   || 'Pièce').trim(),
@@ -198,7 +199,7 @@ export default function App() {
 
     const cabinet = newScanResult.cabinet || project.cabinet;
     setProject(p => ({ ...p, pieces, cabinet, scanResult: newScanResult }));
-    setScreen(SCREENS.PIECES);
+    setScreen(SCREENS.FACADE);
   };
 
   const handleSave = async () => {
@@ -235,7 +236,6 @@ export default function App() {
   const hasHeader = ![SCREENS.AUTH, SCREENS.SKETCH, SCREENS.LANDING, SCREENS.WIZARD, SCREENS.HISTORY].includes(screen);
   const hasSteps  = steps.length > 0;
   
-  // ← LOG CABINET (déjà présent)
   console.log('🔍 Cabinet data:', project.cabinet);
 
   return (
