@@ -12,7 +12,7 @@ const TOOLS = [
   { id: 'erase',  icon: '🧹', label: 'Effacer',  color: '#f87171' },
 ];
 
-const LS_SKETCH_KEY       = 'pc_sketch_editor';
+const LS_SKETCH_KEY        = 'pc_sketch_editor';
 const FACADE_CAPTURE_WIDTH = 980;
 const WOOD_FILL            = '#f5ede0';
 const WOOD_STROKE          = '#8b6914';
@@ -22,31 +22,50 @@ const MARGIN               = { l: 65, r: 52, t: 55, b: 65 };
 
 const uid   = () => Math.random().toString(36).slice(2, 9);
 const toNum = (v, d = 0) => { const n = Number(v); return Number.isFinite(n) ? n : d; };
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
+// ─── Normalise les modules depuis initialResult ────────────────────────────────
 const normalizeModulesFromResult = (result, width = 0) => {
   const cabinet  = result?.cabinet || {};
   const raw      = Array.isArray(cabinet.modules) ? cabinet.modules : [];
   const detailed = raw.filter(m => typeof m === 'object' && m !== null);
   if (detailed.length > 0) {
-    return detailed.map((m, i) => ({
+    return detailed.map((m) => ({
       id:      uid(),
       width:   Math.max(1, toNum(m.width ?? m.w ?? m.largeur, 1)),
-      shelves: Math.max(0, parseInt(m.shelves  ?? m.nb_shelves ?? 0, 10) || 0),
-      drawers: Math.max(0, parseInt(m.drawers  ?? m.nb_drawers ?? 0, 10) || 0),
-      doors:   Math.max(0, parseInt(m.doors    ?? m.nb_doors   ?? 0, 10) || 0),
-      rod:     Boolean(m.rod ?? m.tringle ?? m.hanging ?? m.penderie ?? false),
+      drawers: Math.max(0, parseInt(m.drawers ?? m.nb_drawers ?? 0, 10) || 0),
+      doors:   Math.max(0, parseInt(m.doors   ?? m.nb_doors   ?? 0, 10) || 0),
     }));
   }
   const n  = Math.max(1, parseInt(cabinet.nb_dividers ?? 4, 10) + 1);
   const mw = width > 0 ? width / n : 50;
   return Array.from({ length: n }, () => ({
-    id: uid(), width: mw, shelves: 0, drawers: 0, doors: 0, rod: false,
+    id: uid(), width: mw, drawers: 0, doors: 0,
   }));
+};
+
+// ─── Normalise les items libres (tablettes/tringles) depuis initialResult ─────
+const normalizeItemsFromResult = (result) => {
+  const cabinet = result?.cabinet || {};
+  const raw     = Array.isArray(cabinet.modules) ? cabinet.modules : [];
+  const items   = [];
+  raw.forEach((m, modIdx) => {
+    if (!m || typeof m !== 'object') return;
+    const nbSh = parseInt(m.shelves ?? m.nb_shelves ?? 0, 10) || 0;
+    for (let si = 0; si < nbSh; si++) {
+      items.push({ id: uid(), type: 'shelf', modIdx, yRatio: (si + 1) / (nbSh + 1) });
+    }
+    const hasRod = Boolean(m.rod ?? m.tringle ?? m.hanging ?? m.penderie ?? false);
+    if (hasRod) {
+      items.push({ id: uid(), type: 'rod', modIdx, yRatio: 0.32 });
+    }
+  });
+  return items;
 };
 
 const jointThickness = (isDouble, t) => isDouble ? t * 2 : t;
 
-// ─── Calcul géométrie modules pour le SVG ─────────────────────────────────────
+// ─── Calcul géométrie modules ─────────────────────────────────────────────────
 function computeMRects(facadeModules, joints, thPx, drawW, drawH, mL, mT, plPx) {
   const innerH     = drawH - plPx;
   const totalSepPx = joints.reduce((acc, j) => acc + (j ? 2 * thPx : thPx), 0) + 2 * thPx;
@@ -68,12 +87,15 @@ function computeMRects(facadeModules, joints, thPx, drawW, drawH, mL, mT, plPx) 
   });
 }
 
-// ─── Composant SVG façade réaliste ────────────────────────────────────────────
+// ─── Composant SVG façade ─────────────────────────────────────────────────────
 function FacadeRealisteSVG({
   svgW, svgH, cabW, cabH, plinth, thick,
-  facadeModules, joints,
-  onModuleClick,  // (modIdx, tool) → appelé quand on clique dans un module
-  onItemClick,    // (modIdx, type, itemIdx) → clic sur tiroir/tringle/tablette/porte
+  facadeModules, facadeItems, joints,
+  onFacadePointerDown,
+  onItemPointerDown,
+  onItemErase,
+  onModuleClick,
+  onModuleErase,
   activeTool,
 }) {
   const drawW  = svgW - MARGIN.l - MARGIN.r;
@@ -85,8 +107,9 @@ function FacadeRealisteSVG({
   const mT     = MARGIN.t;
   const mRects = computeMRects(facadeModules, joints, thPx, drawW, drawH, mL, mT, plPx);
 
-  const isErase = activeTool === 'erase';
-  const cursorMod = isErase ? 'crosshair' : ['drawer','shelf','rod','door'].includes(activeTool) ? 'cell' : 'default';
+  const isErase   = activeTool === 'erase';
+  const isPlace   = ['shelf','rod'].includes(activeTool);
+  const isAdd     = ['drawer','door'].includes(activeTool);
 
   const defs = (
     <defs>
@@ -117,7 +140,7 @@ function FacadeRealisteSVG({
     <g>
       {defs}
 
-      {/* ── Corps principal ── */}
+      {/* Corps */}
       <rect x={mL} y={mT} width={drawW} height={drawH} fill="url(#pcGW)" stroke={WOOD_STROKE} strokeWidth="2.5"/>
       <rect x={mL+thPx} y={mT+thPx} width={drawW-2*thPx} height={innerH-thPx} fill="#ede4d3"/>
       {plPx > 2 && (
@@ -126,19 +149,19 @@ function FacadeRealisteSVG({
           <line x1={mL} y1={mT+innerH} x2={mL+drawW} y2={mT+innerH} stroke={WOOD_STROKE} strokeWidth="2"/>
         </g>
       )}
-      <rect x={mL}            y={mT} width={thPx}  height={innerH} fill="url(#pcGW)" stroke={WOOD_STROKE} strokeWidth="1.5"/>
-      <rect x={mL+drawW-thPx} y={mT} width={thPx}  height={innerH} fill="url(#pcGW)" stroke={WOOD_STROKE} strokeWidth="1.5"/>
-      <rect x={mL} y={mT}            width={drawW}  height={thPx}  fill="url(#pcGT)" stroke={WOOD_STROKE} strokeWidth="1.5"/>
-      <rect x={mL} y={mT+innerH-thPx} width={drawW} height={thPx}  fill="url(#pcGT)" stroke={WOOD_STROKE} strokeWidth="1.5"/>
+      <rect x={mL}             y={mT} width={thPx}  height={innerH} fill="url(#pcGW)" stroke={WOOD_STROKE} strokeWidth="1.5"/>
+      <rect x={mL+drawW-thPx}  y={mT} width={thPx}  height={innerH} fill="url(#pcGW)" stroke={WOOD_STROKE} strokeWidth="1.5"/>
+      <rect x={mL} y={mT}              width={drawW}  height={thPx}  fill="url(#pcGT)" stroke={WOOD_STROKE} strokeWidth="1.5"/>
+      <rect x={mL} y={mT+innerH-thPx}  width={drawW}  height={thPx}  fill="url(#pcGT)" stroke={WOOD_STROKE} strokeWidth="1.5"/>
 
-      {/* ── Séparateurs ── */}
+      {/* Séparateurs */}
       {mRects.map(({ x, w, i }) => {
         if (i >= facadeModules.length - 1) return null;
         const isDouble = joints[i];
         const sepX = x + w;
         return isDouble ? (
           <g key={`sep-${i}`}>
-            <rect x={sepX}       y={mT} width={thPx} height={innerH} fill="url(#pcGDouble)" stroke={WOOD_STROKE} strokeWidth="1"/>
+            <rect x={sepX}      y={mT} width={thPx} height={innerH} fill="url(#pcGDouble)" stroke={WOOD_STROKE} strokeWidth="1"/>
             <rect x={sepX+thPx} y={mT} width={thPx} height={innerH} fill="url(#pcGDouble)" stroke={WOOD_STROKE} strokeWidth="1"/>
             <line x1={sepX+thPx} y1={mT+2} x2={sepX+thPx} y2={mT+innerH-2}
               stroke={DOUBLE_COLOR} strokeWidth="1.5" strokeDasharray="4 3" opacity="0.9"/>
@@ -150,52 +173,18 @@ function FacadeRealisteSVG({
         );
       })}
 
-      {/* ── Modules ── */}
+      {/* Modules : fond + tiroirs + portes */}
       {mRects.map(({ x, w, m, i, intTop, intBottom, intH: iH }) => {
         const nbD     = m.drawers || 0;
         const drawerH = Math.min(iH * 0.15, 46);
         const drawPx  = nbD * drawerH;
-        const nbSh    = m.shelves || 0;
         const nbDoors = m.doors || 0;
 
-        // ─ Fond module ─
-        const fond = <rect key={`fond-${i}`} x={x} y={intTop} width={w} height={iH} fill="#faf5ed" stroke={WOOD_STROKE} strokeWidth="0.7"/>;
-
-        // ─ Tringle ─
-        const ry      = intTop + iH * 0.32;
-        const tringle = m.rod ? (
-          <g key={`rod-${i}`}
-            onClick={e => { e.stopPropagation(); if (isErase) onItemClick(i, 'rod', 0); }}
-            style={{ cursor: isErase ? 'pointer' : 'default' }}>
-            <rect x={x+8}    y={ry-10} width="7"  height="18" fill="#6b7280" rx="2"/>
-            <rect x={x+w-15} y={ry-10} width="7"  height="18" fill="#6b7280" rx="2"/>
-            <line x1={x+16} y1={ry} x2={x+w-15} y2={ry} stroke="#4b5563" strokeWidth="6" strokeLinecap="round"/>
-            <line x1={x+16} y1={ry-2} x2={x+w-15} y2={ry-2} stroke="#d1d5db" strokeWidth="2" strokeLinecap="round" opacity="0.7"/>
-            {isErase && <rect x={x+8} y={ry-12} width={w-20} height="20" fill="red" opacity="0.15" rx="4"/>}
-          </g>
-        ) : null;
-
-        // ─ Tablettes ─
-        const tablettes = Array.from({ length: nbSh }, (_, si) => {
-          const sy = intTop + ((si + 1) / (nbSh + 1)) * iH;
-          return (
-            <g key={`sh-${i}-${si}`}
-              onClick={e => { e.stopPropagation(); if (isErase) onItemClick(i, 'shelf', si); }}
-              style={{ cursor: isErase ? 'pointer' : 'default' }}>
-              <rect x={x} y={sy-3.5} width={w} height={6.5} fill={WOOD_FILL} stroke={WOOD_STROKE} strokeWidth="1"/>
-              <circle cx={x+9}   cy={sy} r="2.5" fill={WOOD_STROKE}/>
-              <circle cx={x+w-9} cy={sy} r="2.5" fill={WOOD_STROKE}/>
-              {isErase && <rect x={x} y={sy-10} width={w} height="20" fill="red" opacity="0.15"/>}
-            </g>
-          );
-        });
-
-        // ─ Tiroirs ─
         const tiroirs = Array.from({ length: nbD }, (_, di) => {
           const dy = intBottom - drawPx + di * drawerH;
           return (
             <g key={`dr-${i}-${di}`}
-              onClick={e => { e.stopPropagation(); if (isErase) onItemClick(i, 'drawer', di); }}
+              onClick={e => { e.stopPropagation(); if (isErase) onModuleErase(i, 'drawer'); }}
               style={{ cursor: isErase ? 'pointer' : 'default' }}>
               <rect x={x+2} y={dy+1} width={w-4} height={drawerH-2} fill="#e8d9bc" stroke={WOOD_STROKE} strokeWidth="1" rx="1"/>
               <line x1={x+2} y1={dy+1} x2={x+w-2} y2={dy+1} stroke={WOOD_STROKE} strokeWidth="0.5"/>
@@ -206,7 +195,6 @@ function FacadeRealisteSVG({
           );
         });
 
-        // ─ Portes ─
         const nd     = Math.min(nbDoors, 2);
         const portes = Array.from({ length: nd }, (_, di) => {
           const dw  = nd === 2 ? w / 2 : w;
@@ -215,7 +203,7 @@ function FacadeRealisteSVG({
           const hx2 = di === 0 ? dx + dw - 14 : dx + 10;
           return (
             <g key={`door-${i}-${di}`}
-              onClick={e => { e.stopPropagation(); if (isErase) onItemClick(i, 'door', di); }}
+              onClick={e => { e.stopPropagation(); if (isErase) onModuleErase(i, 'door'); }}
               style={{ cursor: isErase ? 'pointer' : 'default' }}>
               <rect x={dx+2} y={intTop+2} width={dw-4} height={iH-4} fill="url(#pcGDoor)" stroke={WOOD_STROKE} strokeWidth="1.5" rx="1"/>
               <rect x={dx+pad} y={intTop+pad} width={dw-2*pad} height={iH-2*pad} fill="none" stroke={WOOD_STROKE} strokeWidth="0.8" opacity="0.5"/>
@@ -225,27 +213,29 @@ function FacadeRealisteSVG({
           );
         });
 
-        // ─ Numéro module ─
         const numY = intTop + Math.max(30, (iH - drawPx) * 0.45);
 
-        // ─ Zone de hit invisible pour clic "ajouter" ─
-        const hitZone = ['drawer','shelf','rod','door'].includes(activeTool) ? (
+        // Zone hit pour ajouter tiroir/porte ou placer tablette/tringle
+        const hitZone = (isPlace || isAdd) ? (
           <rect key={`hit-${i}`} x={x} y={intTop} width={w} height={iH}
             fill="transparent" style={{ cursor: 'cell' }}
-            onClick={e => { e.stopPropagation(); onModuleClick(i, activeTool); }}/>
+            onMouseDown={e => {
+              e.stopPropagation();
+              if (isPlace) {
+                onFacadePointerDown(e, i);
+              } else {
+                onModuleClick(i, activeTool);
+              }
+            }}/>
         ) : null;
 
         return (
-          <g key={`mod-${i}`} style={{ cursor: cursorMod }}>
-            {fond}
-            {tringle}
-            {tablettes}
+          <g key={`mod-${i}`}>
+            <rect x={x} y={intTop} width={w} height={iH} fill="#faf5ed" stroke={WOOD_STROKE} strokeWidth="0.7"/>
             {tiroirs}
             {portes}
-            {/* Numéro */}
             <circle cx={x+w/2} cy={numY} r="20" fill="none" stroke={DIM_COLOR} strokeWidth="2"/>
             <text x={x+w/2} y={numY+6} textAnchor="middle" fill={DIM_COLOR} fontWeight="700" fontSize="17">{i+1}</text>
-            {/* Cote largeur */}
             <line x1={x}   y1={mT+drawH+10} x2={x+w} y2={mT+drawH+10} stroke="#b45309" strokeWidth="1"/>
             <line x1={x}   y1={mT+drawH+6}  x2={x}   y2={mT+drawH+14} stroke="#b45309" strokeWidth="1"/>
             <line x1={x+w} y1={mT+drawH+6}  x2={x+w} y2={mT+drawH+14} stroke="#b45309" strokeWidth="1"/>
@@ -255,7 +245,49 @@ function FacadeRealisteSVG({
         );
       })}
 
-      {/* ── Cotes générales ── */}
+      {/* Items libres : tablettes + tringles (draggables) */}
+      {facadeItems.map(item => {
+        const mr = mRects[item.modIdx];
+        if (!mr) return null;
+        const { x, w, intTop, intH: iH } = mr;
+        const ey = intTop + item.yRatio * iH;
+        const canDrag = !isErase && (activeTool === 'erase' || activeTool === item.type || activeTool === 'shelf' || activeTool === 'rod' || activeTool === 'drawer' || activeTool === 'door' || activeTool === 'dim' || activeTool === 'note');
+
+        if (item.type === 'shelf') {
+          return (
+            <g key={item.id}
+              style={{ cursor: isErase ? 'pointer' : 'grab' }}
+              onMouseDown={e => { e.stopPropagation(); if (!isErase) onItemPointerDown(e, item.id); }}
+              onClick={e => { e.stopPropagation(); if (isErase) onItemErase(item.id); }}>
+              <rect x={x} y={ey-3.5} width={w} height={6.5} fill={WOOD_FILL} stroke={WOOD_STROKE} strokeWidth="1"/>
+              <circle cx={x+9}   cy={ey} r="2.5" fill={WOOD_STROKE}/>
+              <circle cx={x+w-9} cy={ey} r="2.5" fill={WOOD_STROKE}/>
+              {/* zone hit large pour drag */}
+              <rect x={x} y={ey-10} width={w} height="20" fill="transparent"/>
+              {isErase && <rect x={x} y={ey-8} width={w} height="16" fill="red" opacity="0.2"/>}
+            </g>
+          );
+        }
+        if (item.type === 'rod') {
+          return (
+            <g key={item.id}
+              style={{ cursor: isErase ? 'pointer' : 'grab' }}
+              onMouseDown={e => { e.stopPropagation(); if (!isErase) onItemPointerDown(e, item.id); }}
+              onClick={e => { e.stopPropagation(); if (isErase) onItemErase(item.id); }}>
+              <rect x={x+8}    y={ey-10} width="7"  height="18" fill="#6b7280" rx="2"/>
+              <rect x={x+w-15} y={ey-10} width="7"  height="18" fill="#6b7280" rx="2"/>
+              <line x1={x+16} y1={ey} x2={x+w-15} y2={ey} stroke="#4b5563" strokeWidth="6" strokeLinecap="round"/>
+              <line x1={x+16} y1={ey-2} x2={x+w-15} y2={ey-2} stroke="#d1d5db" strokeWidth="2" strokeLinecap="round" opacity="0.7"/>
+              {/* zone hit */}
+              <rect x={x+8} y={ey-12} width={w-20} height="24" fill="transparent"/>
+              {isErase && <rect x={x+8} y={ey-12} width={w-20} height="24" fill="red" opacity="0.18" rx="4"/>}
+            </g>
+          );
+        }
+        return null;
+      })}
+
+      {/* Cotes générales */}
       <line x1={mL} y1={mT-26} x2={mL+drawW} y2={mT-26} stroke={DIM_COLOR} strokeWidth="1.5"/>
       <line x1={mL}       y1={mT-32} x2={mL}       y2={mT-20} stroke={DIM_COLOR} strokeWidth="1.5"/>
       <line x1={mL+drawW} y1={mT-32} x2={mL+drawW} y2={mT-20} stroke={DIM_COLOR} strokeWidth="1.5"/>
@@ -275,6 +307,8 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
   const svgRef             = useRef(null);
   const facadeContainerRef = useRef(null);
   const drag               = useRef({ on: false, startX: 0, startY: 0, elStartX: 0, elStartY: 0 });
+  // pour le drag des items façade
+  const facadeDrag         = useRef({ active: false, itemId: null, startY: 0, startYRatio: 0, modIdx: -1 });
 
   const [facadePng, setFacadePng] = useState(null);
   const imgSrc               = facadePng || rawImg;
@@ -305,18 +339,34 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     }
   );
 
-  // ─── facadeModules : état éditable des modules (façade) ─────────────────────
+  // ─── facadeModules : tiroirs + portes (compteurs) ────────────────────────────
   const [facadeModules, setFacadeModules] = useState(() => {
     if (savedState?.facadeModules) return savedState.facadeModules;
     return normalizeModulesFromResult(initialResult, toNum(initialCab.width, 200));
   });
 
-  // moduleWidths dérivé de facadeModules (pour rétrocompatibilité prompt / barre cotes)
-  const moduleWidths = facadeModules.map(m => m.width.toFixed(2));
-  const updateModuleWidth = (idx, val) => {
-    const n = Math.max(1, toNum(val, 1));
+  // ─── widthInputs : state local string pour les inputs largeur (évite bug controlled) ─
+  const [widthInputs, setWidthInputs] = useState(
+    () => (savedState?.facadeModules || normalizeModulesFromResult(initialResult, toNum(initialCab.width, 200)))
+      .map(m => String(m.width))
+  );
+
+  // Sync widthInputs si nb modules change
+  useEffect(() => {
+    setWidthInputs(facadeModules.map(m => String(m.width)));
+  }, [facadeModules.length]);
+
+  const commitWidth = (idx) => {
+    const n = Math.max(1, toNum(widthInputs[idx], 1));
     setFacadeModules(prev => prev.map((m, i) => i === idx ? { ...m, width: n } : m));
+    setWidthInputs(prev => prev.map((v, i) => i === idx ? String(n) : v));
   };
+
+  // ─── facadeItems : tablettes + tringles libres ────────────────────────────────
+  const [facadeItems, setFacadeItems] = useState(() => {
+    if (savedState?.facadeItems) return savedState.facadeItems;
+    return normalizeItemsFromResult(initialResult);
+  });
 
   // ─── Joints ──────────────────────────────────────────────────────────────────
   const nbJoints = Math.max(0, facadeModules.length - 1);
@@ -341,9 +391,9 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
   // ─── Persistance ─────────────────────────────────────────────────────────────
   useEffect(() => {
     localStorage.setItem(LS_SKETCH_KEY, JSON.stringify({
-      elements, cabinetDims, facadeModules, generalNotes, joints,
+      elements, cabinetDims, facadeModules, facadeItems, generalNotes, joints,
     }));
-  }, [elements, cabinetDims, facadeModules, generalNotes, joints]);
+  }, [elements, cabinetDims, facadeModules, facadeItems, generalNotes, joints]);
 
   // ─── Capture façade SVG → PNG ─────────────────────────────────────────────
   useEffect(() => {
@@ -369,34 +419,14 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     img.src = imgSrc;
   }, [imgSrc, baseView]);
 
-  // ─── Callbacks édition façade ────────────────────────────────────────────────
-  // Clic sur un module (outil actif = ajouter)
-  const handleModuleClick = useCallback((modIdx, activeTool) => {
-    setFacadeModules(prev => prev.map((m, i) => {
-      if (i !== modIdx) return m;
-      switch (activeTool) {
-        case 'drawer': return { ...m, drawers: m.drawers + 1 };
-        case 'shelf':  return { ...m, shelves: m.shelves + 1 };
-        case 'rod':    return { ...m, rod: true };
-        case 'door':   return { ...m, doors: Math.min(m.doors + 1, 2) };
-        default:       return m;
-      }
-    }));
-  }, []);
-
-  // Clic sur un élément existant avec outil 🧹 (supprimer)
-  const handleItemClick = useCallback((modIdx, type, _itemIdx) => {
-    setFacadeModules(prev => prev.map((m, i) => {
-      if (i !== modIdx) return m;
-      switch (type) {
-        case 'drawer': return { ...m, drawers: Math.max(0, m.drawers - 1) };
-        case 'shelf':  return { ...m, shelves: Math.max(0, m.shelves - 1) };
-        case 'rod':    return { ...m, rod: false };
-        case 'door':   return { ...m, doors: Math.max(0, m.doors - 1) };
-        default:       return m;
-      }
-    }));
-  }, []);
+  // ─── Helpers géométrie SVG (pour convertir Y souris → yRatio dans module) ────
+  const getFacadeGeometry = useCallback(() => {
+    const drawW = imgSize.w - MARGIN.l - MARGIN.r;
+    const drawH = imgSize.h - MARGIN.t  - MARGIN.b;
+    const thPx  = thickness * (drawW / Math.max(1, cabinetDims.width));
+    const plPx  = cabinetDims.plinth * (drawH / Math.max(1, cabinetDims.height));
+    return computeMRects(facadeModules, joints, thPx, drawW, drawH, MARGIN.l, MARGIN.t, plPx);
+  }, [imgSize, thickness, cabinetDims, facadeModules, joints]);
 
   // ─── Coordonnées SVG ──────────────────────────────────────────────────────────
   const getSVGCoords = useCallback((e) => {
@@ -413,29 +443,65 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     };
   }, [imgSize]);
 
-  // ─── Pointeur down (mode photo / annotations) ─────────────────────────────────
-  const handlePointerDown = useCallback((e) => {
-    if (baseView === 'facade' && ['drawer','shelf','rod','door','erase'].includes(tool)) return; // géré par onModuleClick / onItemClick
-    if (tool === 'erase') return;
-    if (e.target.dataset.handle === 'true') {
-      let target = e.target;
-      while (target && !target.dataset.id) target = target.parentElement;
-      if (target?.dataset.id) setResizingId(target.dataset.id);
+  // ─── Placement tablette/tringle (mousedown sur zone module) ─────────────────
+  const handleFacadePointerDown = useCallback((e, modIdx) => {
+    e.stopPropagation();
+    const { y } = getSVGCoords(e);
+    const mRects = getFacadeGeometry();
+    const mr     = mRects[modIdx];
+    if (!mr) return;
+    const yRatio = clamp((y - mr.intTop) / mr.intH, 0.02, 0.98);
+    const newItem = { id: uid(), type: tool, modIdx, yRatio };
+    setFacadeItems(prev => [...prev, newItem]);
+    // démarrer drag immédiatement
+    facadeDrag.current = { active: true, itemId: newItem.id, startY: y, startYRatio: yRatio, modIdx, intTop: mr.intTop, intH: mr.intH };
+  }, [tool, getSVGCoords, getFacadeGeometry]);
+
+  // ─── Drag item existant (mousedown sur item) ─────────────────────────────────
+  const handleItemPointerDown = useCallback((e, itemId) => {
+    e.stopPropagation();
+    const { y } = getSVGCoords(e);
+    const item   = facadeItems.find(it => it.id === itemId);
+    if (!item) return;
+    const mRects = getFacadeGeometry();
+    const mr     = mRects[item.modIdx];
+    if (!mr) return;
+    facadeDrag.current = { active: true, itemId, startY: y, startYRatio: item.yRatio, modIdx: item.modIdx, intTop: mr.intTop, intH: mr.intH };
+  }, [getSVGCoords, getFacadeGeometry, facadeItems]);
+
+  // ─── Callbacks tiroir/porte (compteurs) ──────────────────────────────────────
+  const handleModuleClick = useCallback((modIdx, activeTool) => {
+    setFacadeModules(prev => prev.map((m, i) => {
+      if (i !== modIdx) return m;
+      if (activeTool === 'drawer') return { ...m, drawers: m.drawers + 1 };
+      if (activeTool === 'door')   return { ...m, doors: Math.min(m.doors + 1, 2) };
+      return m;
+    }));
+  }, []);
+
+  const handleModuleErase = useCallback((modIdx, type) => {
+    setFacadeModules(prev => prev.map((m, i) => {
+      if (i !== modIdx) return m;
+      if (type === 'drawer') return { ...m, drawers: Math.max(0, m.drawers - 1) };
+      if (type === 'door')   return { ...m, doors:   Math.max(0, m.doors   - 1) };
+      return m;
+    }));
+  }, []);
+
+  const handleItemErase = useCallback((itemId) => {
+    setFacadeItems(prev => prev.filter(it => it.id !== itemId));
+  }, []);
+
+  // ─── Mouse move global (drag item façade + annotations) ──────────────────────
+  const handlePointerMove = useCallback((e) => {
+    // drag item façade
+    if (facadeDrag.current.active) {
+      const { y } = getSVGCoords(e);
+      const { itemId, intTop, intH } = facadeDrag.current;
+      const yRatio = clamp((y - intTop) / intH, 0.02, 0.98);
+      setFacadeItems(prev => prev.map(it => it.id === itemId ? { ...it, yRatio } : it));
       return;
     }
-    e.preventDefault();
-    const { x, y } = getSVGCoords(e);
-    if (tool === 'dim') {
-      const newEl = { id: uid(), type: 'dim', x1: x, y1: y, x2: x, y2: y, label: '' };
-      setElements(prev => [...prev, newEl]);
-      setResizingId(newEl.id);
-    } else if (tool === 'note') {
-      const text = prompt('Texte de la note :');
-      if (text) setElements(prev => [...prev, { id: uid(), type: 'note', x, y, text }]);
-    }
-  }, [tool, getSVGCoords, baseView]);
-
-  const handlePointerMove = useCallback((e) => {
     if (!resizingId && !draggingId) return;
     e.preventDefault();
     const { x, y } = getSVGCoords(e);
@@ -454,6 +520,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
   }, [resizingId, draggingId, getSVGCoords]);
 
   const handlePointerUp = useCallback(() => {
+    facadeDrag.current.active = false;
     if (resizingId) {
       const el = elements.find(e => e.id === resizingId);
       if (el?.type === 'dim') {
@@ -463,6 +530,23 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     }
     setResizingId(null); setDraggingId(null);
   }, [resizingId, elements]);
+
+  // ─── Pointeur down (annotations photo / cotes / notes) ───────────────────────
+  const handlePointerDown = useCallback((e) => {
+    // si mode façade avec outil placement, tout est géré par handleFacadePointerDown
+    if (baseView === 'facade' && ['shelf','rod','drawer','door','erase'].includes(tool)) return;
+    if (tool === 'erase') return;
+    e.preventDefault();
+    const { x, y } = getSVGCoords(e);
+    if (tool === 'dim') {
+      const newEl = { id: uid(), type: 'dim', x1: x, y1: y, x2: x, y2: y, label: '' };
+      setElements(prev => [...prev, newEl]);
+      setResizingId(newEl.id);
+    } else if (tool === 'note') {
+      const text = prompt('Texte de la note :');
+      if (text) setElements(prev => [...prev, { id: uid(), type: 'note', x, y, text }]);
+    }
+  }, [tool, getSVGCoords, baseView]);
 
   const eraseElement = (id) => setElements(prev => prev.filter(el => el.id !== id));
 
@@ -479,7 +563,10 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     ctx += `  Total joints=${totalJointsWidth.toFixed(1)} cm (${nD} double, ${joints.length-nD} simple)  Net=${totalInteriorWidth.toFixed(1)} cm\n\n`;
     ctx += 'MODULES (façade éditée par l\'utilisateur) :\n';
     facadeModules.forEach((m, i) => {
-      ctx += `  M${i+1}: L=${m.width.toFixed(2)}cm  tiroirs=${m.drawers}  tablettes=${m.shelves}  portes=${m.doors}  tringle=${m.rod?'oui':'non'}\n`;
+      const items    = facadeItems.filter(it => it.modIdx === i);
+      const nbShelf  = items.filter(it => it.type === 'shelf').length;
+      const nbRod    = items.filter(it => it.type === 'rod').length;
+      ctx += `  M${i+1}: L=${m.width.toFixed(2)}cm  tiroirs=${m.drawers}  tablettes=${nbShelf}  tringles=${nbRod}  portes=${m.doors}\n`;
     });
     if (dims.length > 0) { ctx += 'COTES :\n'; dims.forEach(d => { if(d.label) ctx += `  ${d.label} cm\n`; }); }
     if (notes.length > 0) { ctx += 'NOTES :\n'; notes.forEach((n,i) => ctx += `  ${i+1}. "${n.text}"\n`); }
@@ -521,24 +608,14 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
       };
       img.src = url;
     } catch (err) { console.error(err); setError(err.message); setLoading(false); }
-  }, [imgSize, onComplete, elements, cabinetDims, facadeModules, generalNotes, joints, initialResult]);
+  }, [imgSize, onComplete, elements, cabinetDims, facadeModules, facadeItems, generalNotes, joints, initialResult]);
 
-  // ─── Rendu éléments SVG (annotations photo/cotes/notes) ─────────────────────
+  // ─── Rendu éléments annotations ──────────────────────────────────────────────
   const renderElement = (el) => {
-    const commonProps = {
-      key: el.id, 'data-id': el.id,
-      onClick: (e) => {
-        e.stopPropagation();
-        if (tool === 'erase') { eraseElement(el.id); return; }
-        const { x, y } = getSVGCoords(e);
-        drag.current = { on: true, startX: x, startY: y, elStartX: el.x ?? 0, elStartY: el.y ?? 0 };
-        setDraggingId(el.id);
-      },
-      style: { cursor: tool === 'erase' ? 'pointer' : 'move' },
-      opacity: 0.85,
-    };
     if (el.type === 'dim') return (
-      <g {...commonProps}>
+      <g key={el.id} data-id={el.id}
+        onClick={e => { e.stopPropagation(); if (tool === 'erase') { eraseElement(el.id); return; } }}
+        style={{ cursor: tool === 'erase' ? 'pointer' : 'default' }} opacity={0.85}>
         <line x1={el.x1} y1={el.y1} x2={el.x2} y2={el.y2} stroke="#22d3ee" strokeWidth="2" strokeDasharray="4"/>
         <circle cx={el.x1} cy={el.y1} r="3" fill="#22d3ee"/>
         <circle cx={el.x2} cy={el.y2} r="3" fill="#22d3ee"/>
@@ -559,6 +636,16 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     return null;
   };
 
+  // ─── Hint barre ──────────────────────────────────────────────────────────────
+  const hint = baseView === 'facade'
+    ? tool === 'erase'   ? '🧹 Clic sur un élément pour le supprimer'
+    : tool === 'shelf'   ? '📦 Clic dans un module pour placer · glisser pour déplacer'
+    : tool === 'rod'     ? '👔 Clic dans un module pour placer · glisser pour déplacer'
+    : tool === 'drawer'  ? '🗄️ Clic dans un module pour ajouter un tiroir'
+    : tool === 'door'    ? '🚪 Clic dans un module pour ajouter une porte'
+    : '💡 Dim/Note : tracez sur la façade'
+    : '💡 Cliquez pour créer · glissez pour déplacer';
+
   // ─── JSX ─────────────────────────────────────────────────────────────────────
   return (
     <div className="fixed inset-0 z-50 bg-black/90 flex flex-col">
@@ -574,7 +661,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
       <div className="flex justify-between items-center p-3 bg-slate-900 border-b border-slate-700">
         <div className="flex items-center gap-2">
           <h2 className="text-white font-bold">✏️ Éditeur Intelligent</h2>
-          <span className="text-[10px] font-mono font-black text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/30">v3</span>
+          <span className="text-[10px] font-mono font-black text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/30">v3.3</span>
         </div>
         <div className="flex gap-2">
           {error && <span className="text-red-400 text-sm self-center mr-2">{error}</span>}
@@ -631,17 +718,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
             {t.icon} {t.label}
           </button>
         ))}
-        {/* Hint contextuel selon le mode */}
-        <div className="ml-auto text-xs text-slate-400 self-center px-2 whitespace-nowrap">
-          {baseView === 'facade'
-            ? tool === 'erase'
-              ? '🧹 Clic sur tiroir/tringle/tablette/porte pour supprimer'
-              : ['drawer','shelf','rod','door'].includes(tool)
-              ? '➕ Clic dans un module pour ajouter'
-              : '💡 Dim/Note : tracez sur la façade'
-            : '💡 Cliquez pour créer · glissez pour redimensionner'
-          }
-        </div>
+        <div className="ml-auto text-xs text-slate-400 self-center px-2 whitespace-nowrap">{hint}</div>
       </div>
 
       {/* DIMS ÉDITABLES */}
@@ -653,8 +730,13 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
         <span className="text-slate-500 ml-2">Modules :</span>
         {facadeModules.map((m, i) => (
           <label key={m.id || i} className="text-slate-300">M{i+1}
-            <input value={m.width.toFixed(2)} onChange={e=>updateModuleWidth(i,e.target.value)}
-              className="w-16 ml-1 px-1 py-0.5 bg-slate-800 border border-slate-600 rounded"/>
+            <input
+              value={widthInputs[i] ?? ''}
+              onChange={e => setWidthInputs(prev => prev.map((v, idx) => idx === i ? e.target.value : v))}
+              onBlur={() => commitWidth(i)}
+              onKeyDown={e => { if (e.key === 'Enter') { commitWidth(i); e.target.blur(); } }}
+              className="w-16 ml-1 px-1 py-0.5 bg-slate-800 border border-slate-600 rounded"
+            />
           </label>
         ))}
       </div>
@@ -679,15 +761,17 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
               cabW={cabinetDims.width} cabH={cabinetDims.height}
               plinth={cabinetDims.plinth} thick={thickness}
               facadeModules={facadeModules}
+              facadeItems={facadeItems}
               joints={joints}
+              onFacadePointerDown={handleFacadePointerDown}
+              onItemPointerDown={handleItemPointerDown}
+              onItemErase={handleItemErase}
               onModuleClick={handleModuleClick}
-              onItemClick={handleItemClick}
+              onModuleErase={handleModuleErase}
               activeTool={tool}
             />
           )}
 
-          {/* Annotations */}
-          {baseView === 'photo' && elements.map(renderElement)}
           {elements.filter(el => ['dim','note'].includes(el.type)).map(renderElement)}
         </svg>
       </div>
