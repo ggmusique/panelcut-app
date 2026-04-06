@@ -1,4 +1,6 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
+import CabinetElevationFront from './CabinetElevationFront';
+import { captureFacadeToImage } from '../utils/captureFacadeToImage';
 
 // Outils disponibles
 const TOOLS = [
@@ -12,6 +14,7 @@ const TOOLS = [
 ];
 
 const LS_SKETCH_KEY = 'pc_sketch_editor';
+const FACADE_CAPTURE_WIDTH = 980; // Largeur du conteneur hors-écran pour la capture SVG→PNG
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 const toNum = (v, d = 0) => {
@@ -41,9 +44,15 @@ const normalizeModulesFromResult = (result, width = 0) => {
 };
 
 export default function SketchEditor({ image, scanImage, initialResult, apiKey, onComplete, onCancel }) {
-  const imgSrc = image || scanImage || null;
+  const rawImg = image || scanImage || null;
   const svgRef = useRef(null);
+  const facadeContainerRef = useRef(null);
   const drag = useRef({ on: false, startX: 0, startY: 0, elStartX: 0, elStartY: 0 });
+
+  const [facadePng, setFacadePng] = useState(null);
+
+  // imgSrc: façade PNG en priorité, sinon photo brute du scan
+  const imgSrc = facadePng || rawImg;
   const initialCab = initialResult?.cabinet || {};
   
   // Chargement de l'état persisté
@@ -82,6 +91,22 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     const state = { elements, cabinetDims, moduleWidths, generalNotes };
     localStorage.setItem(LS_SKETCH_KEY, JSON.stringify(state));
   }, [elements, cabinetDims, moduleWidths, generalNotes]);
+
+  // Capture de la façade SVG → PNG après le rendu du conteneur caché.
+  // Le délai de 150 ms laisse le temps à React de monter CabinetElevationFront
+  // dans le DOM hors-écran avant que captureFacadeToImage ne lise le SVG.
+  useEffect(() => {
+    const cabinet = initialResult?.cabinet;
+    if (!cabinet?.width || !cabinet?.height) return;
+    const timer = setTimeout(async () => {
+      const png = await captureFacadeToImage(facadeContainerRef);
+      if (png) {
+        setFacadePng(png);
+        setBaseView('photo');
+      }
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [initialResult]);
 
   // Chargement de l'image pour déterminer la taille du canvas
   useEffect(() => {
@@ -482,6 +507,17 @@ Retourne UNIQUEMENT un JSON valide avec cette structure :
 
   return (
     <div className="fixed inset-0 z-50 bg-black/90 flex flex-col">
+
+      {/* Conteneur caché pour capturer CabinetElevationFront en PNG */}
+      {initialResult?.cabinet?.width && initialResult?.cabinet?.height && (
+        <div
+          ref={facadeContainerRef}
+          style={{ position: 'absolute', left: '-9999px', top: 0, width: `${FACADE_CAPTURE_WIDTH}px`, visibility: 'hidden', pointerEvents: 'none' }}
+          aria-hidden="true"
+        >
+          <CabinetElevationFront cabinet={initialResult.cabinet} name={initialResult.name || 'Meuble'} />
+        </div>
+      )}
       {/* HEADER */}
       <div className="flex justify-between items-center p-3 bg-slate-900 border-b border-slate-700">
         <h2 className="text-white font-bold">✏️ Éditeur Intelligent</h2>
@@ -501,7 +537,7 @@ Retourne UNIQUEMENT un JSON valide avec cette structure :
       {/* TOOLBAR */}
       <div className="flex gap-2 p-2 bg-slate-800 overflow-x-auto">
         <div className="flex items-center gap-1 mr-2">
-          <button onClick={() => setBaseView('photo')} className={`px-3 py-1 rounded text-xs font-bold ${baseView === 'photo' ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300'}`}>Photo</button>
+          <button onClick={() => setBaseView('photo')} className={`px-3 py-1 rounded text-xs font-bold ${baseView === 'photo' ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300'}`}>{facadePng ? 'Façade SVG' : 'Photo'}</button>
           <button onClick={() => setBaseView('facade')} className={`px-3 py-1 rounded text-xs font-bold ${baseView === 'facade' ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300'}`}>Plan façade</button>
         </div>
         {TOOLS.map(t => (
