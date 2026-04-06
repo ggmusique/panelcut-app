@@ -308,7 +308,7 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
             // Écraser TOUJOURS les dimensions avec les valeurs connues
             width:     knownDims.width,
             height:    knownDims.height,
-            depth:     finalResult.cabinet.depth || knownDims.depth,
+            depth:     finalResult.cabinet.depth ?? knownDims.depth,
             thickness: knownDims.thickness,
             plinth:    finalResult.cabinet.plinth ?? knownDims.plinth,
             // Conserver les modules tels que Claude les a détectés
