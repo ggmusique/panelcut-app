@@ -54,6 +54,8 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
   // imgSrc: façade PNG en priorité, sinon photo brute du scan
   const imgSrc = facadePng || rawImg;
   const initialCab = initialResult?.cabinet || {};
+
+  const dimensionsFromWizard = Boolean(initialResult?._dimensionsFromWizard);
   
   // Chargement de l'état persisté
   const savedState = (() => {
@@ -252,6 +254,14 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     const notes = elements.filter(e => e.type === 'note');
 
     let context = "ANNOTATIONS UTILISATEUR SUR LE PLAN :\n";
+
+    if (dimensionsFromWizard && cabinetDims.width > 0) {
+      context = `DIMENSIONS IMPOSÉES PAR L'UTILISATEUR (ne pas modifier) :\n` +
+                `  width: ${cabinetDims.width} cm\n` +
+                `  height: ${cabinetDims.height} cm\n` +
+                `  plinth: ${cabinetDims.plinth} cm\n\n` +
+                context;
+    }
     
     if (shapes.length === 0 && dims.length === 0 && rods.length === 0 && notes.length === 0 && !generalNotes) {
       return "Aucune annotation. Analyse le plan brut.";
@@ -540,6 +550,11 @@ Retourne UNIQUEMENT un JSON valide avec cette structure :
           <button onClick={() => setBaseView('photo')} className={`px-3 py-1 rounded text-xs font-bold ${baseView === 'photo' ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300'}`}>{facadePng ? 'Façade SVG' : 'Photo'}</button>
           <button onClick={() => setBaseView('facade')} className={`px-3 py-1 rounded text-xs font-bold ${baseView === 'facade' ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300'}`}>Plan façade</button>
         </div>
+        {dimensionsFromWizard && (
+          <span className="flex items-center gap-1 px-2 py-1 rounded text-xs font-bold bg-green-700/30 text-green-400 border border-green-600/40">
+            ✓ Cotes du projet
+          </span>
+        )}
         {TOOLS.map(t => (
           <button
             key={t.id}
