@@ -30,56 +30,6 @@ CONSIGNES DE PRÉCISION :
 4. La somme (épaisseur + largeur_module + épaisseur...) doit être égale à la largeur totale.
 5. Ne retourne QUE le JSON, aucun commentaire.`;
 
-// ─── Prompt "Structure Only" — utilisé quand les cotes sont déjà connues ─────
-const getStructureOnlyPrompt = (knownDims) => `
-Tu es un expert en menuiserie. Analyse ce croquis de meuble.
-
-ATTENTION : Ce croquis est en PERSPECTIVE (vue 3/4 ou isométrique).
-Les dimensions visuelles sont DÉFORMÉES par la perspective.
-NE PAS lire les cotes depuis le dessin. NE PAS estimer les dimensions.
-
-Les dimensions réelles sont déjà connues et fournies ci-dessous.
-Tu dois UNIQUEMENT analyser la STRUCTURE interne du meuble :
-  - Combien de modules/colonnes verticaux ?
-  - Dans chaque module : tablettes, tiroirs, tringle, portes ?
-  - Position approximative de chaque élément (haut/milieu/bas du module)
-
-DIMENSIONS CONNUES (utilise EXACTEMENT ces valeurs) :
-  width:     ${knownDims.width} cm
-  height:    ${knownDims.height} cm
-  depth:     ${knownDims.depth || 60} cm
-  thickness: ${knownDims.thickness} cm
-  plinth:    ${knownDims.plinth || 0} cm
-
-Retourne UNIQUEMENT ce JSON (sans commentaire, sans markdown) :
-{
-  "width":     ${knownDims.width},
-  "height":    ${knownDims.height},
-  "depth":     ${knownDims.depth || 60},
-  "thickness": ${knownDims.thickness},
-  "plinth":    ${knownDims.plinth || 0},
-  "modules": [
-    {
-      "x_start": <position_bord_gauche_intérieur_en_cm>,
-      "width":   <largeur_intérieure_nette_en_cm>,
-      "shelves": [ { "y": <hauteur_depuis_bas_intérieur_cm> } ],
-      "drawers": [ { "y": <hauteur_depuis_bas_intérieur_cm>, "height": <hauteur_tiroir_cm> } ],
-      "rod":     { "y": <hauteur_tringle_cm> },
-      "doors":   <nombre_portes>
-    }
-  ]
-}
-
-RÈGLES STRICTES :
-- x_start du premier module = ${knownDims.thickness}
-- x_start de chaque module suivant = x_start_précédent + width_précédent + ${knownDims.thickness}
-- La somme des largeurs modules + séparateurs doit égaler exactement ${knownDims.width} cm
-- Divise ${knownDims.width} cm équitablement entre les modules si tu ne peux pas
-  déterminer les largeurs individuelles depuis la structure visuelle
-- Les positions y sont en cm depuis le bas intérieur (au-dessus du fond bas)
-- Ne retourne QUE le JSON, aucun texte autour
-`;
-
 // ─── Prompt de correction — forces l'IA à respecter les instructions textuelles ─
 const getCorrectionPrompt = (thickness, userInstructions, previousData) => `Tu es un expert en ébénisterie et menuiserie. Corrige le JSON du meuble ci-dessous en suivant STRICTEMENT les instructions de l'utilisateur.
 
@@ -140,7 +90,7 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
 
   // ── États pour le Scan ──
   const fileInputRef   = useRef(null);
-  const processedImageRef = useRef(null); // stocke processedBase64 pour la rectification
+  const processedImageRef = useRef(null);
   const [scanning,        setScanning]        = useState(false);
   const [correcting,      setCorrecting]      = useState(false);
   const [showCorrection,  setShowCorrection]  = useState(false);
@@ -191,7 +141,7 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
     if (area > 0 && p > 0) setPricePerM2(parseFloat((p / area).toFixed(2)));
   };
 
-  // ── 🎨 NOUVEAU : Pré-traitement de l'image (Noir & Blanc + Contraste) ──
+  // ── 🎨 Pré-traitement de l'image (Noir & Blanc + Contraste) ──
   const preprocessImage = (dataUrl) => {
     return new Promise((resolve) => {
       const img = new Image();
@@ -200,46 +150,21 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
         canvas.width = img.width;
         canvas.height = img.height;
         const ctx = canvas.getContext('2d');
-        
-        // Dessiner l'image originale
         ctx.drawImage(img, 0, 0);
-        
-        // Appliquer le filtre pixel par pixel
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const data = imageData.data;
-        
         for (let i = 0; i < data.length; i += 4) {
-          // 1. Conversion Noir & Blanc (moyenne des canaux RGB)
           const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
-          
-          // 2. Augmentation du contraste (facteur 1.4)
-          // Formule : 128 + (valeur - 128) * facteur
           const contrasted = 128 + (avg - 128) * 1.4;
-          
-          // Appliquer aux 3 canaux (R, G, B)
-          data[i] = contrasted;     // R
-          data[i + 1] = contrasted; // G
-          data[i + 2] = contrasted; // B
-          // Alpha reste inchangé
+          data[i] = contrasted;
+          data[i + 1] = contrasted;
+          data[i + 2] = contrasted;
         }
-        
         ctx.putImageData(imageData, 0, 0);
-        
-        // Retourner en Base64 qualité 0.9
         resolve(canvas.toDataURL('image/jpeg', 0.9));
       };
       img.src = dataUrl;
     });
-  };
-
-  // ── Détermine si les cotes sont connues (saisies dans le wizard) ──
-  const hasKnownDimensions = () => {
-    return (
-      panelW > 0 &&
-      panelH > 0 &&
-      panelThickness > 0 &&
-      name.trim().length > 0
-    );
   };
 
   // ── Flux Scan ──
@@ -250,14 +175,6 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
     if (!file) return;
     setScanning(true);
 
-    const knownDims = hasKnownDimensions() ? {
-      width:     panelW,
-      height:    panelH,
-      depth:     60,
-      thickness: panelThickness,
-      plinth:    0,
-    } : null;
-
     try {
       const originalBase64 = await new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -266,29 +183,19 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
         reader.readAsDataURL(file);
       });
 
-      // Pipeline : préprocess + OCR en parallèle
       const { processedImage, ocrNumbers } = await prepareImageForScan(originalBase64);
       console.log(`🔢 OCR détecte ${ocrNumbers.length} cotes :`, ocrNumbers);
 
       const base64Data = processedImage.split(',')[1];
 
-      const requestBody = knownDims
-        ? {
-            image:         base64Data,
-            mediaType:     'image/jpeg',
-            prompt:        getStructureOnlyPrompt(knownDims),
-            structureOnly: true,
-          }
-        : {
-            image:     base64Data,
-            mediaType: 'image/jpeg',
-            ocrNumbers,
-          };
-
       const response = await fetch('https://panelcut-server.vercel.app/api/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody),
+        body: JSON.stringify({
+          image: base64Data,
+          mediaType: 'image/jpeg',
+          ocrNumbers,
+        }),
       });
 
       if (!response.ok) {
@@ -297,28 +204,7 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
       }
       const scanResult = await response.json();
 
-      // Si on avait des dimensions connues, les injecter dans le résultat
-      // même si Claude a quand même retourné des valeurs (sécurité supplémentaire)
-      let finalResult = scanResult;
-      if (knownDims && finalResult?.cabinet) {
-        finalResult = {
-          ...finalResult,
-          cabinet: {
-            ...finalResult.cabinet,
-            // Écraser TOUJOURS les dimensions avec les valeurs connues
-            width:     knownDims.width,
-            height:    knownDims.height,
-            depth:     finalResult.cabinet.depth ?? knownDims.depth,
-            thickness: knownDims.thickness,
-            plinth:    finalResult.cabinet.plinth ?? knownDims.plinth,
-            // Conserver les modules tels que Claude les a détectés
-            modules:   finalResult.cabinet.modules,
-          },
-        };
-        console.log('✅ Dimensions connues injectées dans le résultat scan');
-      }
-
-      if (onGoScan) onGoScan(finalResult, processedImage);
+      if (onGoScan) onGoScan(scanResult, processedImage);
 
     } catch (err) {
       console.error('💥 Échec complet du scan:', err);
@@ -355,11 +241,9 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
         cabinet:   { ...(scanResult?.cabinet || {}), thickness: panelThickness },
         thickness: panelThickness,
       };
-      // Mettre à jour la mémorisation et masquer le panneau
       setLastScanResult(correctedResult);
       setShowCorrection(false);
       setCorrectionText('');
-      // Propager via onGoScan (mêmes refs stables que le scan initial)
       if (onGoScan) onGoScan(correctedResult, processedImageRef.current);
     } catch (err) {
       console.error('💥 Échec de la rectification:', err);
@@ -540,8 +424,6 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
       {/* Barre d'actions */}
       <div className="sticky bottom-0 bg-[#0f1620]/95 dark:bg-slate-950/95 backdrop-blur-md border-t border-white/10 p-4">
         <div className="max-w-3xl mx-auto flex flex-col gap-3">
-
-          {/* Panneau de rectification (visible après un scan) */}
           {showCorrection && (
             <div className="bg-amber-950/40 border border-amber-500/30 rounded-xl p-3 flex flex-col gap-2">
               <p className="text-xs font-bold text-amber-300">🛠️ Décrivez la correction à apporter :</p>
@@ -553,32 +435,18 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
                 className="w-full px-3 py-2 bg-slate-900/80 border border-amber-500/30 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500/50 resize-none"
               />
               <div className="flex gap-2 justify-end">
-                <button
-                  onClick={() => { setShowCorrection(false); setCorrectionText(''); }}
-                  className="px-4 py-2 text-xs font-medium text-slate-300 bg-white/5 hover:bg-white/10 rounded-lg transition-colors"
-                >
-                  Annuler
-                </button>
-                <button
-                  onClick={handleCorrection}
-                  disabled={correcting || !correctionText.trim()}
-                  className="px-4 py-2 text-xs font-bold bg-amber-600 hover:bg-amber-500 text-white rounded-lg transition-all disabled:opacity-50 flex items-center gap-1.5"
-                >
+                <button onClick={() => { setShowCorrection(false); setCorrectionText(''); }} className="px-4 py-2 text-xs font-medium text-slate-300 bg-white/5 hover:bg-white/10 rounded-lg transition-colors">Annuler</button>
+                <button onClick={handleCorrection} disabled={correcting || !correctionText.trim()} className="px-4 py-2 text-xs font-bold bg-amber-600 hover:bg-amber-500 text-white rounded-lg transition-all disabled:opacity-50 flex items-center gap-1.5">
                   {correcting ? '⏳ Correction...' : '✅ Envoyer la correction'}
                 </button>
               </div>
             </div>
           )}
-
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
             <button onClick={onCancel} className="w-full sm:w-auto px-5 py-2.5 text-sm font-medium text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 rounded-xl transition-colors">← {t?.btn_cancel || 'Annuler'}</button>
             <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
               {lastScanResult && (
-                <button
-                  onClick={() => setShowCorrection(v => !v)}
-                  disabled={correcting}
-                  className="flex-1 sm:flex-none px-5 py-2.5 text-sm font-bold bg-amber-700 hover:bg-amber-600 text-white rounded-xl transition-all shadow-lg shadow-amber-700/20 active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-50"
-                >
+                <button onClick={() => setShowCorrection(v => !v)} disabled={correcting} className="flex-1 sm:flex-none px-5 py-2.5 text-sm font-bold bg-amber-700 hover:bg-amber-600 text-white rounded-xl transition-all shadow-lg shadow-amber-700/20 active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-50">
                   🛠️ Rectifier le plan
                 </button>
               )}
@@ -590,7 +458,6 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
               </button>
             </div>
           </div>
-
         </div>
       </div>
     </div>
