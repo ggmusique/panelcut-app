@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { prepareImageForScan } from '../utils/ocrExtract';
 
-// ─── Prompt Claude Vision — paramétré par l'épaisseur choisie par l'utilisateur ─
+// ─── Prompt Claude Vision ────────────────────────────────────────────────────
 const getVisionPrompt = (thickness) => `Tu es un expert en lecture de plans de menuiserie. 
 Analyse l'image et décompose-la en structures réelles.
 ÉPAISSEUR GÉNÉRALE : ${thickness} cm.
@@ -30,57 +30,7 @@ CONSIGNES DE PRÉCISION :
 4. La somme (épaisseur + largeur_module + épaisseur...) doit être égale à la largeur totale.
 5. Ne retourne QUE le JSON, aucun commentaire.`;
 
-// ─── Prompt "Structure Only" — utilisé quand les cotes sont déjà connues ─────
-const getStructureOnlyPrompt = (knownDims) => `
-Tu es un expert en menuiserie. Analyse ce croquis de meuble.
-
-ATTENTION : Ce croquis est en PERSPECTIVE (vue 3/4 ou isométrique).
-Les dimensions visuelles sont DÉFORMÉES par la perspective.
-NE PAS lire les cotes depuis le dessin. NE PAS estimer les dimensions.
-
-Les dimensions réelles sont déjà connues et fournies ci-dessous.
-Tu dois UNIQUEMENT analyser la STRUCTURE interne du meuble :
-  - Combien de modules/colonnes verticaux ?
-  - Dans chaque module : tablettes, tiroirs, tringle, portes ?
-  - Position approximative de chaque élément (haut/milieu/bas du module)
-
-DIMENSIONS CONNUES (utilise EXACTEMENT ces valeurs) :
-  width:     ${knownDims.width} cm
-  height:    ${knownDims.height} cm
-  depth:     ${knownDims.depth || 60} cm
-  thickness: ${knownDims.thickness} cm
-  plinth:    ${knownDims.plinth || 0} cm
-
-Retourne UNIQUEMENT ce JSON (sans commentaire, sans markdown) :
-{
-  "width":     ${knownDims.width},
-  "height":    ${knownDims.height},
-  "depth":     ${knownDims.depth || 60},
-  "thickness": ${knownDims.thickness},
-  "plinth":    ${knownDims.plinth || 0},
-  "modules": [
-    {
-      "x_start": <position_bord_gauche_intérieur_en_cm>,
-      "width":   <largeur_intérieure_nette_en_cm>,
-      "shelves": [ { "y": <hauteur_depuis_bas_intérieur_cm> } ],
-      "drawers": [ { "y": <hauteur_depuis_bas_intérieur_cm>, "height": <hauteur_tiroir_cm> } ],
-      "rod":     { "y": <hauteur_tringle_cm> },
-      "doors":   <nombre_portes>
-    }
-  ]
-}
-
-RÈGLES STRICTES :
-- x_start du premier module = ${knownDims.thickness}
-- x_start de chaque module suivant = x_start_précédent + width_précédent + ${knownDims.thickness}
-- La somme des largeurs modules + séparateurs doit égaler exactement ${knownDims.width} cm
-- Divise ${knownDims.width} cm équitablement entre les modules si tu ne peux pas
-  déterminer les largeurs individuelles depuis la structure visuelle
-- Les positions y sont en cm depuis le bas intérieur (au-dessus du fond bas)
-- Ne retourne QUE le JSON, aucun texte autour
-`;
-
-// ─── Prompt de correction — forces l'IA à respecter les instructions textuelles ─
+// ─── Prompt de correction ────────────────────────────────────────────────────
 const getCorrectionPrompt = (thickness, userInstructions, previousData) => `Tu es un expert en ébénisterie et menuiserie. Corrige le JSON du meuble ci-dessous en suivant STRICTEMENT les instructions de l'utilisateur.
 
 JSON actuel (à corriger) :
@@ -106,14 +56,12 @@ Structure attendue :
 }`;
 
 export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoManual, onCancel }) {
-  // ── 🔥 FIX CRITIQUE : Refs pour éviter boucles infinies + perte de données ──
   const projectRef = useRef(project);
   const onChangeRef = useRef(onChange);
   
   useEffect(() => { projectRef.current = project; }, [project]);
   useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
 
-  // ── États locaux ──
   const [name, setName] = useState(project.name || '');
   const [client, setClient] = useState(project.client || '');
   const [company, setCompany] = useState(project.company || '');
@@ -132,22 +80,19 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
   const [kerf, setKerf] = useState(project.kerf ?? 3);
   const [tolerance, setTolerance] = useState(project.tolerance ?? 10);
   
-  // ── Logique de Prix Dynamique ──
   const initialArea = ((project.panel?.w || 244) * (project.panel?.h || 122)) / 10000;
   const initialPriceM2 = (project.pricePerPanel && initialArea > 0) ? project.pricePerPanel / initialArea : 13.5;
   const [pricePerPanel, setPricePerPanel] = useState(project.pricePerPanel ?? (initialArea * initialPriceM2));
   const [pricePerM2, setPricePerM2] = useState(initialPriceM2);
 
-  // ── États pour le Scan ──
   const fileInputRef   = useRef(null);
-  const processedImageRef = useRef(null); // stocke processedBase64 pour la rectification
+  const processedImageRef = useRef(null);
   const [scanning,        setScanning]        = useState(false);
   const [correcting,      setCorrecting]      = useState(false);
   const [showCorrection,  setShowCorrection]  = useState(false);
   const [correctionText,  setCorrectionText]  = useState('');
   const [lastScanResult,  setLastScanResult]  = useState(null);
 
-  // ── 🔥 Sync vers le parent (via refs stables) ──
   useEffect(() => {
     const currentProject = projectRef.current;
     onChangeRef.current({
@@ -164,18 +109,14 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
     kerf, tolerance, pricePerPanel
   ]);
 
-  // ── Calcul automatique du prix ──
   useEffect(() => {
     if (pricePerM2 > 0) {
       const newArea = (panelW * panelH) / 10000;
       const newPrice = parseFloat((newArea * pricePerM2).toFixed(2));
-      if (newPrice !== pricePerPanel) {
-        setPricePerPanel(newPrice);
-      }
+      if (newPrice !== pricePerPanel) setPricePerPanel(newPrice);
     }
   }, [panelW, panelH, pricePerM2]);
 
-  // ── Helpers ──
   const displayValue = (valCm) => displayUnit === 'mm' ? Math.round(valCm * 10) : valCm;
   const parseInput = (val) => {
     const num = parseFloat(val);
@@ -191,73 +132,12 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
     if (area > 0 && p > 0) setPricePerM2(parseFloat((p / area).toFixed(2)));
   };
 
-  // ── 🎨 NOUVEAU : Pré-traitement de l'image (Noir & Blanc + Contraste) ──
-  const preprocessImage = (dataUrl) => {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        canvas.width = img.width;
-        canvas.height = img.height;
-        const ctx = canvas.getContext('2d');
-        
-        // Dessiner l'image originale
-        ctx.drawImage(img, 0, 0);
-        
-        // Appliquer le filtre pixel par pixel
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const data = imageData.data;
-        
-        for (let i = 0; i < data.length; i += 4) {
-          // 1. Conversion Noir & Blanc (moyenne des canaux RGB)
-          const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
-          
-          // 2. Augmentation du contraste (facteur 1.4)
-          // Formule : 128 + (valeur - 128) * facteur
-          const contrasted = 128 + (avg - 128) * 1.4;
-          
-          // Appliquer aux 3 canaux (R, G, B)
-          data[i] = contrasted;     // R
-          data[i + 1] = contrasted; // G
-          data[i + 2] = contrasted; // B
-          // Alpha reste inchangé
-        }
-        
-        ctx.putImageData(imageData, 0, 0);
-        
-        // Retourner en Base64 qualité 0.9
-        resolve(canvas.toDataURL('image/jpeg', 0.9));
-      };
-      img.src = dataUrl;
-    });
-  };
-
-  // ── Détermine si les cotes sont connues (saisies dans le wizard) ──
-  const hasKnownDimensions = () => {
-    return (
-      panelW > 0 &&
-      panelH > 0 &&
-      panelThickness > 0 &&
-      name.trim().length > 0
-    );
-  };
-
-  // ── Flux Scan ──
   const triggerFilePicker = () => fileInputRef.current?.click();
 
   const handleFileSelect = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
     setScanning(true);
-
-    const knownDims = hasKnownDimensions() ? {
-      width:     panelW,
-      height:    panelH,
-      depth:     60,
-      thickness: panelThickness,
-      plinth:    0,
-    } : null;
-
     try {
       const originalBase64 = await new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -266,29 +146,15 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
         reader.readAsDataURL(file);
       });
 
-      // Pipeline : préprocess + OCR en parallèle
       const { processedImage, ocrNumbers } = await prepareImageForScan(originalBase64);
+      processedImageRef.current = processedImage;
       console.log(`🔢 OCR détecte ${ocrNumbers.length} cotes :`, ocrNumbers);
 
       const base64Data = processedImage.split(',')[1];
-
-      const requestBody = knownDims
-        ? {
-            image:         base64Data,
-            mediaType:     'image/jpeg',
-            prompt:        getStructureOnlyPrompt(knownDims),
-            structureOnly: true,
-          }
-        : {
-            image:     base64Data,
-            mediaType: 'image/jpeg',
-            ocrNumbers,
-          };
-
       const response = await fetch('https://panelcut-server.vercel.app/api/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody),
+        body: JSON.stringify({ image: base64Data, mediaType: 'image/jpeg', ocrNumbers }),
       });
 
       if (!response.ok) {
@@ -296,30 +162,8 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
         throw new Error(errData.error || `Erreur serveur (${response.status})`);
       }
       const scanResult = await response.json();
-
-      // Si on avait des dimensions connues, les injecter dans le résultat
-      // même si Claude a quand même retourné des valeurs (sécurité supplémentaire)
-      let finalResult = scanResult;
-      if (knownDims && finalResult?.cabinet) {
-        finalResult = {
-          ...finalResult,
-          cabinet: {
-            ...finalResult.cabinet,
-            // Écraser TOUJOURS les dimensions avec les valeurs connues
-            width:     knownDims.width,
-            height:    knownDims.height,
-            depth:     finalResult.cabinet.depth ?? knownDims.depth,
-            thickness: knownDims.thickness,
-            plinth:    finalResult.cabinet.plinth ?? knownDims.plinth,
-            // Conserver les modules tels que Claude les a détectés
-            modules:   finalResult.cabinet.modules,
-          },
-        };
-        console.log('✅ Dimensions connues injectées dans le résultat scan');
-      }
-
-      if (onGoScan) onGoScan(finalResult, processedImage);
-
+      setLastScanResult(scanResult);
+      if (onGoScan) onGoScan(scanResult, processedImage);
     } catch (err) {
       console.error('💥 Échec complet du scan:', err);
       alert(`❌ Échec du scan : ${err.message}`);
@@ -329,7 +173,6 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
     }
   };
 
-  // ── Rectification ──
   const handleCorrection = async () => {
     if (!processedImageRef.current || !correctionText.trim()) return;
     setCorrecting(true);
@@ -355,11 +198,9 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
         cabinet:   { ...(scanResult?.cabinet || {}), thickness: panelThickness },
         thickness: panelThickness,
       };
-      // Mettre à jour la mémorisation et masquer le panneau
       setLastScanResult(correctedResult);
       setShowCorrection(false);
       setCorrectionText('');
-      // Propager via onGoScan (mêmes refs stables que le scan initial)
       if (onGoScan) onGoScan(correctedResult, processedImageRef.current);
     } catch (err) {
       console.error('💥 Échec de la rectification:', err);
@@ -369,7 +210,6 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
     }
   };
 
-  // ── Options ──
   const thicknessOptions = [
     { value: 0.8, label: '8 mm' }, { value: 1.2, label: '12 mm' }, { value: 1.8, label: '18 mm' },
     { value: 2.2, label: '22 mm' }, { value: 2.5, label: '25 mm' }, { value: 3.0, label: '30 mm' },
@@ -403,7 +243,6 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
     <div className="min-h-[calc(100vh-64px)] flex flex-col">
       <input type="file" ref={fileInputRef} accept="image/*" className="hidden" onChange={handleFileSelect} />
       
-      {/* Header */}
       <div className="max-w-3xl mx-auto w-full px-4 pt-6 pb-4 border-b border-white/10">
         <div className="flex items-center justify-between">
           <div>
@@ -414,11 +253,9 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
         </div>
       </div>
 
-      {/* Formulaire */}
       <div className="flex-1 overflow-y-auto px-4 py-6">
         <div className="max-w-3xl mx-auto space-y-6">
           
-          {/* Projet */}
           <section className="p-4 bg-white/5 rounded-xl border border-white/10">
             <h3 className="text-sm font-semibold text-orange-400 mb-3 uppercase tracking-wide">{t?.section_project || 'Projet'}</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -433,7 +270,6 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
             </div>
           </section>
 
-          {/* Panneau */}
           <section className="p-4 bg-white/5 rounded-xl border border-white/10">
             <h3 className="text-sm font-semibold text-orange-400 mb-3 uppercase tracking-wide">{t?.section_panel || 'Panneau'}</h3>
             <div className="mb-4">
@@ -448,25 +284,16 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
               </div>
               <div className="flex items-center gap-3">
                 <div className="flex-1 relative">
-                  <div className="absolute left-2 top-1/2 -translate-y-1/2 flex flex-col gap-0.5">
-                    <button type="button" onClick={() => setPanelW(prev => Math.round((prev + 0.1) * 10) / 10)} className="w-5 h-4 text-slate-500 hover:text-orange-400 text-xs">▲</button>
-                    <button type="button" onClick={() => setPanelW(prev => Math.round((prev - 0.1) * 10) / 10)} className="w-5 h-4 text-slate-500 hover:text-orange-400 text-xs">▼</button>
-                  </div>
-                  <input type="number" inputMode="decimal" min="10" max="300" step={displayUnit === 'mm' ? 1 : 0.1} value={displayValue(panelW)} onChange={(e) => setPanelW(parseInput(e.target.value))} className="w-full pl-8 pr-3 py-2 bg-slate-800/50 border border-white/10 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-orange-500/50 transition-all font-mono" />
+                  <input type="number" inputMode="decimal" min="10" max="300" step={displayUnit === 'mm' ? 1 : 0.1} value={displayValue(panelW)} onChange={(e) => setPanelW(parseInput(e.target.value))} className="w-full pl-3 pr-8 py-2 bg-slate-800/50 border border-white/10 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-orange-500/50 transition-all font-mono" />
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-500">{displayUnit}</span>
                 </div>
                 <span className="text-slate-500">×</span>
                 <div className="flex-1 relative">
-                  <div className="absolute left-2 top-1/2 -translate-y-1/2 flex flex-col gap-0.5">
-                    <button type="button" onClick={() => setPanelH(prev => Math.round((prev + 0.1) * 10) / 10)} className="w-5 h-4 text-slate-500 hover:text-orange-400 text-xs">▲</button>
-                    <button type="button" onClick={() => setPanelH(prev => Math.round((prev - 0.1) * 10) / 10)} className="w-5 h-4 text-slate-500 hover:text-orange-400 text-xs">▼</button>
-                  </div>
-                  <input type="number" inputMode="decimal" min="10" max="300" step={displayUnit === 'mm' ? 1 : 0.1} value={displayValue(panelH)} onChange={(e) => setPanelH(parseInput(e.target.value))} className="w-full pl-8 pr-3 py-2 bg-slate-800/50 border border-white/10 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-orange-500/50 transition-all font-mono" />
+                  <input type="number" inputMode="decimal" min="10" max="300" step={displayUnit === 'mm' ? 1 : 0.1} value={displayValue(panelH)} onChange={(e) => setPanelH(parseInput(e.target.value))} className="w-full pl-3 pr-8 py-2 bg-slate-800/50 border border-white/10 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-orange-500/50 transition-all font-mono" />
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-500">{displayUnit}</span>
                 </div>
                 <button type="button" onClick={() => setDisplayUnit(u => u === 'cm' ? 'mm' : 'cm')} className="px-3 py-2 text-xs font-bold bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg transition-colors">{displayUnit.toUpperCase()}</button>
               </div>
-              <p className="text-[11px] text-slate-500 mt-1">{t?.helper_dimensions || 'Stocké en cm pour le moteur d\'optimisation'}</p>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -480,12 +307,10 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
                 <select value={panelLabel} onChange={(e) => setPanelLabel(e.target.value)} className="w-full px-3 py-2 bg-slate-800/50 border border-white/10 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-orange-500/50 transition-all">
                   {materialOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                 </select>
-                {panelLabel === 'Autre' && <input type="text" value={project.panel?.customLabel || ''} onChange={(e) => onChange({ ...project, panel: { ...project.panel, customLabel: e.target.value } })} placeholder="Précisez..." className="w-full mt-2 px-3 py-2 bg-slate-800/50 border border-orange-500/50 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-orange-500/50 transition-all" />}
               </div>
             </div>
           </section>
 
-          {/* Finition */}
           <section className="p-4 bg-white/5 rounded-xl border border-white/10">
             <h3 className="text-sm font-semibold text-orange-400 mb-3 uppercase tracking-wide">{t?.section_finish || 'Finition'}</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -508,12 +333,11 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
               </div>
               <div className="md:col-span-2">
                 <label className="block text-xs font-medium text-slate-300 mb-1">{t?.field_supplier_ref || 'Référence fournisseur'}</label>
-                <input type="text" value={supplierRef} onChange={(e) => setSupplierRef(e.target.value)} placeholder={t?.placeholder_supplier || 'Ex: EGGER W980 ST9, KRONOSPAN K001...'} className="w-full px-3 py-2 bg-slate-800/50 border border-white/10 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500/50 transition-all font-mono text-sm" />
+                <input type="text" value={supplierRef} onChange={(e) => setSupplierRef(e.target.value)} placeholder={t?.placeholder_supplier || 'Ex: EGGER W980 ST9'} className="w-full px-3 py-2 bg-slate-800/50 border border-white/10 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500/50 transition-all font-mono text-sm" />
               </div>
             </div>
           </section>
 
-          {/* Paramètres & Prix */}
           <section className="p-4 bg-white/5 rounded-xl border border-white/10">
             <h3 className="text-sm font-semibold text-orange-400 mb-3 uppercase tracking-wide">{t?.section_settings || 'Paramètres'}</h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -530,67 +354,46 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
                     <div className="text-sm font-bold text-emerald-400">{pricePerM2.toFixed(2)} €</div>
                   </div>
                 </div>
-                <p className="text-[10px] text-slate-500 mt-1">💡 Le prix s'adapte automatiquement à la surface</p>
               </div>
             </div>
           </section>
         </div>
       </div>
 
-      {/* Barre d'actions */}
       <div className="sticky bottom-0 bg-[#0f1620]/95 dark:bg-slate-950/95 backdrop-blur-md border-t border-white/10 p-4">
         <div className="max-w-3xl mx-auto flex flex-col gap-3">
-
-          {/* Panneau de rectification (visible après un scan) */}
           {showCorrection && (
             <div className="bg-amber-950/40 border border-amber-500/30 rounded-xl p-3 flex flex-col gap-2">
               <p className="text-xs font-bold text-amber-300">🛠️ Décrivez la correction à apporter :</p>
               <textarea
                 value={correctionText}
                 onChange={(e) => setCorrectionText(e.target.value)}
-                placeholder="Ex : Il n'y a que 2 colonnes — une de 120 cm et une de 58 cm. Supprime la 3e colonne."
+                placeholder="Ex : Il n'y a que 2 colonnes — une de 120 cm et une de 58 cm."
                 rows={3}
                 className="w-full px-3 py-2 bg-slate-900/80 border border-amber-500/30 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500/50 resize-none"
               />
               <div className="flex gap-2 justify-end">
-                <button
-                  onClick={() => { setShowCorrection(false); setCorrectionText(''); }}
-                  className="px-4 py-2 text-xs font-medium text-slate-300 bg-white/5 hover:bg-white/10 rounded-lg transition-colors"
-                >
-                  Annuler
-                </button>
-                <button
-                  onClick={handleCorrection}
-                  disabled={correcting || !correctionText.trim()}
-                  className="px-4 py-2 text-xs font-bold bg-amber-600 hover:bg-amber-500 text-white rounded-lg transition-all disabled:opacity-50 flex items-center gap-1.5"
-                >
+                <button onClick={() => { setShowCorrection(false); setCorrectionText(''); }} className="px-4 py-2 text-xs font-medium text-slate-300 bg-white/5 hover:bg-white/10 rounded-lg transition-colors">Annuler</button>
+                <button onClick={handleCorrection} disabled={correcting || !correctionText.trim()} className="px-4 py-2 text-xs font-bold bg-amber-600 hover:bg-amber-500 text-white rounded-lg transition-all disabled:opacity-50 flex items-center gap-1.5">
                   {correcting ? '⏳ Correction...' : '✅ Envoyer la correction'}
                 </button>
               </div>
             </div>
           )}
-
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
             <button onClick={onCancel} className="w-full sm:w-auto px-5 py-2.5 text-sm font-medium text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 rounded-xl transition-colors">← {t?.btn_cancel || 'Annuler'}</button>
             <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
               {lastScanResult && (
-                <button
-                  onClick={() => setShowCorrection(v => !v)}
-                  disabled={correcting}
-                  className="flex-1 sm:flex-none px-5 py-2.5 text-sm font-bold bg-amber-700 hover:bg-amber-600 text-white rounded-xl transition-all shadow-lg shadow-amber-700/20 active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  🛠️ Rectifier le plan
-                </button>
+                <button onClick={() => setShowCorrection(v => !v)} disabled={correcting} className="flex-1 sm:flex-none px-5 py-2.5 text-sm font-bold bg-amber-700 hover:bg-amber-600 text-white rounded-xl transition-all shadow-lg active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-50">🛠️ Rectifier le plan</button>
               )}
-              <button onClick={triggerFilePicker} disabled={scanning || correcting} className="flex-1 sm:flex-none px-5 py-2.5 text-sm font-bold bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl transition-all shadow-lg shadow-cyan-600/20 active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-50">
+              <button onClick={triggerFilePicker} disabled={scanning || correcting} className="flex-1 sm:flex-none px-5 py-2.5 text-sm font-bold bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl transition-all shadow-lg active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-50">
                 {scanning ? '⏳ Analyse...' : '📷 Scanner un plan'}
               </button>
-              <button onClick={onGoManual} disabled={!isFormValid} className={`flex-1 sm:flex-none px-5 py-2.5 text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${isFormValid ? 'bg-orange-600 hover:bg-orange-500 text-white shadow-lg shadow-orange-600/20 active:scale-[0.98]' : 'bg-slate-700 text-slate-500 cursor-not-allowed opacity-50'}`}>
+              <button onClick={onGoManual} disabled={!isFormValid} className={`flex-1 sm:flex-none px-5 py-2.5 text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${isFormValid ? 'bg-orange-600 hover:bg-orange-500 text-white shadow-lg active:scale-[0.98]' : 'bg-slate-700 text-slate-500 cursor-not-allowed opacity-50'}`}>
                 ✏️ {t?.btn_manual || 'Saisie manuelle'} →
               </button>
             </div>
           </div>
-
         </div>
       </div>
     </div>
