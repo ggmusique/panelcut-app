@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback, useEffect } from 'react';
+import { useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import CabinetElevationFront from './CabinetElevationFront';
 import { captureFacadeToImage } from '../utils/captureFacadeToImage';
 
@@ -12,8 +12,10 @@ const TOOLS = [
   { id: 'erase',  icon: '🧹', label: 'Effacer',  color: '#f87171' },
 ];
 
-const LS_SKETCH_KEY        = 'pc_sketch_editor';
-const FACADE_CAPTURE_WIDTH = 980;
+const LS_SKETCH_KEY               = 'pc_sketch_editor';
+const FACADE_CAPTURE_WIDTH        = 980;
+const FACADE_CAPTURE_INITIAL_DELAY_MS = 150; // délai initial (DOM prêt)
+const FACADE_CAPTURE_DEBOUNCE_MS  = 400;     // délai après édition utilisateur
 const WOOD_FILL            = '#f5ede0';
 const WOOD_STROKE          = '#8b6914';
 const DIM_COLOR            = '#dc2626';
@@ -380,6 +382,34 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
   const totalJointsWidth   = joints.reduce((s, d) => s + jointThickness(d, thickness), 0);
   const totalInteriorWidth = Math.max(1, toNum(cabinetDims.width, 200) - thickness * 2 - totalJointsWidth);
 
+  // ─── Cabinet courant : reconstruit depuis l'état éditable ─────────────────────
+  // Permet à CabinetElevationFront de toujours refléter les modifications de
+  // l'utilisateur (tiroirs, tringles, tablettes) et pas seulement le scan initial.
+  const currentCabinet = useMemo(() => {
+    const w = cabinetDims.width;
+    const h = cabinetDims.height;
+    const pl = cabinetDims.plinth;
+    if (!w || !h) return null;
+    const interiorH = Math.max(1, h - pl);
+    return {
+      width: w,
+      height: h,
+      plinth: pl,
+      modules: facadeModules.map((m, i) => ({
+        id: i + 1,
+        width: m.width,
+        drawers: m.drawers,
+        doors: m.doors,
+        rods: facadeItems
+          .filter(it => it.type === 'rod' && Number(it.modIdx) === i)
+          .map(it => ({ y: (1 - it.yRatio) * interiorH })),
+        shelves: facadeItems
+          .filter(it => it.type === 'shelf' && Number(it.modIdx) === i)
+          .map(it => ({ y: (1 - it.yRatio) * interiorH })),
+      })),
+    };
+  }, [cabinetDims, facadeModules, facadeItems]);
+
   const saveToStorage = useCallback(() => {
     localStorage.setItem(LS_SKETCH_KEY, JSON.stringify({
       elements, cabinetDims, facadeModules, facadeItems, generalNotes, joints,
@@ -392,15 +422,26 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
 
   const handleSave = saveToStorage;
 
+  // ─── Capture facadePng depuis CabinetElevationFront ───────────────────────────
+  // Déclenché au premier rendu ET à chaque modification de l'état éditable.
+  // Au premier rendu seulement, on bascule sur la vue "Façade SVG" (photo).
+  const didAutoSwitchRef = useRef(false);
   useEffect(() => {
-    const cabinet = initialResult?.cabinet;
-    if (!cabinet?.width || !cabinet?.height) return;
+    if (!currentCabinet) return;
+    const isFirst = !didAutoSwitchRef.current;
+    const delay   = isFirst ? FACADE_CAPTURE_INITIAL_DELAY_MS : FACADE_CAPTURE_DEBOUNCE_MS;
     const timer = setTimeout(async () => {
       const png = await captureFacadeToImage(facadeContainerRef);
-      if (png) { setFacadePng(png); setBaseView('photo'); }
-    }, 150);
+      if (png) {
+        setFacadePng(png);
+        if (isFirst) {
+          setBaseView('photo');
+          didAutoSwitchRef.current = true;
+        }
+      }
+    }, delay);
     return () => clearTimeout(timer);
-  }, [initialResult]);
+  }, [currentCabinet]);
 
   useEffect(() => {
     if (baseView === 'facade') { setImgSize({ w: 1140, h: 700 }); return; }
@@ -713,11 +754,11 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
         {elements.filter(el => ['dim','note'].includes(el.type)).map(renderElement)}
       </svg>
 
-      {initialResult?.cabinet?.width && initialResult?.cabinet?.height && (
+      {currentCabinet && (
         <div ref={facadeContainerRef}
           style={{position:'absolute',left:'-9999px',top:0,width:`${FACADE_CAPTURE_WIDTH}px`,visibility:'hidden',pointerEvents:'none'}}
           aria-hidden="true">
-          <CabinetElevationFront cabinet={initialResult.cabinet} name={initialResult.name||'Meuble'}/>
+          <CabinetElevationFront cabinet={currentCabinet} name={initialResult?.name||'Meuble'}/>
         </div>
       )}
 
