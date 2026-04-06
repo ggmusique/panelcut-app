@@ -30,6 +30,56 @@ CONSIGNES DE PRÉCISION :
 4. La somme (épaisseur + largeur_module + épaisseur...) doit être égale à la largeur totale.
 5. Ne retourne QUE le JSON, aucun commentaire.`;
 
+// ─── Prompt "Structure Only" — utilisé quand les cotes sont déjà connues ─────
+const getStructureOnlyPrompt = (knownDims) => `
+Tu es un expert en menuiserie. Analyse ce croquis de meuble.
+
+ATTENTION : Ce croquis est en PERSPECTIVE (vue 3/4 ou isométrique).
+Les dimensions visuelles sont DÉFORMÉES par la perspective.
+NE PAS lire les cotes depuis le dessin. NE PAS estimer les dimensions.
+
+Les dimensions réelles sont déjà connues et fournies ci-dessous.
+Tu dois UNIQUEMENT analyser la STRUCTURE interne du meuble :
+  - Combien de modules/colonnes verticaux ?
+  - Dans chaque module : tablettes, tiroirs, tringle, portes ?
+  - Position approximative de chaque élément (haut/milieu/bas du module)
+
+DIMENSIONS CONNUES (utilise EXACTEMENT ces valeurs) :
+  width:     ${knownDims.width} cm
+  height:    ${knownDims.height} cm
+  depth:     ${knownDims.depth || 60} cm
+  thickness: ${knownDims.thickness} cm
+  plinth:    ${knownDims.plinth || 0} cm
+
+Retourne UNIQUEMENT ce JSON (sans commentaire, sans markdown) :
+{
+  "width":     ${knownDims.width},
+  "height":    ${knownDims.height},
+  "depth":     ${knownDims.depth || 60},
+  "thickness": ${knownDims.thickness},
+  "plinth":    ${knownDims.plinth || 0},
+  "modules": [
+    {
+      "x_start": <position_bord_gauche_intérieur_en_cm>,
+      "width":   <largeur_intérieure_nette_en_cm>,
+      "shelves": [ { "y": <hauteur_depuis_bas_intérieur_cm> } ],
+      "drawers": [ { "y": <hauteur_depuis_bas_intérieur_cm>, "height": <hauteur_tiroir_cm> } ],
+      "rod":     { "y": <hauteur_tringle_cm> },
+      "doors":   <nombre_portes>
+    }
+  ]
+}
+
+RÈGLES STRICTES :
+- x_start du premier module = ${knownDims.thickness}
+- x_start de chaque module suivant = x_start_précédent + width_précédent + ${knownDims.thickness}
+- La somme des largeurs modules + séparateurs doit égaler exactement ${knownDims.width} cm
+- Divise ${knownDims.width} cm équitablement entre les modules si tu ne peux pas
+  déterminer les largeurs individuelles depuis la structure visuelle
+- Les positions y sont en cm depuis le bas intérieur (au-dessus du fond bas)
+- Ne retourne QUE le JSON, aucun texte autour
+`;
+
 // ─── Prompt de correction — forces l'IA à respecter les instructions textuelles ─
 const getCorrectionPrompt = (thickness, userInstructions, previousData) => `Tu es un expert en ébénisterie et menuiserie. Corrige le JSON du meuble ci-dessous en suivant STRICTEMENT les instructions de l'utilisateur.
 
@@ -182,6 +232,16 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
     });
   };
 
+  // ── Détermine si les cotes sont connues (saisies dans le wizard) ──
+  const hasKnownDimensions = () => {
+    return (
+      panelW > 0 &&
+      panelH > 0 &&
+      panelThickness > 0 &&
+      name.trim().length > 0
+    );
+  };
+
   // ── Flux Scan ──
   const triggerFilePicker = () => fileInputRef.current?.click();
 
@@ -189,6 +249,14 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
     const file = event.target.files?.[0];
     if (!file) return;
     setScanning(true);
+
+    const knownDims = hasKnownDimensions() ? {
+      width:     panelW,
+      height:    panelH,
+      depth:     60,
+      thickness: panelThickness,
+      plinth:    0,
+    } : null;
 
     try {
       const originalBase64 = await new Promise((resolve, reject) => {
@@ -204,14 +272,23 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
 
       const base64Data = processedImage.split(',')[1];
 
+      const requestBody = knownDims
+        ? {
+            image:         base64Data,
+            mediaType:     'image/jpeg',
+            prompt:        getStructureOnlyPrompt(knownDims),
+            structureOnly: true,
+          }
+        : {
+            image:     base64Data,
+            mediaType: 'image/jpeg',
+            ocrNumbers,
+          };
+
       const response = await fetch('https://panelcut-server.vercel.app/api/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          image: base64Data,
-          mediaType: 'image/jpeg',
-          ocrNumbers,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
@@ -220,7 +297,28 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
       }
       const scanResult = await response.json();
 
-      if (onGoScan) onGoScan(scanResult, processedImage);
+      // Si on avait des dimensions connues, les injecter dans le résultat
+      // même si Claude a quand même retourné des valeurs (sécurité supplémentaire)
+      let finalResult = scanResult;
+      if (knownDims && finalResult?.cabinet) {
+        finalResult = {
+          ...finalResult,
+          cabinet: {
+            ...finalResult.cabinet,
+            // Écraser TOUJOURS les dimensions avec les valeurs connues
+            width:     knownDims.width,
+            height:    knownDims.height,
+            depth:     finalResult.cabinet.depth ?? knownDims.depth,
+            thickness: knownDims.thickness,
+            plinth:    finalResult.cabinet.plinth ?? knownDims.plinth,
+            // Conserver les modules tels que Claude les a détectés
+            modules:   finalResult.cabinet.modules,
+          },
+        };
+        console.log('✅ Dimensions connues injectées dans le résultat scan');
+      }
+
+      if (onGoScan) onGoScan(finalResult, processedImage);
 
     } catch (err) {
       console.error('💥 Échec complet du scan:', err);
