@@ -450,8 +450,9 @@ export default function App() {
   };
 
   // ─── Retour depuis l'éditeur intelligent ("Relancer Claude") ────────────────────
-  // Si Claude ne retourne pas de pièces (ex: il analyse un SVG façade), on garde
-  // les pièces existantes du projet. Seul cabinet peut être mis à jour.
+  // On fusionne intelligemment le cabinet :
+  //   - Si Claude retourne un cabinet avec width>0 ET height>0 → on l'utilise
+  //   - Sinon on garde le cabinet existant du projet (évite hasCabinet=false)
   const handleRefinementComplete = (newScanResult) => {
     const rawPieces = newScanResult.pieces || [];
     const newPieces = rawPieces
@@ -463,9 +464,12 @@ export default function App() {
       }))
       .filter(p => p.length > 0 && p.height > 0);
 
-    const cabinet = newScanResult.cabinet || project.cabinet;
+    // ── Cabinet : ne prendre le nouveau que si width>0 ET height>0
+    const newCab = newScanResult.cabinet;
+    const newCabValid = newCab && Number(newCab.width) > 0 && Number(newCab.height) > 0;
+    const cabinet = newCabValid ? newCab : project.cabinet;
 
-    // ← CLÉ : si Claude ne renvoie pas de pièces, on garde celles du projet
+    // ── Pièces : si Claude ne renvoie pas de pièces, on garde celles du projet
     const piecesToUse = newPieces.length > 0 ? newPieces : project.pieces;
 
     setProject(p => ({ ...p, pieces: piecesToUse, cabinet, scanResult: newScanResult }));
