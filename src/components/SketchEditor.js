@@ -43,6 +43,7 @@ const normalizeModulesFromResult = (result, width = 0) => {
 export default function SketchEditor({ image, scanImage, initialResult, apiKey, onComplete, onCancel }) {
   const imgSrc = image || scanImage || null;
   const svgRef = useRef(null);
+  const drag = useRef({ on: false, startX: 0, startY: 0, elStartX: 0, elStartY: 0 });
   const initialCab = initialResult?.cabinet || {};
   
   // Chargement de l'état persisté
@@ -120,8 +121,17 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
   // Gestion du clic (début création ou sélection)
   const handlePointerDown = useCallback((e) => {
     if (tool === 'erase') return;
-    // Si on clique sur une poignée de redimensionnement, on gère ailleurs
-    if (e.target.dataset.handle) return; 
+    // Si on clique sur une poignée de redimensionnement, on active le resize sur l'élément parent
+    if (e.target.dataset.handle === 'true') {
+      let target = e.target;
+      while (target && !target.dataset.id) {
+        target = target.parentElement;
+      }
+      if (target && target.dataset.id) {
+        setResizingId(target.dataset.id);
+      }
+      return;
+    }
     
     e.preventDefault();
     const { x, y } = getSVGCoords(e);
@@ -180,9 +190,9 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     } else if (draggingId) {
       setElements(prev => prev.map(el => {
         if (el.id !== draggingId) return el;
-        // Calcul du delta serait plus propre, ici on simplifie pour l'exemple
-        // Pour un drag parfait, il faudrait stocker le point de départ
-        return { ...el, x: x - 20, y: y - 20 }; // Approximation centrée
+        const dx = x - drag.current.startX;
+        const dy = y - drag.current.startY;
+        return { ...el, x: drag.current.elStartX + dx, y: drag.current.elStartY + dy };
       }));
     }
   }, [resizingId, draggingId, getSVGCoords]);
@@ -392,7 +402,17 @@ Retourne UNIQUEMENT un JSON valide avec cette structure :
     const isEditing = resizingId === el.id;
     const commonProps = {
       key: el.id,
-      onClick: (e) => { e.stopPropagation(); if(tool==='erase') eraseElement(el.id); else setDraggingId(el.id); },
+      'data-id': el.id,
+      onClick: (e) => {
+        e.stopPropagation();
+        if (tool === 'erase') {
+          eraseElement(el.id);
+        } else {
+          const { x, y } = getSVGCoords(e);
+          drag.current = { on: true, startX: x, startY: y, elStartX: el.x ?? 0, elStartY: el.y ?? 0 };
+          setDraggingId(el.id);
+        }
+      },
       style: { cursor: tool === 'erase' ? 'pointer' : tool === 'dim' ? 'crosshair' : 'move' },
       opacity: 0.6
     };
