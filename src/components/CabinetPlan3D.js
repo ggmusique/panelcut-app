@@ -146,12 +146,19 @@ export default function CabinetPlan3D({ model, cabinet: cabinetProp, pieces = []
         (p.notes || '').toLowerCase().includes('tringle') ||
         (p.name  || '').toLowerCase().includes('tringle')
       );
-      bodies = Array.from({ length: nbBodies }, () => ({
-        width:   bw_cm, // cm
-        shelves: Math.max(0, Math.round(nS / nbBodies)),
-        drawers: Math.max(0, Math.round(nD / nbBodies)),
-        rod,
-      }));
+      const drawersPerSide = Math.floor(nD / 2);
+      const innerCount = Math.max(1, nbBodies - 2);
+      bodies = Array.from({ length: nbBodies }, (_, i) => {
+        const isOuter  = i === 0 || i === nbBodies - 1;
+        const isMiddle = Math.floor(nbBodies / 2) === i;
+        if (isOuter && drawersPerSide > 0) {
+          return { width: bw_cm, shelves: 0, drawers: drawersPerSide, rod: false };
+        }
+        if (!isOuter && !isMiddle) {
+          return { width: bw_cm, shelves: 0, drawers: 0, rod };
+        }
+        return { width: bw_cm, shelves: Math.max(0, Math.round(nS / innerCount)), drawers: 0, rod: false };
+      });
     }
   } else {
     return (

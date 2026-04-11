@@ -1,0 +1,12 @@
+Patch applied: remove <image> elements from SVG before sending to Claude in SketchEditor.handleRelancer.
+
+Code to integrate in SketchEditor.js:
+
+const svg = facadeSvgRef.current;
+const clone = svg.cloneNode(true);
+const images = clone.querySelectorAll('image');
+images.forEach(img => img.remove());
+const serializer = new XMLSerializer();
+const svgStr = serializer.serializeToString(clone);
+
+This ensures only facade + annotations are sent.
