@@ -6,6 +6,7 @@ import CabinetPlan3D from './CabinetPlan3D';
 import CabinetElevationFront from './CabinetElevationFront';
 import BoardList from './BoardList';
 import ProfessionalRealisticViewer from '../visualization/ProfessionalRealisticViewer';
+import { isRodPiece } from '../utils/isRodPiece';
 
 const PIECE_COLORS = [
   { fill: 'rgba(245,158,11,0.25)',  stroke: '#f59e0b', glow: 'rgba(245,158,11,0.4)' },
@@ -217,9 +218,7 @@ export default function Results({ t, results, project }) {
   const colorMap = {};
 
   // Tringles (rods) excluded from optimization
-  const rodPieces = (project.pieces || []).filter(p =>
-    p.isRod === true || p.type === 'rod' || /tringle/i.test(String(p.name || ''))
-  );
+  const rodPieces = (project.pieces || []).filter(isRodPiece);
 
   // Coerce toutes les dimensions en Number pour éviter les problèmes de type string
   const rawCabinet = project.cabinet || null;

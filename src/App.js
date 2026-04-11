@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { optimise } from './engineV2';
 import { I18N, useLang } from './i18n';
+import { isRodPiece } from './utils/isRodPiece';
 import { supabase, saveProject, loadProject, signOut } from './supabase';
 import PiecesList from './components/PiecesList';
 import Results from './components/Results';
@@ -36,12 +37,6 @@ const DEFAULT_PROJECT = {
 
 const APP_VERSION = process.env.REACT_APP_VERSION || '1.0.0';
 const GIT_HASH   = process.env.REACT_APP_GIT_HASH  || 'dev';
-
-/** Returns true when a piece is a rod/tringle (not cut from wood panels). */
-const isRodPiece = (p) =>
-  p.isRod === true ||
-  p.type === 'rod' ||
-  /tringle/i.test(String(p.name || ''));
 
 const LS_SCREEN  = 'pc_screen';
 const LS_PROJECT = 'pc_project';

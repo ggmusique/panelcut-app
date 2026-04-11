@@ -1,14 +1,9 @@
 import { useState } from 'react';
 import Scanner from './Scanner';
 import { Plus, Trash2, Copy, Edit2, ScanLine, Box, Layers, ChevronRight, Save, X, AlertCircle } from 'lucide-react';
+import { isRodPiece } from '../utils/isRodPiece';
 
 const EMPTY_PIECE = { name: '', length: '', height: '', qty: 1 };
-
-/** Returns true when a piece is a rod/tringle (not cut from wood panels). */
-const isRodPiece = (p) =>
-  p.isRod === true ||
-  p.type === 'rod' ||
-  /tringle/i.test(String(p.name || ''));
 
 export default function PiecesList({ t, project, onChange, onOptimize, computing }) {
   const [editing, setEditing] = useState(null);
@@ -183,7 +178,11 @@ export default function PiecesList({ t, project, onChange, onOptimize, computing
                 {rodPieces.length > 0 && (
                   <div className="flex items-center gap-2 text-xs text-pink-400 bg-pink-500/10 px-3 py-1.5 rounded-lg border border-pink-500/20">
                     <span>🔩</span>
-                    <span><strong>{rodPieces.reduce((s, p) => s + (p.qty || 1), 0)}</strong> tringle(s) — non optimisée(s)</span>
+                    <span>
+                      <strong>{rodPieces.reduce((s, p) => s + (p.qty || 1), 0)}</strong>
+                      {' '}
+                      {rodPieces.reduce((s, p) => s + (p.qty || 1), 0) > 1 ? 'tringles — non optimisées' : 'tringle — non optimisée'}
+                    </span>
                   </div>
                 )}
                 <div className="text-sm text-slate-300">
