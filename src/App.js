@@ -53,20 +53,17 @@ function lsClear() {
   [LS_SCREEN, LS_PROJECT, LS_RESULTS].forEach(k => localStorage.removeItem(k));
 }
 
-// ─── Reconstruit les modules depuis un cabinet "à plat" (sans modules[])
 function reconstructModulesFromFlat(cabinet) {
   if (!cabinet) return null;
   if (Array.isArray(cabinet.modules) && cabinet.modules.length > 0) return cabinet;
-
   const nb  = Math.max(1, parseInt(cabinet.nb_dividers ?? 0, 10) + 1);
   const W   = parseFloat(cabinet.width)  || 0;
   const T   = parseFloat(cabinet.thickness) || 1.8;
-  const totalDrawers = parseInt(cabinet.nb_drawers ?? 0, 10);
-  const totalShelves = parseInt(cabinet.nb_shelves  ?? 0, 10);
+  const totalDrawers   = parseInt(cabinet.nb_drawers ?? 0, 10);
+  const totalShelves   = parseInt(cabinet.nb_shelves  ?? 0, 10);
   const drawersPerSide = Math.floor(totalDrawers / 2);
-  const innerCount = Math.max(1, nb - 2);
+  const innerCount     = Math.max(1, nb - 2);
   const mw = nb > 0 ? (W - T * (nb + 1)) / nb : W;
-
   const modules = Array.from({ length: nb }, (_, i) => {
     const isOuter  = i === 0 || i === nb - 1;
     const isMiddle = Math.floor(nb / 2) === i;
@@ -79,9 +76,9 @@ function reconstructModulesFromFlat(cabinet) {
   return { ...cabinet, modules };
 }
 
-// ─── Normalise les pièces depuis un résultat de scan
 function normalizePieces(raw) {
-  return (raw || []).map(p => ({
+  const arr = Array.isArray(raw) ? raw : Object.values(raw || {});
+  return arr.map(p => ({
     name:   String(p.name   || 'Pièce').trim(),
     length: Math.abs(parseFloat(p.length) || 0),
     height: Math.abs(parseFloat(p.height) || 0),
@@ -108,13 +105,13 @@ export default function App() {
   const [project, setProjectRaw] = useState(() => lsGet(LS_PROJECT, { ...DEFAULT_PROJECT }));
   const [results, setResultsRaw] = useState(() => lsGet(LS_RESULTS, null));
 
-  // ─── FIX BUG 1 : ref toujours à jour pour handleOptimize (évite closure périmée)
   const projectRef = useRef(project);
   useEffect(() => { projectRef.current = project; }, [project]);
   const userRef = useRef(null);
 
   const [user,      setUser]      = useState(null);
   const [computing, setComputing] = useState(false);
+  const [computeError, setComputeError] = useState('');
   const [saving,    setSaving]    = useState(false);
   const [saveMsg,   setSaveMsg]   = useState('');
   const [apiKey,    setApiKey]    = useState(
@@ -176,29 +173,42 @@ export default function App() {
     else if (screen === SCREENS.AUTH)             setScreen(SCREENS.LANDING);
   };
 
-  // ─── FIX BUG 1 : lit TOUJOURS projectRef.current (jamais la closure périmée)
-  // Accepte aussi des pièces/panel en param direct (appelé depuis handleRefinementComplete)
   const handleOptimize = useCallback((overridePieces, overridePanel) => {
     const p      = projectRef.current;
-    const pieces = overridePieces || p.pieces;
-    const panel  = overridePanel  || p.panel;
-    if (!pieces || pieces.length === 0) return;
+    // normalizePieces sécurise aussi le cas où pieces est un objet {}
+    const pieces = normalizePieces(overridePieces || p.pieces);
+    const panel  = overridePanel || p.panel;
+
+    if (!pieces.length) {
+      setComputeError('Aucune pièce valide à optimiser.');
+      return;
+    }
+
     setComputing(true);
-    setTimeout(async () => {
-      const res = optimise(pieces, panel, { kerf: p.kerf, tolerance: p.tolerance });
-      setResults(res);
-      setComputing(false);
-      setScreen(SCREENS.RESULTS);
-      const u = userRef.current;
-      if (u) {
-        setSaving(true);
-        await saveProject({ ...p, pieces, panel }, res);
-        setSaving(false);
-        setSaveMsg('OK');
-        setTimeout(() => setSaveMsg(''), 2000);
+    setComputeError('');
+
+    setTimeout(() => {
+      try {
+        const res = optimise(pieces, panel, { kerf: p.kerf, tolerance: p.tolerance });
+        setResults(res);
+        setScreen(SCREENS.RESULTS);
+        // sauvegarde asynchrone non-bloquante
+        const u = userRef.current;
+        if (u) {
+          setSaving(true);
+          saveProject({ ...p, pieces, panel }, res)
+            .then(() => { setSaving(false); setSaveMsg('OK'); setTimeout(() => setSaveMsg(''), 2000); })
+            .catch(() => setSaving(false));
+        }
+      } catch (err) {
+        console.error('[handleOptimize]', err);
+        setComputeError('Erreur moteur : ' + (err?.message || String(err)));
+      } finally {
+        // Toujours débloquer le bouton, même en cas d'erreur
+        setComputing(false);
       }
     }, 50);
-  }, []); // ← dépendances vides intentionnellement : on lit via refs
+  }, []);
 
   const canGoNext = screen === SCREENS.PIECES && project.pieces.length > 0 && !computing;
   const showNext  = screen === SCREENS.PIECES;
@@ -213,19 +223,12 @@ export default function App() {
     else setScreen(SCREENS.PIECES);
   };
 
-  // ─── Appelé après le 1er scan Claude (NewProjectWizard / HistoryScreen)
   const handleScanComplete = (scanResult, scanImageBase64) => {
-    // Vide le cache SketchEditor pour que le nouvel éditeur parte de zéro
     try { localStorage.removeItem(LS_SKETCH_KEY); } catch {}
-
     const pieces  = normalizePieces(scanResult.pieces);
-    // ─── FIX BUG 2 : reconstructModulesFromFlat dès le premier scan aussi
     const cabinet = reconstructModulesFromFlat(scanResult.cabinet || null);
-
     setProject(prev => ({
-      ...prev,
-      pieces,
-      cabinet,
+      ...prev, pieces, cabinet,
       scanImage:  scanImageBase64 || null,
       scanResult: scanResult,
     }));
@@ -233,7 +236,6 @@ export default function App() {
     setScreen(SCREENS.SKETCH);
   };
 
-  // ─── Appelé quand l'utilisateur clique "Relancer Claude" dans le SketchEditor
   const handleRefinementComplete = useCallback((newScanResult) => {
     const pieces = normalizePieces(newScanResult.pieces);
     const rawCab =
@@ -241,18 +243,10 @@ export default function App() {
       newScanResult.result?.cabinet ||
       projectRef.current.cabinet;
     const cabinet = reconstructModulesFromFlat(rawCab);
-
-    // Met à jour le project via ref ET state
-    const updated = {
-      ...projectRef.current,
-      pieces,
-      cabinet,
-      scanResult: newScanResult,
-    };
-    projectRef.current = updated;   // mise à jour immédiate de la ref
-    setProject(updated);             // déclenchement du rendu React
+    const updated = { ...projectRef.current, pieces, cabinet, scanResult: newScanResult };
+    projectRef.current = updated;
+    setProject(updated);
     setResults(null);
-    // ─── FIX BUG 3 : navigation propre vers PIECES
     setScreen(SCREENS.PIECES);
   }, []);
 
@@ -265,8 +259,7 @@ export default function App() {
 
   const handleSignOut = async () => {
     await signOut();
-    setUser(null);
-    userRef.current = null;
+    setUser(null); userRef.current = null;
     lsClear();
     setScreenRaw(SCREENS.LANDING);
     setProjectRaw({ ...DEFAULT_PROJECT });
@@ -277,9 +270,9 @@ export default function App() {
   const toggleLang = () => setLangOverride(l => l === 'fr' ? 'en' : 'fr');
   const [devisNum] = useState(() => 'DV-' + new Date().getFullYear() + '-' + String(Math.floor(Math.random() * 9000) + 1000));
 
-  const showBack     = [SCREENS.PIECES, SCREENS.RESULTS, SCREENS.FACADE, SCREENS.FACADE_REALISTIC].includes(screen);
-  const showSave     = user && [SCREENS.PIECES, SCREENS.RESULTS].includes(screen);
-  const canAnnotate  = screen === SCREENS.PIECES && !!project.scanImage;
+  const showBack    = [SCREENS.PIECES, SCREENS.RESULTS, SCREENS.FACADE, SCREENS.FACADE_REALISTIC].includes(screen);
+  const showSave    = user && [SCREENS.PIECES, SCREENS.RESULTS].includes(screen);
+  const canAnnotate = screen === SCREENS.PIECES && !!project.scanImage;
 
   let headerTitle = 'PanelCut Pro', steps = [];
   if (screen === SCREENS.PIECES) {
@@ -307,7 +300,6 @@ export default function App() {
           user={user}
         />
       )}
-
       {screen === SCREENS.WIZARD && (
         <NewProjectWizard
           t={tr} project={project} onChange={setProject}
@@ -316,7 +308,6 @@ export default function App() {
           onCancel={() => setScreen(SCREENS.LANDING)}
         />
       )}
-
       {screen === SCREENS.HISTORY && (
         <HistoryScreen
           user={user}
@@ -326,7 +317,6 @@ export default function App() {
           onBack={() => setScreen(SCREENS.LANDING)}
         />
       )}
-
       {screen === SCREENS.SKETCH && (
         <SketchEditor
           image={project.scanImage}
@@ -367,7 +357,6 @@ export default function App() {
                   </button>
                 )}
               </div>
-
               {hasSteps && (
                 <div className="flex items-center gap-1 flex-1 justify-center">
                   {steps.map((s, i) => (
@@ -387,7 +376,6 @@ export default function App() {
                   ))}
                 </div>
               )}
-
               <div className="flex items-center gap-1.5 flex-shrink-0">
                 {canAnnotate && (
                   <button
@@ -397,7 +385,6 @@ export default function App() {
                     ✏️ <span className="hidden sm:inline">Annoter</span>
                   </button>
                 )}
-
                 {(screen === SCREENS.FACADE || screen === SCREENS.FACADE_REALISTIC) && (
                   <button
                     onClick={() => setScreen(screen === SCREENS.FACADE ? SCREENS.FACADE_REALISTIC : SCREENS.FACADE)}
@@ -406,16 +393,9 @@ export default function App() {
                     {screen === SCREENS.FACADE ? '🖼️ Vue Client' : '📐 Croquis'}
                   </button>
                 )}
-
-                <button
-                  onClick={toggleDarkMode}
-                  title={tr.toggle_dark_mode || 'Mode sombre'}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-yellow-400 hover:bg-white/10 transition-colors"
-                  aria-label={tr.toggle_dark_mode || 'Toggle dark mode'}
-                >
+                <button onClick={toggleDarkMode} className="p-1.5 rounded-lg text-slate-400 hover:text-yellow-400 hover:bg-white/10 transition-colors">
                   {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
                 </button>
-
                 {(saveMsg || saving) && <span className="text-[11px] text-green-400 font-medium">{saving ? '...' : saveMsg}</span>}
                 {showSave && !saving && (
                   <button onClick={handleSave} className="p-1.5 rounded-lg text-slate-400 hover:text-green-400 hover:bg-white/10 transition-colors">
@@ -438,13 +418,21 @@ export default function App() {
             {screen === SCREENS.AUTH && <AuthScreen onSkip={() => setScreen(SCREENS.HISTORY)} />}
 
             {screen === SCREENS.PIECES && (
-              <PiecesList
-                t={tr}
-                project={project}
-                onChange={setProject}
-                onOptimize={handleOptimize}
-                computing={computing}
-              />
+              <>
+                {computeError && (
+                  <div className="mb-4 flex items-center gap-3 bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-3 rounded-xl text-sm font-medium">
+                    ⚠️ {computeError}
+                    <button className="ml-auto text-red-400 hover:text-white" onClick={() => setComputeError('')}>✕</button>
+                  </div>
+                )}
+                <PiecesList
+                  t={tr}
+                  project={project}
+                  onChange={setProject}
+                  onOptimize={handleOptimize}
+                  computing={computing}
+                />
+              </>
             )}
 
             {screen === SCREENS.RESULTS && (
@@ -457,8 +445,7 @@ export default function App() {
                       <p className="text-lg font-bold text-white mb-1">Résultats indisponibles</p>
                       <p className="text-sm text-slate-400">Aucune pièce n'a pu être optimisée. Vérifie la liste des pièces.</p>
                     </div>
-                    <button
-                      onClick={() => setScreen(SCREENS.PIECES)}
+                    <button onClick={() => setScreen(SCREENS.PIECES)}
                       className="px-6 py-3 bg-orange-600 hover:bg-orange-500 text-white rounded-xl font-bold transition-colors shadow-lg">
                       ↺ Retour aux pièces
                     </button>
@@ -470,10 +457,8 @@ export default function App() {
               <div className="max-w-4xl mx-auto">
                 <CabinetElevationFront cabinet={project.cabinet} name={project.name || 'Meuble'} />
                 <div className="mt-4 flex justify-center">
-                  <button
-                    onClick={() => setScreen(SCREENS.FACADE_REALISTIC)}
-                    className="px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl font-bold transition-all shadow-lg flex items-center gap-2"
-                  >
+                  <button onClick={() => setScreen(SCREENS.FACADE_REALISTIC)}
+                    className="px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl font-bold transition-all shadow-lg flex items-center gap-2">
                     🖼️ Voir en vue réaliste client
                   </button>
                 </div>
