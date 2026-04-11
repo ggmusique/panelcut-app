@@ -65,20 +65,27 @@ function normalizeModules(cabinet) {
     }).filter(m => m.width > 0);
   }
 
-  // Fallback : modules génériques
+  // Fallback : modules génériques avec distribution heuristique
   const W = Math.max(0, toNum(cabinet?.width, 0));
   const nb = Math.max(1, parseInt(cabinet?.nb_dividers ?? 4, 10) + 1);
   const mw = W > 0 ? W / nb : 0;
-  return Array.from({ length: nb }, (_, i) => ({
-    id: i + 1,
-    width: mw,
-    rods: [],
-    shelves: 2,
-    shelfPositions: [],
-    drawers: 0,
-    drawerItems: [],
-    doors: 1,
-  }));
+  const totalDrawers = parseInt(cabinet?.nb_drawers ?? 0, 10);
+  const drawersPerOuter = nb >= 2 ? Math.floor(totalDrawers / 2) : totalDrawers;
+  const hasRod = Boolean(cabinet?.rod ?? cabinet?.tringle ?? false);
+  const innerCount = Math.max(1, nb - 2);
+  return Array.from({ length: nb }, (_, i) => {
+    const isOuter = i === 0 || i === nb - 1;
+    return {
+      id: i + 1,
+      width: mw,
+      rods: (!isOuter && hasRod) ? [null] : [],
+      shelves: isOuter ? 0 : Math.max(0, Math.round(parseInt(cabinet?.nb_shelves ?? 0, 10) / innerCount)),
+      shelfPositions: [],
+      drawers: isOuter ? drawersPerOuter : 0,
+      drawerItems: [],
+      doors: 0,
+    };
+  });
 }
 
 export default function CabinetElevationFront({ cabinet, name = 'Meuble' }) {

@@ -188,6 +188,51 @@ export default function App() {
     setScreen(SCREENS.SKETCH);
   };
 
+  function reconstructModulesFromFlat(cabinet) {
+    if (Array.isArray(cabinet?.modules) && cabinet.modules.length > 0) {
+      return cabinet;
+    }
+    const nb = Math.max(1, parseInt(cabinet?.nb_dividers ?? 0, 10) + 1);
+    const W = parseFloat(cabinet?.width) || 0;
+    const T = parseFloat(cabinet?.thickness) || 1.8;
+    const totalDrawers = parseInt(cabinet?.nb_drawers ?? 0, 10);
+    const totalShelves = parseInt(cabinet?.nb_shelves  ?? 0, 10);
+    const drawersPerSide = Math.floor(totalDrawers / 2);
+    const innerCount = Math.max(1, nb - 2);
+    const mw = nb > 0 ? (W - T * (nb + 1)) / nb : 0;
+
+    const modules = Array.from({ length: nb }, (_, i) => {
+      const isOuter  = i === 0 || i === nb - 1;
+      const isMiddle = Math.floor(nb / 2) === i;
+
+      if (isOuter && drawersPerSide > 0) {
+        return {
+          id: i + 1, width: mw,
+          shelves: 0, shelfPositions: [],
+          drawers: drawersPerSide, drawerItems: [],
+          rods: [], doors: 0,
+        };
+      }
+      if (!isOuter && !isMiddle) {
+        return {
+          id: i + 1, width: mw,
+          shelves: 0, shelfPositions: [],
+          drawers: 0, drawerItems: [],
+          rods: [null], doors: 0,
+        };
+      }
+      return {
+        id: i + 1, width: mw,
+        shelves: Math.max(0, Math.round(totalShelves / innerCount)),
+        shelfPositions: [],
+        drawers: 0, drawerItems: [],
+        rods: [], doors: 0,
+      };
+    });
+
+    return { ...cabinet, modules };
+  }
+
   const handleRefinementComplete = (newScanResult) => {
     const pieces = (newScanResult.pieces || []).map(p => ({
       name:   String(p.name   || 'Pièce').trim(),
@@ -196,10 +241,11 @@ export default function App() {
       qty:    Math.max(1, parseInt(p.qty, 10) || 1),
     })).filter(p => p.length > 0 && p.height > 0);
 
-    const cabinet =
+    const rawCabinet =
       newScanResult.cabinet ||
       newScanResult.result?.cabinet ||
       project.cabinet;
+    const cabinet = reconstructModulesFromFlat(rawCabinet);
     console.log('[FIX CHECK] cabinet from re-scan:', cabinet);
     setProject(p => ({ ...p, pieces, cabinet, scanResult: newScanResult }));
     setScreen(SCREENS.PIECES);
