@@ -14,8 +14,8 @@ const TOOLS = [
 
 const LS_SKETCH_KEY               = 'pc_sketch_editor';
 const FACADE_CAPTURE_WIDTH        = 980;
-const FACADE_CAPTURE_INITIAL_DELAY_MS = 150; // délai initial (DOM prêt)
-const FACADE_CAPTURE_DEBOUNCE_MS  = 400;     // délai après édition utilisateur
+const FACADE_CAPTURE_INITIAL_DELAY_MS = 150;
+const FACADE_CAPTURE_DEBOUNCE_MS  = 400;
 const WOOD_FILL            = '#f5ede0';
 const WOOD_STROKE          = '#8b6914';
 const DIM_COLOR            = '#dc2626';
@@ -303,7 +303,6 @@ function FacadeRealisteSVG({
 export default function SketchEditor({ image, scanImage, initialResult, apiKey, onComplete, onCancel }) {
   const rawImg             = image || scanImage || null;
   const svgRef             = useRef(null);
-  // ← ref dédié au SVG façade (toujours monté hors écran pour capture)
   const facadeSvgRef       = useRef(null);
   const facadeContainerRef = useRef(null);
   const drag               = useRef({ on: false, startX: 0, startY: 0, elStartX: 0, elStartY: 0 });
@@ -382,9 +381,34 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
   const totalJointsWidth   = joints.reduce((s, d) => s + jointThickness(d, thickness), 0);
   const totalInteriorWidth = Math.max(1, toNum(cabinetDims.width, 200) - thickness * 2 - totalJointsWidth);
 
+  // ─── 🔥 FIX v3.6 : Re-synchronise tous les états quand initialResult change ──
+  // Nécessaire après "Relancer Claude" : onComplete() fournit un nouveau
+  // initialResult au parent, qui le passe en prop. Sans ce useEffect, les
+  // useState ci-dessus (initialisés une seule fois) ne se recalculent jamais.
+  const prevResultRef = useRef(initialResult);
+  useEffect(() => {
+    if (prevResultRef.current === initialResult) return;
+    prevResultRef.current = initialResult;
+
+    const cab = initialResult?.cabinet || {};
+
+    setCabinetDims({
+      width:  toNum(cab.width,  200),
+      height: toNum(cab.height, 240),
+      plinth: toNum(cab.plinth,   0),
+    });
+
+    const newModules = normalizeModulesFromResult(initialResult, toNum(cab.width, 200));
+    setFacadeModules(newModules);
+    setFacadeItems(normalizeItemsFromResult(initialResult));
+    setJoints(Array(Math.max(0, newModules.length - 1)).fill(true));
+
+    // Permet à didAutoSwitchRef de re-déclencher le switch vers 'photo'
+    // après la prochaine capture de la nouvelle façade
+    didAutoSwitchRef.current = false;
+  }, [initialResult]);
+
   // ─── Cabinet courant : reconstruit depuis l'état éditable ─────────────────────
-  // Permet à CabinetElevationFront de toujours refléter les modifications de
-  // l'utilisateur (tiroirs, tringles, tablettes) et pas seulement le scan initial.
   const currentCabinet = useMemo(() => {
     const w = cabinetDims.width;
     const h = cabinetDims.height;
@@ -423,8 +447,6 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
   const handleSave = saveToStorage;
 
   // ─── Capture facadePng depuis CabinetElevationFront ───────────────────────────
-  // Déclenché au premier rendu ET à chaque modification de l'état éditable.
-  // Au premier rendu seulement, on bascule sur la vue "Façade SVG" (photo).
   const didAutoSwitchRef = useRef(false);
   useEffect(() => {
     if (!currentCabinet) return;
@@ -606,34 +628,25 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     return ctx;
   }, [elements, dimensionsFromWizard, cabinetDims, thickness, joints, totalJointsWidth, totalInteriorWidth, facadeModules, facadeItems, generalNotes]);
 
-  // ─── Relance Claude : capture TOUJOURS facadeSvgRef (SVG hors-écran dédié) ──
-  // FIX: on n'utilise PLUS svgRef (le SVG principal visible, dépendant de baseView).
-  // facadeSvgRef est toujours monté avec FacadeRealisteSVG à jour, indépendamment
-  // de la vue active ('photo' ou 'facade'). Plus de switch de vue, plus de setTimeout.
   const handleRelancer = useCallback(async () => {
     setLoading(true);
     setError(null);
 
     try {
-      // 0. Attendre que React ait terminé le rendu avant de capturer le SVG
       await new Promise(resolve => requestAnimationFrame(resolve));
 
-      // 1. Cibler le SVG façade hors-écran (toujours à jour)
       const facadeSvg = facadeSvgRef.current;
       if (!facadeSvg) throw new Error('SVG façade hors-écran introuvable');
 
-      // 2. Cloner le SVG et forcer les dimensions pour l'export
       const clone = facadeSvg.cloneNode(true);
       clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
       clone.setAttribute('width',  FACADE_W);
       clone.setAttribute('height', FACADE_H);
 
-      // 3. Sérialiser → base64 data URL (pas de blob URL → pas de CORS)
       const svgStr  = new XMLSerializer().serializeToString(clone);
       const b64svg  = btoa(unescape(encodeURIComponent(svgStr)));
       const dataUrl = 'data:image/svg+xml;base64,' + b64svg;
 
-      // 4. Dessiner sur canvas haute résolution
       const canvas = document.createElement('canvas');
       canvas.width  = FACADE_W * 2;
       canvas.height = FACADE_H * 2;
@@ -653,7 +666,6 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
 
       const base64 = canvas.toDataURL('image/png').split(',')[1];
 
-      // 5. Appel API
       const SERVER = 'https://panelcut-server.vercel.app';
       let res = await fetch(`${SERVER}/api/refine`, {
         method:  'POST',
@@ -767,7 +779,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
       <div className="flex justify-between items-center p-3 bg-slate-900 border-b border-slate-700">
         <div className="flex items-center gap-2">
           <h2 className="text-white font-bold">✏️ Éditeur Intelligent</h2>
-          <span className="text-[10px] font-mono font-black text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/30">v3.5</span>
+          <span className="text-[10px] font-mono font-black text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/30">v3.6</span>
         </div>
         <div className="flex gap-2">
           {error && <span className="text-red-400 text-sm self-center mr-2">{error}</span>}
