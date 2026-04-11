@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { optimise } from './engineV2';
 import { I18N, useLang } from './i18n';
 import { supabase, saveProject, loadProject, signOut } from './supabase';
@@ -37,10 +37,9 @@ const DEFAULT_PROJECT = {
 const APP_VERSION = process.env.REACT_APP_VERSION || '1.0.0';
 const GIT_HASH   = process.env.REACT_APP_GIT_HASH  || 'dev';
 
-const LS_SCREEN  = 'pc_screen';
-const LS_PROJECT = 'pc_project';
-const LS_RESULTS = 'pc_results';
-// Clé du cache de l'éditeur de croquis — doit matcher SketchEditor.js
+const LS_SCREEN     = 'pc_screen';
+const LS_PROJECT    = 'pc_project';
+const LS_RESULTS    = 'pc_results';
 const LS_SKETCH_KEY = 'pc_sketch_editor';
 
 function lsGet(key, fallback) {
@@ -54,16 +53,52 @@ function lsClear() {
   [LS_SCREEN, LS_PROJECT, LS_RESULTS].forEach(k => localStorage.removeItem(k));
 }
 
+// ─── Reconstruit les modules depuis un cabinet "à plat" (sans modules[])
+function reconstructModulesFromFlat(cabinet) {
+  if (!cabinet) return null;
+  if (Array.isArray(cabinet.modules) && cabinet.modules.length > 0) return cabinet;
+
+  const nb  = Math.max(1, parseInt(cabinet.nb_dividers ?? 0, 10) + 1);
+  const W   = parseFloat(cabinet.width)  || 0;
+  const T   = parseFloat(cabinet.thickness) || 1.8;
+  const totalDrawers = parseInt(cabinet.nb_drawers ?? 0, 10);
+  const totalShelves = parseInt(cabinet.nb_shelves  ?? 0, 10);
+  const drawersPerSide = Math.floor(totalDrawers / 2);
+  const innerCount = Math.max(1, nb - 2);
+  const mw = nb > 0 ? (W - T * (nb + 1)) / nb : W;
+
+  const modules = Array.from({ length: nb }, (_, i) => {
+    const isOuter  = i === 0 || i === nb - 1;
+    const isMiddle = Math.floor(nb / 2) === i;
+    if (isOuter && drawersPerSide > 0)
+      return { id: i+1, width: mw, shelves: 0, shelfPositions: [], drawers: drawersPerSide, drawerItems: [], rods: [], doors: 0 };
+    if (!isOuter && !isMiddle)
+      return { id: i+1, width: mw, shelves: 0, shelfPositions: [], drawers: 0, drawerItems: [], rods: [null], doors: 0 };
+    return { id: i+1, width: mw, shelves: Math.max(0, Math.round(totalShelves / innerCount)), shelfPositions: [], drawers: 0, drawerItems: [], rods: [], doors: 0 };
+  });
+  return { ...cabinet, modules };
+}
+
+// ─── Normalise les pièces depuis un résultat de scan
+function normalizePieces(raw) {
+  return (raw || []).map(p => ({
+    name:   String(p.name   || 'Pièce').trim(),
+    length: Math.abs(parseFloat(p.length) || 0),
+    height: Math.abs(parseFloat(p.height) || 0),
+    qty:    Math.max(1, parseInt(p.qty, 10) || 1),
+  })).filter(p => p.length > 0 && p.height > 0);
+}
+
 export default function App() {
   const lang = useLang();
   const [langOverride, setLangOverride] = useState(lang);
-  
+
   const [isDark, setIsDark] = useState(() => {
     const stored = localStorage.getItem('pc_darkmode');
     if (stored !== null) return stored === 'true';
     return window.matchMedia('(prefers-color-scheme: dark)').matches;
   });
-  
+
   const tr = I18N[langOverride] || I18N['fr'];
 
   const [screen,  setScreenRaw]  = useState(() => {
@@ -73,11 +108,16 @@ export default function App() {
   const [project, setProjectRaw] = useState(() => lsGet(LS_PROJECT, { ...DEFAULT_PROJECT }));
   const [results, setResultsRaw] = useState(() => lsGet(LS_RESULTS, null));
 
+  // ─── FIX BUG 1 : ref toujours à jour pour handleOptimize (évite closure périmée)
+  const projectRef = useRef(project);
+  useEffect(() => { projectRef.current = project; }, [project]);
+  const userRef = useRef(null);
+
   const [user,      setUser]      = useState(null);
   const [computing, setComputing] = useState(false);
   const [saving,    setSaving]    = useState(false);
   const [saveMsg,   setSaveMsg]   = useState('');
-  const [apiKey, setApiKey] = useState(
+  const [apiKey,    setApiKey]    = useState(
     process.env.REACT_APP_ANTHROPIC_KEY || lsGet('pc_apikey', '')
   );
 
@@ -86,20 +126,15 @@ export default function App() {
   const setResults = (r) => { setResultsRaw(r); lsSet(LS_RESULTS, r); };
 
   useEffect(() => {
-    if (isDark) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
+    document.documentElement.classList.toggle('dark', isDark);
     localStorage.setItem('pc_darkmode', String(isDark));
   }, [isDark]);
-
-  const toggleDarkMode = () => setIsDark(prev => !prev);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         setUser(session.user);
+        userRef.current = session.user;
         const savedScreen = lsGet(LS_SCREEN, SCREENS.LANDING);
         if (savedScreen === SCREENS.AUTH) setScreen(SCREENS.HISTORY);
       }
@@ -107,12 +142,14 @@ export default function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
         setUser(session.user);
+        userRef.current = session.user;
         if (_event === 'SIGNED_IN') {
           const savedScreen = lsGet(LS_SCREEN, SCREENS.LANDING);
           if (savedScreen === SCREENS.AUTH) setScreen(SCREENS.HISTORY);
         }
       } else {
         setUser(null);
+        userRef.current = null;
         lsClear();
         setScreenRaw(SCREENS.LANDING);
         setProjectRaw({ ...DEFAULT_PROJECT });
@@ -139,26 +176,33 @@ export default function App() {
     else if (screen === SCREENS.AUTH)             setScreen(SCREENS.LANDING);
   };
 
-  const handleOptimize = useCallback(() => {
-    if (!project.pieces.length) return;
+  // ─── FIX BUG 1 : lit TOUJOURS projectRef.current (jamais la closure périmée)
+  // Accepte aussi des pièces/panel en param direct (appelé depuis handleRefinementComplete)
+  const handleOptimize = useCallback((overridePieces, overridePanel) => {
+    const p      = projectRef.current;
+    const pieces = overridePieces || p.pieces;
+    const panel  = overridePanel  || p.panel;
+    if (!pieces || pieces.length === 0) return;
     setComputing(true);
     setTimeout(async () => {
-      const res = optimise(project.pieces, project.panel, { kerf: project.kerf, tolerance: project.tolerance });
-      setResults(res); setComputing(false); setScreen(SCREENS.RESULTS);
-      if (user) {
+      const res = optimise(pieces, panel, { kerf: p.kerf, tolerance: p.tolerance });
+      setResults(res);
+      setComputing(false);
+      setScreen(SCREENS.RESULTS);
+      const u = userRef.current;
+      if (u) {
         setSaving(true);
-        await saveProject(project, res);
-        setSaving(false); setSaveMsg('OK'); setTimeout(() => setSaveMsg(''), 2000);
+        await saveProject({ ...p, pieces, panel }, res);
+        setSaving(false);
+        setSaveMsg('OK');
+        setTimeout(() => setSaveMsg(''), 2000);
       }
     }, 50);
-  }, [project, user]);
+  }, []); // ← dépendances vides intentionnellement : on lit via refs
 
   const canGoNext = screen === SCREENS.PIECES && project.pieces.length > 0 && !computing;
-  const showNext = screen === SCREENS.PIECES;
-
-  const goNext = () => {
-    if (screen === SCREENS.PIECES) handleOptimize();
-  };
+  const showNext  = screen === SCREENS.PIECES;
+  const goNext    = () => { if (screen === SCREENS.PIECES) handleOptimize(); };
 
   const handleLoadProject = async (id) => {
     const { data, error } = await loadProject(id);
@@ -169,20 +213,14 @@ export default function App() {
     else setScreen(SCREENS.PIECES);
   };
 
+  // ─── Appelé après le 1er scan Claude (NewProjectWizard / HistoryScreen)
   const handleScanComplete = (scanResult, scanImageBase64) => {
-    // ─── FIX v3.7 : vider le cache du SketchEditor avant chaque nouveau scan ───
-    // Sans ce clear, SketchEditor.js lit l'ancien état (localStorage) et ignore
-    // complètement le nouveau scanResult passé en prop.
+    // Vide le cache SketchEditor pour que le nouvel éditeur parte de zéro
     try { localStorage.removeItem(LS_SKETCH_KEY); } catch {}
 
-    const pieces = (scanResult.pieces || []).map(p => ({
-      name:   String(p.name   || 'Pièce').trim(),
-      length: Math.abs(parseFloat(p.length) || 0),
-      height: Math.abs(parseFloat(p.height) || 0),
-      qty:    Math.max(1, parseInt(p.qty, 10) || 1),
-    })).filter(p => p.length > 0 && p.height > 0);
-
-    const cabinet = scanResult.cabinet || null;
+    const pieces  = normalizePieces(scanResult.pieces);
+    // ─── FIX BUG 2 : reconstructModulesFromFlat dès le premier scan aussi
+    const cabinet = reconstructModulesFromFlat(scanResult.cabinet || null);
 
     setProject(prev => ({
       ...prev,
@@ -195,67 +233,28 @@ export default function App() {
     setScreen(SCREENS.SKETCH);
   };
 
-  function reconstructModulesFromFlat(cabinet) {
-    if (Array.isArray(cabinet?.modules) && cabinet.modules.length > 0) {
-      return cabinet;
-    }
-    const nb = Math.max(1, parseInt(cabinet?.nb_dividers ?? 0, 10) + 1);
-    const W = parseFloat(cabinet?.width) || 0;
-    const T = parseFloat(cabinet?.thickness) || 1.8;
-    const totalDrawers = parseInt(cabinet?.nb_drawers ?? 0, 10);
-    const totalShelves = parseInt(cabinet?.nb_shelves  ?? 0, 10);
-    const drawersPerSide = Math.floor(totalDrawers / 2);
-    const innerCount = Math.max(1, nb - 2);
-    const mw = nb > 0 ? (W - T * (nb + 1)) / nb : 0;
-
-    const modules = Array.from({ length: nb }, (_, i) => {
-      const isOuter  = i === 0 || i === nb - 1;
-      const isMiddle = Math.floor(nb / 2) === i;
-
-      if (isOuter && drawersPerSide > 0) {
-        return {
-          id: i + 1, width: mw,
-          shelves: 0, shelfPositions: [],
-          drawers: drawersPerSide, drawerItems: [],
-          rods: [], doors: 0,
-        };
-      }
-      if (!isOuter && !isMiddle) {
-        return {
-          id: i + 1, width: mw,
-          shelves: 0, shelfPositions: [],
-          drawers: 0, drawerItems: [],
-          rods: [null], doors: 0,
-        };
-      }
-      return {
-        id: i + 1, width: mw,
-        shelves: Math.max(0, Math.round(totalShelves / innerCount)),
-        shelfPositions: [],
-        drawers: 0, drawerItems: [],
-        rods: [], doors: 0,
-      };
-    });
-
-    return { ...cabinet, modules };
-  }
-
-  const handleRefinementComplete = (newScanResult) => {
-    const pieces = (newScanResult.pieces || []).map(p => ({
-      name:   String(p.name   || 'Pièce').trim(),
-      length: Math.abs(parseFloat(p.length) || 0),
-      height: Math.abs(parseFloat(p.height) || 0),
-      qty:    Math.max(1, parseInt(p.qty, 10) || 1),
-    })).filter(p => p.length > 0 && p.height > 0);
-
-    const rawCabinet =
+  // ─── Appelé quand l'utilisateur clique "Relancer Claude" dans le SketchEditor
+  const handleRefinementComplete = useCallback((newScanResult) => {
+    const pieces = normalizePieces(newScanResult.pieces);
+    const rawCab =
       newScanResult.cabinet ||
       newScanResult.result?.cabinet ||
-      project.cabinet;
-    const cabinet = reconstructModulesFromFlat(rawCabinet);
-    setProject(p => ({ ...p, pieces, cabinet, scanResult: newScanResult }));
+      projectRef.current.cabinet;
+    const cabinet = reconstructModulesFromFlat(rawCab);
+
+    // Met à jour le project via ref ET state
+    const updated = {
+      ...projectRef.current,
+      pieces,
+      cabinet,
+      scanResult: newScanResult,
+    };
+    projectRef.current = updated;   // mise à jour immédiate de la ref
+    setProject(updated);             // déclenchement du rendu React
+    setResults(null);
+    // ─── FIX BUG 3 : navigation propre vers PIECES
     setScreen(SCREENS.PIECES);
-  };
+  }, []);
 
   const handleSave = async () => {
     if (!user) return;
@@ -267,25 +266,31 @@ export default function App() {
   const handleSignOut = async () => {
     await signOut();
     setUser(null);
+    userRef.current = null;
     lsClear();
     setScreenRaw(SCREENS.LANDING);
     setProjectRaw({ ...DEFAULT_PROJECT });
     setResultsRaw(null);
   };
 
+  const toggleDarkMode = () => setIsDark(prev => !prev);
   const toggleLang = () => setLangOverride(l => l === 'fr' ? 'en' : 'fr');
   const [devisNum] = useState(() => 'DV-' + new Date().getFullYear() + '-' + String(Math.floor(Math.random() * 9000) + 1000));
 
-  const showBack = [SCREENS.PIECES, SCREENS.RESULTS, SCREENS.FACADE, SCREENS.FACADE_REALISTIC].includes(screen);
-  const showSave = user && [SCREENS.PIECES, SCREENS.RESULTS].includes(screen);
-  const canAnnotate = screen === SCREENS.PIECES && !!project.scanImage;
+  const showBack     = [SCREENS.PIECES, SCREENS.RESULTS, SCREENS.FACADE, SCREENS.FACADE_REALISTIC].includes(screen);
+  const showSave     = user && [SCREENS.PIECES, SCREENS.RESULTS].includes(screen);
+  const canAnnotate  = screen === SCREENS.PIECES && !!project.scanImage;
 
-  let headerTitle = 'PanelCut Pro', headerSubtitle = '', steps = [];
-  if (screen === SCREENS.PIECES)  { headerTitle = project.name || 'Nouveau projet'; steps = [{ label: 'Panneau', active: true }, { label: 'Pièces', active: true }, { label: 'Résultats', active: false }]; }
-  else if (screen === SCREENS.RESULTS) { headerTitle = 'Résultats'; steps = [{ label: 'Panneau', active: true }, { label: 'Pièces', active: true }, { label: 'Résultats', active: true }]; }
-  else if (screen === SCREENS.FACADE || screen === SCREENS.FACADE_REALISTIC) { 
-    headerTitle = 'Façade — ' + (screen === SCREENS.FACADE ? 'Croquis' : 'Vue Client'); 
-    steps = [{ label: 'Panneau', active: true }, { label: 'Pièces', active: true }, { label: 'Façade', active: true }]; 
+  let headerTitle = 'PanelCut Pro', steps = [];
+  if (screen === SCREENS.PIECES) {
+    headerTitle = project.name || 'Nouveau projet';
+    steps = [{ label: 'Panneau', active: true }, { label: 'Pièces', active: true }, { label: 'Résultats', active: false }];
+  } else if (screen === SCREENS.RESULTS) {
+    headerTitle = 'Résultats';
+    steps = [{ label: 'Panneau', active: true }, { label: 'Pièces', active: true }, { label: 'Résultats', active: true }];
+  } else if (screen === SCREENS.FACADE || screen === SCREENS.FACADE_REALISTIC) {
+    headerTitle = 'Façade — ' + (screen === SCREENS.FACADE ? 'Croquis' : 'Vue Client');
+    steps = [{ label: 'Panneau', active: true }, { label: 'Pièces', active: true }, { label: 'Façade', active: true }];
   }
 
   const hasHeader = ![SCREENS.AUTH, SCREENS.SKETCH, SCREENS.LANDING, SCREENS.WIZARD, SCREENS.HISTORY].includes(screen);
@@ -294,11 +299,33 @@ export default function App() {
   return (
     <div className="app min-h-screen bg-[#0f1620] text-slate-200 font-sans dark:bg-slate-950 dark:text-slate-100 transition-colors duration-300">
 
-      {screen === SCREENS.LANDING  && <LandingScreen onNew={() => startNew(devisNum)} onHistory={() => setScreen(user ? SCREENS.HISTORY : SCREENS.AUTH)} onAuth={() => setScreen(SCREENS.AUTH)} user={user} />}
+      {screen === SCREENS.LANDING && (
+        <LandingScreen
+          onNew={() => startNew(devisNum)}
+          onHistory={() => setScreen(user ? SCREENS.HISTORY : SCREENS.AUTH)}
+          onAuth={() => setScreen(SCREENS.AUTH)}
+          user={user}
+        />
+      )}
 
-      {screen === SCREENS.WIZARD   && <NewProjectWizard t={tr} project={project} onChange={setProject} onGoScan={handleScanComplete} onGoManual={() => setScreen(SCREENS.PIECES)} onCancel={() => setScreen(SCREENS.LANDING)} />}
+      {screen === SCREENS.WIZARD && (
+        <NewProjectWizard
+          t={tr} project={project} onChange={setProject}
+          onGoScan={handleScanComplete}
+          onGoManual={() => setScreen(SCREENS.PIECES)}
+          onCancel={() => setScreen(SCREENS.LANDING)}
+        />
+      )}
 
-      {screen === SCREENS.HISTORY  && <HistoryScreen user={user} onNew={() => startNew(devisNum)} onLoad={handleLoadProject} onScanComplete={handleScanComplete} onBack={() => setScreen(SCREENS.LANDING)} />}
+      {screen === SCREENS.HISTORY && (
+        <HistoryScreen
+          user={user}
+          onNew={() => startNew(devisNum)}
+          onLoad={handleLoadProject}
+          onScanComplete={handleScanComplete}
+          onBack={() => setScreen(SCREENS.LANDING)}
+        />
+      )}
 
       {screen === SCREENS.SKETCH && (
         <SketchEditor
@@ -345,14 +372,10 @@ export default function App() {
                 <div className="flex items-center gap-1 flex-1 justify-center">
                   {steps.map((s, i) => (
                     <div key={i} className="flex items-center gap-1">
-                      <div className={
-                        'flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-bold transition-all ' +
-                        (s.active ? 'bg-orange-500/20 text-orange-400 border border-orange-500/40' : 'text-slate-600')
-                      }>
-                        <div className={
-                          'w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-black flex-shrink-0 ' +
-                          (s.active ? 'bg-orange-500 text-black' : 'bg-slate-700 text-slate-500')
-                        }>
+                      <div className={'flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-bold transition-all ' +
+                        (s.active ? 'bg-orange-500/20 text-orange-400 border border-orange-500/40' : 'text-slate-600')}>
+                        <div className={'w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-black flex-shrink-0 ' +
+                          (s.active ? 'bg-orange-500 text-black' : 'bg-slate-700 text-slate-500')}>
                           {i + 1}
                         </div>
                         <span className="hidden md:inline">{s.label}</span>
@@ -374,7 +397,7 @@ export default function App() {
                     ✏️ <span className="hidden sm:inline">Annoter</span>
                   </button>
                 )}
-                
+
                 {(screen === SCREENS.FACADE || screen === SCREENS.FACADE_REALISTIC) && (
                   <button
                     onClick={() => setScreen(screen === SCREENS.FACADE ? SCREENS.FACADE_REALISTIC : SCREENS.FACADE)}
@@ -383,7 +406,7 @@ export default function App() {
                     {screen === SCREENS.FACADE ? '🖼️ Vue Client' : '📐 Croquis'}
                   </button>
                 )}
-                
+
                 <button
                   onClick={toggleDarkMode}
                   title={tr.toggle_dark_mode || 'Mode sombre'}
@@ -392,7 +415,7 @@ export default function App() {
                 >
                   {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
                 </button>
-                
+
                 {(saveMsg || saving) && <span className="text-[11px] text-green-400 font-medium">{saving ? '...' : saveMsg}</span>}
                 {showSave && !saving && (
                   <button onClick={handleSave} className="p-1.5 rounded-lg text-slate-400 hover:text-green-400 hover:bg-white/10 transition-colors">
@@ -412,26 +435,37 @@ export default function App() {
           )}
 
           <main className={'w-full px-4 md:px-8 mb-20 ' + (hasHeader ? 'mt-4' : 'mt-0')}>
-            {screen === SCREENS.AUTH     && <AuthScreen onSkip={() => setScreen(SCREENS.HISTORY)} />}
-            {screen === SCREENS.PIECES   && <PiecesList t={tr} project={project} onChange={setProject} onOptimize={handleOptimize} computing={computing} />}
-            {screen === SCREENS.RESULTS  && results && results.panels && results.panels.length > 0
-              ? <Results t={tr} results={results} project={project} />
-              : screen === SCREENS.RESULTS && (
-                <div className="flex flex-col items-center justify-center min-h-[60vh] gap-6 p-8">
-                  <div className="text-5xl">⚠️</div>
-                  <div className="text-center">
-                    <p className="text-lg font-bold text-white mb-1">Résultats indisponibles</p>
-                    <p className="text-sm text-slate-400">Les données de résultats sont manquantes ou corrompues.</p>
+            {screen === SCREENS.AUTH && <AuthScreen onSkip={() => setScreen(SCREENS.HISTORY)} />}
+
+            {screen === SCREENS.PIECES && (
+              <PiecesList
+                t={tr}
+                project={project}
+                onChange={setProject}
+                onOptimize={handleOptimize}
+                computing={computing}
+              />
+            )}
+
+            {screen === SCREENS.RESULTS && (
+              results && results.panels && results.panels.length > 0
+                ? <Results t={tr} results={results} project={project} />
+                : (
+                  <div className="flex flex-col items-center justify-center min-h-[60vh] gap-6 p-8">
+                    <div className="text-5xl">⚠️</div>
+                    <div className="text-center">
+                      <p className="text-lg font-bold text-white mb-1">Résultats indisponibles</p>
+                      <p className="text-sm text-slate-400">Aucune pièce n'a pu être optimisée. Vérifie la liste des pièces.</p>
+                    </div>
+                    <button
+                      onClick={() => setScreen(SCREENS.PIECES)}
+                      className="px-6 py-3 bg-orange-600 hover:bg-orange-500 text-white rounded-xl font-bold transition-colors shadow-lg">
+                      ↺ Retour aux pièces
+                    </button>
                   </div>
-                  <button
-                    onClick={() => setScreen(SCREENS.PIECES)}
-                    className="px-6 py-3 bg-orange-600 hover:bg-orange-500 text-white rounded-xl font-bold transition-colors shadow-lg">
-                    ↺ Relancer l'optimisation
-                  </button>
-                </div>
-              )
-            }
-            
+                )
+            )}
+
             {screen === SCREENS.FACADE && (
               <div className="max-w-4xl mx-auto">
                 <CabinetElevationFront cabinet={project.cabinet} name={project.name || 'Meuble'} />
@@ -445,7 +479,7 @@ export default function App() {
                 </div>
               </div>
             )}
-            
+
             {screen === SCREENS.FACADE_REALISTIC && (
               <RealisticFacadeViewer cabinet={project.cabinet} projectName={project.name} />
             )}
