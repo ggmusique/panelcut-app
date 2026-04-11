@@ -72,13 +72,14 @@ function normalizeModules(cabinet) {
   const totalDrawers = parseInt(cabinet?.nb_drawers ?? 0, 10);
   const drawersPerOuter = nb >= 2 ? Math.floor(totalDrawers / 2) : totalDrawers;
   const hasRod = Boolean(cabinet?.rod ?? cabinet?.tringle ?? false);
+  const innerCount = Math.max(1, nb - 2);
   return Array.from({ length: nb }, (_, i) => {
     const isOuter = i === 0 || i === nb - 1;
     return {
       id: i + 1,
       width: mw,
       rods: (!isOuter && hasRod) ? [null] : [],
-      shelves: isOuter ? 0 : Math.max(0, parseInt(cabinet?.nb_shelves ?? 0, 10)),
+      shelves: isOuter ? 0 : Math.max(0, Math.round(parseInt(cabinet?.nb_shelves ?? 0, 10) / innerCount)),
       shelfPositions: [],
       drawers: isOuter ? drawersPerOuter : 0,
       drawerItems: [],

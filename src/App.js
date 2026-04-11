@@ -223,7 +223,7 @@ export default function App() {
       }
       return {
         id: i + 1, width: mw,
-        shelves: Math.max(2, Math.round(totalShelves / innerCount)),
+        shelves: Math.max(0, Math.round(totalShelves / innerCount)),
         shelfPositions: [],
         drawers: 0, drawerItems: [],
         rods: [], doors: 0,
