@@ -229,7 +229,8 @@ export default function Results({ t, results, project }) {
     depth:     Number(rawCabinet.depth)     || 60,
     thickness: Number(rawCabinet.thickness) || 1.8,
     plinth:    Number(rawCabinet.plinth)    || 0,
-    panels:    Array.isArray(rawCabinet.panels) ? rawCabinet.panels : [],
+    panels:    Array.isArray(rawCabinet.panels)  ? rawCabinet.panels  : [],
+    modules:   Array.isArray(rawCabinet.modules) ? rawCabinet.modules : [],
   } : null;
 
   // hasCabinet = true si on a des dimensions valides

@@ -645,14 +645,30 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
       if (!res.ok) throw new Error(`Erreur serveur (${res.status})`);
       const data = await res.json();
       const parsed = data.result || data;
-      if (onComplete) onComplete(parsed);
+
+      // Fusionner avec le cabinet édité localement (currentCabinet contient
+      // les modules avec positions exactes de tringles/tablettes)
+      const enrichedResult = {
+        ...parsed,
+        cabinet: {
+          ...(parsed.cabinet || {}),
+          width:     parsed.cabinet?.width     || currentCabinet?.width,
+          height:    parsed.cabinet?.height    || currentCabinet?.height,
+          depth:     parsed.cabinet?.depth     || 60,
+          plinth:    parsed.cabinet?.plinth    || currentCabinet?.plinth,
+          thickness: parsed.cabinet?.thickness || 1.8,
+          modules:   currentCabinet?.modules   || parsed.cabinet?.modules || [],
+        },
+      };
+
+      if (onComplete) onComplete(enrichedResult);
     } catch (err) {
       console.error('handleRelancer error:', err);
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  }, [onComplete, imgSize, elements, cabinetDims, facadeModules, facadeItems, generalNotes, joints, buildContextPrompt]);
+  }, [onComplete, imgSize, elements, cabinetDims, facadeModules, facadeItems, generalNotes, joints, buildContextPrompt, currentCabinet]);
 
   const renderElement = (el) => {
     if (el.type === 'dim') return (
