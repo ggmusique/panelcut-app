@@ -4,6 +4,12 @@ import { Plus, Trash2, Copy, Edit2, ScanLine, Box, Layers, ChevronRight, Save, X
 
 const EMPTY_PIECE = { name: '', length: '', height: '', qty: 1 };
 
+/** Returns true when a piece is a rod/tringle (not cut from wood panels). */
+const isRodPiece = (p) =>
+  p.isRod === true ||
+  p.type === 'rod' ||
+  /tringle/i.test(String(p.name || ''));
+
 export default function PiecesList({ t, project, onChange, onOptimize, computing }) {
   const [editing, setEditing] = useState(null);
   const [draft, setDraft]     = useState(EMPTY_PIECE);
@@ -14,6 +20,8 @@ export default function PiecesList({ t, project, onChange, onOptimize, computing
   const [showAddFurniture, setShowAddFurniture] = useState(false);
 
   const pieces = project.pieces || [];
+  const woodPieces = pieces.filter(p => !isRodPiece(p));
+  const rodPieces  = pieces.filter(p =>  isRodPiece(p));
   const updateDraft = (key, val) => setDraft(d => ({ ...d, [key]: val }));
 
   const validate = () => {
@@ -65,7 +73,7 @@ export default function PiecesList({ t, project, onChange, onOptimize, computing
     setShowScanner(false);
   };
 
-  const totalPcs = pieces.reduce((s, p) => s + (p.qty || 1), 0);
+  const totalPcs = woodPieces.reduce((s, p) => s + (p.qty || 1), 0);
 
   return (
     <div className="min-h-screen bg-[#050505] text-slate-200 pb-32 relative font-sans">
@@ -169,20 +177,26 @@ export default function PiecesList({ t, project, onChange, onOptimize, computing
                   </div>
                   <div>
                     <div className="text-xl font-bold text-white">{totalPcs}</div>
-                    <div className="text-xs text-slate-400 uppercase tracking-wider">Pièces à couper</div>
+                    <div className="text-xs text-slate-400 uppercase tracking-wider">Pièces bois à couper</div>
                   </div>
                 </div>
+                {rodPieces.length > 0 && (
+                  <div className="flex items-center gap-2 text-xs text-pink-400 bg-pink-500/10 px-3 py-1.5 rounded-lg border border-pink-500/20">
+                    <span>🔩</span>
+                    <span><strong>{rodPieces.reduce((s, p) => s + (p.qty || 1), 0)}</strong> tringle(s) — non optimisée(s)</span>
+                  </div>
+                )}
                 <div className="text-sm text-slate-300">
                   Panneau <span className="text-white font-bold">{project.panel.w}×{project.panel.h}</span> cm
                 </div>
                 <button
                   className={`w-full px-4 py-3 rounded-xl font-bold text-white shadow-lg transition-all ${
-                    computing ? 'bg-slate-700 cursor-not-allowed' : 'bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500'
+                    computing || woodPieces.length === 0 ? 'bg-slate-700 cursor-not-allowed opacity-50' : 'bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500'
                   }`}
                   onClick={onOptimize}
-                  disabled={computing}
+                  disabled={computing || woodPieces.length === 0}
                 >
-                  {computing ? 'Calcul...' : 'Lancer l\'optimisation'}
+                  {computing ? 'Calcul...' : woodPieces.length === 0 ? 'Aucune pièce bois' : 'Lancer l\'optimisation'}
                 </button>
               </div>
             )}
@@ -209,8 +223,13 @@ export default function PiecesList({ t, project, onChange, onOptimize, computing
 
             {filteredPieces.map((p) => {
               const i = pieces.indexOf(p);
+              const isRod = isRodPiece(p);
               return (
-                <div key={i} className="group relative bg-[#111] hover:bg-[#161616] rounded-xl p-4 border border-white/5 hover:border-orange-500/30 transition-all duration-300">
+                <div key={i} className={`group relative rounded-xl p-4 border transition-all duration-300 ${
+                  isRod
+                    ? 'bg-[#111] hover:bg-[#161616] border-pink-500/20 hover:border-pink-500/40'
+                    : 'bg-[#111] hover:bg-[#161616] border-white/5 hover:border-orange-500/30'
+                }`}>
                   {editing === i ? (
                     <PieceEditorDark t={t} draft={draft} error={error} onChange={updateDraft} onSave={savePiece} onCancel={() => { setEditing(null); setError(''); }} />
                   ) : (
@@ -248,15 +267,17 @@ export default function PiecesList({ t, project, onChange, onOptimize, computing
               </div>
               <div>
                 <div className="text-2xl font-bold text-white leading-none">{totalPcs}</div>
-                <div className="text-xs text-slate-400 uppercase tracking-wider font-semibold mt-1">Pièces</div>
+                <div className="text-xs text-slate-400 uppercase tracking-wider font-semibold mt-1">
+                  Pièces bois{rodPieces.length > 0 && <span className="ml-1 text-pink-400">· {rodPieces.reduce((s,p) => s + (p.qty||1), 0)} 🔩</span>}
+                </div>
               </div>
             </div>
             <button
               className={`px-6 py-3 rounded-xl font-bold text-white shadow-lg transition-all ${
-                computing ? 'bg-slate-700 cursor-not-allowed' : 'bg-gradient-to-r from-orange-600 to-red-600'
+                computing || woodPieces.length === 0 ? 'bg-slate-700 cursor-not-allowed opacity-50' : 'bg-gradient-to-r from-orange-600 to-red-600'
               }`}
               onClick={onOptimize}
-              disabled={computing}
+              disabled={computing || woodPieces.length === 0}
             >
               {computing ? 'Calcul...' : 'Optimiser'}
             </button>
@@ -269,25 +290,30 @@ export default function PiecesList({ t, project, onChange, onOptimize, computing
 
 function PieceItemDark({ piece, onEdit, onDelete, onDuplicate, t }) {
   const [showActions, setShowActions] = useState(false);
+  const isRod = isRodPiece(piece);
   return (
     <div className="flex items-center justify-between" onClick={() => setShowActions(s => !s)}>
       <div className="flex-1 min-w-0 pr-4">
         <div className="flex items-center gap-3 mb-1 flex-wrap">
+          {isRod && <span className="text-base" title="Tringle — non optimisée">🔩</span>}
           <h4 className="text-lg font-bold text-white truncate">{piece.name}</h4>
+          {isRod && (
+            <span className="text-[10px] uppercase tracking-wider bg-pink-500/10 text-pink-400 px-2 py-0.5 rounded border border-pink-500/20">Non optimisée</span>
+          )}
           {piece.furnitureName && (
             <span className="text-[10px] uppercase tracking-wider bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded border border-blue-500/20">{piece.furnitureName}</span>
           )}
         </div>
         <div className="flex items-center gap-4 text-sm">
           <div className="flex items-center gap-1.5 text-slate-400">
-            <span className="w-1.5 h-1.5 bg-orange-500 rounded-full"></span>
+            <span className={`w-1.5 h-1.5 rounded-full ${isRod ? 'bg-pink-500' : 'bg-orange-500'}`}></span>
             <span className="text-white font-mono">{piece.length}</span>
             <span className="text-slate-600">×</span>
             <span className="text-white font-mono">{piece.height}</span>
             <span className="text-xs text-slate-500 ml-1">cm</span>
           </div>
           <div className="flex items-center gap-1.5 text-slate-400">
-            <span className="w-1.5 h-1.5 bg-purple-500 rounded-full"></span>
+            <span className={`w-1.5 h-1.5 rounded-full ${isRod ? 'bg-pink-400' : 'bg-purple-500'}`}></span>
             <span className="text-xs uppercase font-bold text-slate-500 mr-1">Qté</span>
             <span className="text-white font-bold text-base">{piece.qty}</span>
           </div>
