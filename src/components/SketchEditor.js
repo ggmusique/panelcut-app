@@ -675,7 +675,8 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
       if (!res.ok) throw new Error(`Erreur serveur (${res.status})`);
 
       const data = await res.json();
-      if (onComplete) onComplete(data);
+      const parsed = data.result || data;
+      if (onComplete) onComplete(parsed);
 
     } catch (err) {
       console.error('handleRelancer error:', err);
