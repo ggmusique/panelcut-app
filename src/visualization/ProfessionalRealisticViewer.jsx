@@ -19,8 +19,6 @@ function createWoodCanvas({
   const ctx = c.getContext('2d');
   ctx.fillStyle = `rgb(${baseR},${baseG},${baseB})`;
   ctx.fillRect(0, 0, width, height);
-
-  // Pixel noise
   const img = ctx.getImageData(0, 0, width, height);
   const d = img.data;
   for (let i = 0; i < d.length; i += 4) {
@@ -30,22 +28,15 @@ function createWoodCanvas({
     d[i+2] = Math.max(0, Math.min(255, d[i+2] + n));
   }
   ctx.putImageData(img, 0, 0);
-
-  // Grain lines (horizontal)
   for (let i = 0; i < density; i++) {
     ctx.beginPath();
     ctx.strokeStyle = `rgba(${grainR},${grainG},${grainB},${0.03 + Math.random() * 0.1})`;
     ctx.lineWidth = 0.3 + Math.random() * 2.2;
     let y = Math.random() * height;
     ctx.moveTo(0, y);
-    for (let x = 0; x < width; x += 6) {
-      y += (Math.random() - 0.5) * 1.8;
-      ctx.lineTo(x, y);
-    }
+    for (let x = 0; x < width; x += 6) { y += (Math.random() - 0.5) * 1.8; ctx.lineTo(x, y); }
     ctx.stroke();
   }
-
-  // Knots (ring pattern)
   for (let k = 0; k < knots; k++) {
     const kx = 80 + Math.random() * (width - 160);
     const ky = 80 + Math.random() * (height - 160);
@@ -53,99 +44,87 @@ function createWoodCanvas({
     for (let ring = r; ring > 0; ring -= 1.2) {
       ctx.beginPath();
       ctx.arc(kx, ky, ring, 0, Math.PI * 2);
-      ctx.strokeStyle = `rgba(${grainR - 30},${grainG - 30},${grainB - 30},${0.04 + (1 - ring / r) * 0.12})`;
+      ctx.strokeStyle = `rgba(${grainR-30},${grainG-30},${grainB-30},${0.04 + (1 - ring/r) * 0.12})`;
       ctx.lineWidth = 0.6;
       ctx.stroke();
     }
-    ctx.beginPath();
-    ctx.arc(kx, ky, 2.5, 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(${grainR - 40},${grainG - 40},${grainB - 40},0.3)`;
-    ctx.fill();
+    ctx.beginPath(); ctx.arc(kx, ky, 2.5, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(${grainR-40},${grainG-40},${grainB-40},0.3)`; ctx.fill();
   }
   return c;
 }
 
 function createFloorCanvas(width = 2048, height = 2048) {
-  const c = document.createElement('canvas');
-  c.width = width; c.height = height;
+  const c = document.createElement('canvas'); c.width = width; c.height = height;
   const ctx = c.getContext('2d');
   const plankW = width / 8;
-
   for (let i = 0; i < 8; i++) {
     const x = i * plankW;
-    const r = 178 + Math.random() * 28;
-    const g = 148 + Math.random() * 22;
-    const b = 110 + Math.random() * 18;
-    ctx.fillStyle = `rgb(${r},${g},${b})`;
-    ctx.fillRect(x + 1, 0, plankW - 2, height);
-
+    const r = 178 + Math.random() * 28, g = 148 + Math.random() * 22, b = 110 + Math.random() * 18;
+    ctx.fillStyle = `rgb(${r},${g},${b})`; ctx.fillRect(x + 1, 0, plankW - 2, height);
     for (let j = 0; j < 50; j++) {
       ctx.beginPath();
-      ctx.strokeStyle = `rgba(${r - 28},${g - 22},${b - 18},${0.04 + Math.random() * 0.08})`;
+      ctx.strokeStyle = `rgba(${r-28},${g-22},${b-18},${0.04 + Math.random() * 0.08})`;
       ctx.lineWidth = 0.4 + Math.random() * 1.6;
-      let yy = Math.random() * height;
-      ctx.moveTo(x + 2, yy);
-      for (let xx = x + 2; xx < x + plankW - 2; xx += 8) { yy += (Math.random() - 0.5) * 1.5; ctx.lineTo(xx, yy); }
+      let yy = Math.random() * height; ctx.moveTo(x + 2, yy);
+      for (let xx = x+2; xx < x+plankW-2; xx += 8) { yy += (Math.random()-0.5)*1.5; ctx.lineTo(xx, yy); }
       ctx.stroke();
     }
-    // Plank gaps
-    ctx.fillStyle = 'rgba(40, 32, 24, 0.55)';
-    ctx.fillRect(x, 0, 1.2, height);
-    ctx.fillRect(x + plankW - 1.2, 0, 1.2, height);
+    ctx.fillStyle = 'rgba(40,32,24,0.55)';
+    ctx.fillRect(x, 0, 1.2, height); ctx.fillRect(x + plankW - 1.2, 0, 1.2, height);
   }
-
-  // Subtle noise
-  const img = ctx.getImageData(0, 0, width, height);
-  const d = img.data;
+  const img = ctx.getImageData(0, 0, width, height); const d = img.data;
   for (let i = 0; i < d.length; i += 4) {
-    const n = (Math.random() - 0.5) * 6;
-    d[i]   = Math.max(0, Math.min(255, d[i]   + n));
-    d[i+1] = Math.max(0, Math.min(255, d[i+1] + n));
-    d[i+2] = Math.max(0, Math.min(255, d[i+2] + n));
+    const n = (Math.random()-0.5)*6;
+    d[i] = Math.max(0,Math.min(255,d[i]+n)); d[i+1]=Math.max(0,Math.min(255,d[i+1]+n)); d[i+2]=Math.max(0,Math.min(255,d[i+2]+n));
   }
-  ctx.putImageData(img, 0, 0);
-  return c;
+  ctx.putImageData(img, 0, 0); return c;
 }
 
 function createWallCanvas(width = 512, height = 512) {
-  const c = document.createElement('canvas');
-  c.width = width; c.height = height;
-  const ctx = c.getContext('2d');
-  ctx.fillStyle = '#f0ece6';
-  ctx.fillRect(0, 0, width, height);
-  // Very subtle texture
-  const img = ctx.getImageData(0, 0, width, height);
-  const d = img.data;
-  for (let i = 0; i < d.length; i += 4) {
-    const n = (Math.random() - 0.5) * 5;
-    d[i]   = Math.max(0, Math.min(255, d[i] + n));
-    d[i+1] = Math.max(0, Math.min(255, d[i+1] + n));
-    d[i+2] = Math.max(0, Math.min(255, d[i+2] + n));
-  }
-  ctx.putImageData(img, 0, 0);
-  return c;
+  const c = document.createElement('canvas'); c.width = width; c.height = height;
+  const ctx = c.getContext('2d'); ctx.fillStyle = '#f0ece6'; ctx.fillRect(0,0,width,height);
+  const img = ctx.getImageData(0,0,width,height); const d = img.data;
+  for (let i=0;i<d.length;i+=4){const n=(Math.random()-0.5)*5;d[i]=Math.max(0,Math.min(255,d[i]+n));d[i+1]=Math.max(0,Math.min(255,d[i+1]+n));d[i+2]=Math.max(0,Math.min(255,d[i+2]+n));}
+  ctx.putImageData(img,0,0); return c;
 }
 
 function createBumpCanvas(src) {
-  const w = src.width, h = src.height;
-  const c = document.createElement('canvas');
-  c.width = w; c.height = h;
-  const ctx = c.getContext('2d');
-  ctx.drawImage(src, 0, 0);
-  const img = ctx.getImageData(0, 0, w, h);
-  const d = img.data;
-  for (let i = 0; i < d.length; i += 4) {
-    const gray = d[i] * 0.299 + d[i+1] * 0.587 + d[i+2] * 0.114;
-    const v = 128 + (gray - 128) * 1.6;
-    d[i] = d[i+1] = d[i+2] = Math.max(0, Math.min(255, v));
-  }
-  ctx.putImageData(img, 0, 0);
-  return c;
+  const w=src.width,h=src.height; const c=document.createElement('canvas'); c.width=w; c.height=h;
+  const ctx=c.getContext('2d'); ctx.drawImage(src,0,0);
+  const img=ctx.getImageData(0,0,w,h); const d=img.data;
+  for (let i=0;i<d.length;i+=4){const gray=d[i]*0.299+d[i+1]*0.587+d[i+2]*0.114;const v=128+(gray-128)*1.6;d[i]=d[i+1]=d[i+2]=Math.max(0,Math.min(255,v));}
+  ctx.putImageData(img,0,0); return c;
 }
 
 /* ═══════════════════════════════════════════════════════════════
    NORMALIZE MODULES
+   Supporte les deux formats de module :
+     - { rod: true }           booléen legacy
+     - { rods: [null] }        tableau (reconstructModulesFromFlat)
+     - { shelves: 3 }          entier
+     - { shelfPositions: [...] } tableau
    ═══════════════════════════════════════════════════════════════ */
+
+function hasRodFromModule(m) {
+  // Format tableau : rods: [] ou rods: [null, ...]
+  if (Array.isArray(m.rods)) return m.rods.length > 0;
+  // Format booléen / objet legacy
+  return Boolean(m.rod ?? m.tringle ?? m.hanging ?? m.penderie ?? false);
+}
+
+function shelvesCountFromModule(m) {
+  // shelfPositions peut être un tableau d'objets {y} ou de nombres
+  if (Array.isArray(m.shelfPositions) && m.shelfPositions.length > 0) return m.shelfPositions.length;
+  if (Array.isArray(m.shelves)) return m.shelves.length;
+  return Math.max(0, parseInt(m.shelves ?? m.nb_shelves ?? 0, 10) || 0);
+}
+
+function drawersCountFromModule(m) {
+  if (Array.isArray(m.drawerItems) && m.drawerItems.length > 0) return m.drawerItems.length;
+  if (Array.isArray(m.drawers)) return m.drawers.length;
+  return Math.max(0, parseInt(m.drawers ?? m.nb_drawers ?? 0, 10) || 0);
+}
 
 function normalizeModules(cabinet) {
   const raw = Array.isArray(cabinet?.modules) ? cabinet.modules : [];
@@ -154,12 +133,13 @@ function normalizeModules(cabinet) {
     return detailed.map((m, i) => ({
       id:      i + 1,
       width:   Math.max(0, Number(m.width ?? m.w ?? m.largeur) || 0),
-      shelves: Math.max(0, parseInt(m.shelves ?? m.nb_shelves ?? 0, 10) || 0),
-      drawers: Math.max(0, parseInt(m.drawers ?? m.nb_drawers ?? 0, 10) || 0),
-      doors:   Math.max(0, parseInt(m.doors   ?? m.nb_doors   ?? 0, 10) || 0),
-      rod:     Boolean(m.rod ?? m.tringle ?? m.hanging ?? m.penderie ?? false),
+      shelves: shelvesCountFromModule(m),
+      drawers: drawersCountFromModule(m),
+      doors:   Math.max(0, parseInt(m.doors ?? m.nb_doors ?? 0, 10) || 0),
+      rod:     hasRodFromModule(m),
     })).filter(m => m.width > 0);
   }
+  // Fallback dimensions seules
   const W  = Math.max(0, Number(cabinet?.width) || 0);
   const nb = Math.max(1, parseInt(cabinet?.nb_dividers ?? 4, 10) + 1);
   const mw = W > 0 ? W / nb : 0;
@@ -184,82 +164,36 @@ function useMaterials() {
       t.colorSpace = THREE.SRGBColorSpace;
       return t;
     };
-
-    // Main wood (light sonoma oak)
-    const mainCanvas = createWoodCanvas({ baseR: 210, baseG: 180, baseB: 148, grainR: 170, grainG: 140, grainB: 100, density: 100, knots: 3 });
-    const mainTex    = mkTex(mainCanvas);
-    const mainBump   = mkTex(createBumpCanvas(mainCanvas));
-
-    // Interior / shelf wood (lighter)
-    const intCanvas = createWoodCanvas({ baseR: 228, baseG: 215, baseB: 198, grainR: 200, grainG: 185, grainB: 168, density: 50, knots: 0, noiseAmt: 8 });
-    const intTex    = mkTex(intCanvas);
-
-    // Back panel (light melamine gray)
-    const backCanvas = createWoodCanvas({ baseR: 215, baseG: 210, baseB: 205, grainR: 192, grainG: 187, grainB: 182, density: 25, knots: 0, noiseAmt: 6 });
-    const backTex    = mkTex(backCanvas);
-
-    // Drawer front (slightly warmer)
-    const drawerCanvas = createWoodCanvas({ baseR: 208, baseG: 178, baseB: 145, grainR: 168, grainG: 138, grainB: 98, density: 95, knots: 2 });
-    const drawerTex    = mkTex(drawerCanvas);
-    const drawerBump   = mkTex(createBumpCanvas(drawerCanvas));
-
-    // Floor
+    const mainCanvas  = createWoodCanvas({ baseR:210, baseG:180, baseB:148, grainR:170, grainG:140, grainB:100, density:100, knots:3 });
+    const mainTex     = mkTex(mainCanvas);
+    const mainBump    = mkTex(createBumpCanvas(mainCanvas));
+    const intCanvas   = createWoodCanvas({ baseR:228, baseG:215, baseB:198, grainR:200, grainG:185, grainB:168, density:50, knots:0, noiseAmt:8 });
+    const intTex      = mkTex(intCanvas);
+    const backCanvas  = createWoodCanvas({ baseR:215, baseG:210, baseB:205, grainR:192, grainG:187, grainB:182, density:25, knots:0, noiseAmt:6 });
+    const backTex     = mkTex(backCanvas);
+    const drawerCanvas = createWoodCanvas({ baseR:208, baseG:178, baseB:145, grainR:168, grainG:138, grainB:98, density:95, knots:2 });
+    const drawerTex   = mkTex(drawerCanvas);
+    const drawerBump  = mkTex(createBumpCanvas(drawerCanvas));
     const floorCanvas = createFloorCanvas();
     const floorTex    = mkTex(floorCanvas, 3, 3);
     const floorBump   = mkTex(createBumpCanvas(floorCanvas), 3, 3);
-
-    // Wall
-    const wallCanvas = createWallCanvas();
-    const wallTex    = mkTex(wallCanvas, 2, 2);
-
+    const wallCanvas  = createWallCanvas();
+    const wallTex     = mkTex(wallCanvas, 2, 2);
     return {
-      wood: new THREE.MeshStandardMaterial({
-        map: mainTex, bumpMap: mainBump, bumpScale: 0.0025,
-        roughness: 0.58, metalness: 0.0, envMapIntensity: 0.3,
-      }),
-      interior: new THREE.MeshStandardMaterial({
-        map: intTex, roughness: 0.50, metalness: 0.0, envMapIntensity: 0.2,
-      }),
-      back: new THREE.MeshStandardMaterial({
-        map: backTex, roughness: 0.70, metalness: 0.0, envMapIntensity: 0.15,
-      }),
-      drawer: new THREE.MeshStandardMaterial({
-        map: drawerTex, bumpMap: drawerBump, bumpScale: 0.002,
-        roughness: 0.52, metalness: 0.02, envMapIntensity: 0.3,
-      }),
-      handle: new THREE.MeshStandardMaterial({
-        color: '#666', roughness: 0.12, metalness: 0.88, envMapIntensity: 0.8,
-      }),
-      rod: new THREE.MeshStandardMaterial({
-        color: '#c0c0c0', roughness: 0.08, metalness: 0.92, envMapIntensity: 0.9,
-      }),
-      plinth: new THREE.MeshStandardMaterial({
-        color: '#888', roughness: 0.75, metalness: 0.05,
-      }),
-      door: new THREE.MeshStandardMaterial({
-        map: mainTex, bumpMap: mainBump, bumpScale: 0.002,
-        roughness: 0.50, metalness: 0.02, transparent: true, opacity: 0.92,
-        envMapIntensity: 0.3,
-      }),
-      floor: new THREE.MeshStandardMaterial({
-        map: floorTex, bumpMap: floorBump, bumpScale: 0.0015,
-        roughness: 0.45, metalness: 0.02, envMapIntensity: 0.25,
-      }),
-      wall: new THREE.MeshStandardMaterial({
-        map: wallTex, roughness: 0.95, metalness: 0.0, envMapIntensity: 0.1,
-      }),
-      ceiling: new THREE.MeshStandardMaterial({
-        color: '#f5f2ee', roughness: 0.95, metalness: 0.0,
-      }),
-      baseboard: new THREE.MeshStandardMaterial({
-        color: '#e5e1da', roughness: 0.75, metalness: 0.0,
-      }),
-      rug: new THREE.MeshStandardMaterial({
-        color: '#d8d4ce', roughness: 0.98, metalness: 0.0, envMapIntensity: 0.05,
-      }),
-      edgeBand: new THREE.MeshStandardMaterial({
-        map: mainTex, roughness: 0.5, metalness: 0.0,
-      }),
+      wood:      new THREE.MeshStandardMaterial({ map:mainTex, bumpMap:mainBump, bumpScale:0.0025, roughness:0.58, metalness:0.0, envMapIntensity:0.3 }),
+      interior:  new THREE.MeshStandardMaterial({ map:intTex, roughness:0.50, metalness:0.0, envMapIntensity:0.2 }),
+      back:      new THREE.MeshStandardMaterial({ map:backTex, roughness:0.70, metalness:0.0, envMapIntensity:0.15 }),
+      drawer:    new THREE.MeshStandardMaterial({ map:drawerTex, bumpMap:drawerBump, bumpScale:0.002, roughness:0.52, metalness:0.02, envMapIntensity:0.3 }),
+      handle:    new THREE.MeshStandardMaterial({ color:'#666', roughness:0.12, metalness:0.88, envMapIntensity:0.8 }),
+      rod:       new THREE.MeshStandardMaterial({ color:'#c0c0c0', roughness:0.08, metalness:0.92, envMapIntensity:0.9 }),
+      plinth:    new THREE.MeshStandardMaterial({ color:'#888', roughness:0.75, metalness:0.05 }),
+      door:      new THREE.MeshStandardMaterial({ map:mainTex, bumpMap:mainBump, bumpScale:0.002, roughness:0.50, metalness:0.02, transparent:true, opacity:0.92, envMapIntensity:0.3 }),
+      floor:     new THREE.MeshStandardMaterial({ map:floorTex, bumpMap:floorBump, bumpScale:0.0015, roughness:0.45, metalness:0.02, envMapIntensity:0.25 }),
+      wall:      new THREE.MeshStandardMaterial({ map:wallTex, roughness:0.95, metalness:0.0, envMapIntensity:0.1 }),
+      ceiling:   new THREE.MeshStandardMaterial({ color:'#f5f2ee', roughness:0.95, metalness:0.0 }),
+      baseboard: new THREE.MeshStandardMaterial({ color:'#e5e1da', roughness:0.75, metalness:0.0 }),
+      rug:       new THREE.MeshStandardMaterial({ color:'#d8d4ce', roughness:0.98, metalness:0.0, envMapIntensity:0.05 }),
+      edgeBand:  new THREE.MeshStandardMaterial({ map:mainTex, roughness:0.5, metalness:0.0 }),
     };
   }, []);
 }
@@ -271,210 +205,144 @@ function useMaterials() {
 function Room({ roomW, roomH, roomD, mats }) {
   return (
     <group>
-      {/* Floor */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow material={mats.floor}>
-        <planeGeometry args={[roomW, roomD]} />
-      </mesh>
-      {/* Back wall */}
-      <mesh position={[0, roomH / 2, -roomD / 2]} receiveShadow material={mats.wall}>
-        <planeGeometry args={[roomW, roomH]} />
-      </mesh>
-      {/* Left wall */}
-      <mesh position={[-roomW / 2, roomH / 2, 0]} rotation={[0, Math.PI / 2, 0]} receiveShadow material={mats.wall}>
-        <planeGeometry args={[roomD, roomH]} />
-      </mesh>
-      {/* Right wall (subtle, further away) */}
-      <mesh position={[roomW / 2, roomH / 2, 0]} rotation={[0, -Math.PI / 2, 0]} receiveShadow material={mats.wall}>
-        <planeGeometry args={[roomD, roomH]} />
-      </mesh>
-      {/* Ceiling */}
-      <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, roomH, 0]} material={mats.ceiling}>
-        <planeGeometry args={[roomW, roomD]} />
-      </mesh>
-      {/* Baseboards - back */}
-      <mesh position={[0, 0.04, -roomD / 2 + 0.006]} material={mats.baseboard} castShadow>
-        <boxGeometry args={[roomW, 0.08, 0.012]} />
-      </mesh>
-      {/* Baseboard - left */}
-      <mesh position={[-roomW / 2 + 0.006, 0.04, 0]} material={mats.baseboard} castShadow>
-        <boxGeometry args={[0.012, 0.08, roomD]} />
-      </mesh>
-      {/* Baseboard - right */}
-      <mesh position={[roomW / 2 - 0.006, 0.04, 0]} material={mats.baseboard} castShadow>
-        <boxGeometry args={[0.012, 0.08, roomD]} />
-      </mesh>
-      {/* Rug */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.003, roomD * 0.15]} receiveShadow material={mats.rug}>
-        <planeGeometry args={[roomW * 0.45, roomD * 0.35]} />
-      </mesh>
+      <mesh rotation={[-Math.PI/2,0,0]} position={[0,0,0]} receiveShadow material={mats.floor}><planeGeometry args={[roomW,roomD]}/></mesh>
+      <mesh position={[0,roomH/2,-roomD/2]} receiveShadow material={mats.wall}><planeGeometry args={[roomW,roomH]}/></mesh>
+      <mesh position={[-roomW/2,roomH/2,0]} rotation={[0,Math.PI/2,0]} receiveShadow material={mats.wall}><planeGeometry args={[roomD,roomH]}/></mesh>
+      <mesh position={[roomW/2,roomH/2,0]} rotation={[0,-Math.PI/2,0]} receiveShadow material={mats.wall}><planeGeometry args={[roomD,roomH]}/></mesh>
+      <mesh rotation={[Math.PI/2,0,0]} position={[0,roomH,0]} material={mats.ceiling}><planeGeometry args={[roomW,roomD]}/></mesh>
+      <mesh position={[0,0.04,-roomD/2+0.006]} material={mats.baseboard} castShadow><boxGeometry args={[roomW,0.08,0.012]}/></mesh>
+      <mesh position={[-roomW/2+0.006,0.04,0]} material={mats.baseboard} castShadow><boxGeometry args={[0.012,0.08,roomD]}/></mesh>
+      <mesh position={[roomW/2-0.006,0.04,0]} material={mats.baseboard} castShadow><boxGeometry args={[0.012,0.08,roomD]}/></mesh>
+      <mesh rotation={[-Math.PI/2,0,0]} position={[0,0.003,roomD*0.15]} receiveShadow material={mats.rug}><planeGeometry args={[roomW*0.45,roomD*0.35]}/></mesh>
     </group>
   );
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   DRAWER HANDLE (realistic bar handle)
+   DRAWER HANDLE
    ═══════════════════════════════════════════════════════════════ */
 
 function DrawerHandle({ width, material }) {
   const hw = Math.min(width * 0.45, 0.13);
   return (
-    <group position={[0, 0, 0.022]}>
-      {/* Bar */}
-      <mesh rotation={[0, 0, Math.PI / 2]} material={material} castShadow>
-        <capsuleGeometry args={[0.005, hw, 4, 8]} />
-      </mesh>
-      {/* Left mounting post */}
-      <mesh position={[-hw / 2, 0, -0.009]} rotation={[Math.PI / 2, 0, 0]} material={material} castShadow>
-        <cylinderGeometry args={[0.0035, 0.0035, 0.018, 6]} />
-      </mesh>
-      {/* Right mounting post */}
-      <mesh position={[hw / 2, 0, -0.009]} rotation={[Math.PI / 2, 0, 0]} material={material} castShadow>
-        <cylinderGeometry args={[0.0035, 0.0035, 0.018, 6]} />
-      </mesh>
+    <group position={[0,0,0.022]}>
+      <mesh rotation={[0,0,Math.PI/2]} material={material} castShadow><capsuleGeometry args={[0.005,hw,4,8]}/></mesh>
+      <mesh position={[-hw/2,0,-0.009]} rotation={[Math.PI/2,0,0]} material={material} castShadow><cylinderGeometry args={[0.0035,0.0035,0.018,6]}/></mesh>
+      <mesh position={[hw/2,0,-0.009]} rotation={[Math.PI/2,0,0]} material={material} castShadow><cylinderGeometry args={[0.0035,0.0035,0.018,6]}/></mesh>
     </group>
   );
 }
-
-/* ═══════════════════════════════════════════════════════════════
-   ROD BRACKETS
-   ═══════════════════════════════════════════════════════════════ */
 
 function RodBracket({ position, material }) {
-  return (
-    <group position={position}>
-      <mesh material={material} castShadow>
-        <cylinderGeometry args={[0.016, 0.016, 0.004, 12]} />
-      </mesh>
-    </group>
-  );
+  return (<group position={position}><mesh material={material} castShadow><cylinderGeometry args={[0.016,0.016,0.004,12]}/></mesh></group>);
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   CABINET MODULE (3D) — detailed with textures
+   CABINET MODULE 3D
    ═══════════════════════════════════════════════════════════════ */
 
-function CabinetModule3D({ mod, x, cabinetH, cabinetD, plinthH, thickness, mats, isFirst, isLast }) {
+function CabinetModule3D({ mod, x, cabinetH, cabinetD, plinthH, thickness, mats, isFirst }) {
   const W  = mod.width / 100;
   const H  = cabinetH / 100;
   const D  = cabinetD / 100;
   const TH = thickness / 100;
   const PL = plinthH / 100;
-  const bodyH = H - PL;
+  const bodyH  = H - PL;
+  const innerW = W - TH * 2;
 
   const shelves = useMemo(() => {
     if (mod.shelves <= 0) return [];
-    return Array.from({ length: mod.shelves }, (_, i) =>
-      PL + ((i + 1) / (mod.shelves + 1)) * bodyH
-    );
+    return Array.from({ length: mod.shelves }, (_, i) => PL + ((i+1) / (mod.shelves+1)) * bodyH);
   }, [mod.shelves, PL, bodyH]);
 
   const drawers = useMemo(() => {
     if (mod.drawers <= 0) return [];
     const zoneH = bodyH * 0.38;
-    const zoneBottom = PL;
     return Array.from({ length: mod.drawers }, (_, i) => {
       const dh = zoneH / mod.drawers;
-      return { y: zoneBottom + i * dh + dh / 2, h: dh - 0.008 };
+      return { y: PL + i * dh + dh/2, h: dh - 0.008 };
     });
   }, [mod.drawers, PL, bodyH]);
 
   const rodY = PL + bodyH * 0.78;
-  const innerW = W - TH * 2;
 
   return (
-    <group position={[x + W / 2, 0, 0]}>
-      {/* Back panel (melamine) */}
-      <mesh position={[0, PL + bodyH / 2, -D / 2 + 0.003]} material={mats.back} castShadow receiveShadow>
-        <boxGeometry args={[W - TH, bodyH, 0.005]} />
+    <group position={[x + W/2, 0, 0]}>
+      {/* Back panel */}
+      <mesh position={[0, PL+bodyH/2, -D/2+0.003]} material={mats.back} castShadow receiveShadow>
+        <boxGeometry args={[W-TH, bodyH, 0.005]}/>
       </mesh>
-
-      {/* Left divider */}
+      {/* Left side (only for first module) */}
       {isFirst && (
-        <mesh position={[-W / 2 + TH / 2, PL + bodyH / 2, 0]} material={mats.wood} castShadow receiveShadow>
-          <boxGeometry args={[TH, bodyH, D]} />
+        <mesh position={[-W/2+TH/2, PL+bodyH/2, 0]} material={mats.wood} castShadow receiveShadow>
+          <boxGeometry args={[TH, bodyH, D]}/>
         </mesh>
       )}
-
-      {/* Right divider (always drawn — shared wall handled by positioning) */}
-      <mesh position={[W / 2 - TH / 2, PL + bodyH / 2, 0]} material={mats.wood} castShadow receiveShadow>
-        <boxGeometry args={[TH, bodyH, D]} />
+      {/* Right divider */}
+      <mesh position={[W/2-TH/2, PL+bodyH/2, 0]} material={mats.wood} castShadow receiveShadow>
+        <boxGeometry args={[TH, bodyH, D]}/>
       </mesh>
-
       {/* Top panel */}
-      <mesh position={[0, H - TH / 2, 0]} material={mats.wood} castShadow receiveShadow>
-        <boxGeometry args={[W, TH, D]} />
+      <mesh position={[0, H-TH/2, 0]} material={mats.wood} castShadow receiveShadow>
+        <boxGeometry args={[W, TH, D]}/>
       </mesh>
-      {/* Top front edge highlight */}
-      <mesh position={[0, H - TH, D / 2 - 0.001]} material={mats.edgeBand}>
-        <boxGeometry args={[W, 0.002, 0.001]} />
+      <mesh position={[0, H-TH, D/2-0.001]} material={mats.edgeBand}>
+        <boxGeometry args={[W, 0.002, 0.001]}/>
       </mesh>
-
       {/* Bottom panel */}
-      <mesh position={[0, PL + TH / 2, 0]} material={mats.wood} castShadow receiveShadow>
-        <boxGeometry args={[innerW, TH, D]} />
+      <mesh position={[0, PL+TH/2, 0]} material={mats.wood} castShadow receiveShadow>
+        <boxGeometry args={[innerW, TH, D]}/>
       </mesh>
-
-      {/* Plinth (recessed) */}
+      {/* Plinth */}
       {PL > 0 && (
-        <mesh position={[0, PL / 2, D / 2 - 0.025]} material={mats.plinth} castShadow>
-          <boxGeometry args={[W - 0.01, PL - 0.004, 0.04]} />
+        <mesh position={[0, PL/2, D/2-0.025]} material={mats.plinth} castShadow>
+          <boxGeometry args={[W-0.01, PL-0.004, 0.04]}/>
         </mesh>
       )}
-
       {/* Shelves */}
       {shelves.map((sy, i) => (
         <group key={`sh${i}`}>
           <mesh position={[0, sy, -0.005]} material={mats.interior} castShadow receiveShadow>
-            <boxGeometry args={[innerW - 0.004, TH * 0.8, D - 0.015]} />
+            <boxGeometry args={[innerW-0.004, TH*0.8, D-0.015]}/>
           </mesh>
-          {/* Front edge band */}
-          <mesh position={[0, sy, D / 2 - 0.012]} material={mats.edgeBand}>
-            <boxGeometry args={[innerW - 0.004, TH * 0.8, 0.001]} />
+          <mesh position={[0, sy, D/2-0.012]} material={mats.edgeBand}>
+            <boxGeometry args={[innerW-0.004, TH*0.8, 0.001]}/>
           </mesh>
         </group>
       ))}
-
       {/* Rod */}
       {mod.rod && (
         <group>
-          <mesh position={[0, rodY, -D * 0.15]} rotation={[0, 0, Math.PI / 2]} material={mats.rod} castShadow>
-            <cylinderGeometry args={[0.013, 0.013, innerW - 0.01, 16]} />
+          <mesh position={[0, rodY, -D*0.15]} rotation={[0,0,Math.PI/2]} material={mats.rod} castShadow>
+            <cylinderGeometry args={[0.013, 0.013, innerW-0.01, 16]}/>
           </mesh>
-          {/* Rod brackets */}
-          <RodBracket position={[-innerW / 2 + 0.01, rodY, -D * 0.15]} material={mats.rod} />
-          <RodBracket position={[innerW / 2 - 0.01, rodY, -D * 0.15]} material={mats.rod} />
-          {/* Rod support shelf (small) */}
-          <mesh position={[0, rodY + 0.04, -0.005]} material={mats.interior} castShadow>
-            <boxGeometry args={[innerW - 0.004, TH * 0.7, D - 0.015]} />
+          <RodBracket position={[-innerW/2+0.01, rodY, -D*0.15]} material={mats.rod}/>
+          <RodBracket position={[ innerW/2-0.01, rodY, -D*0.15]} material={mats.rod}/>
+          <mesh position={[0, rodY+0.04, -0.005]} material={mats.interior} castShadow>
+            <boxGeometry args={[innerW-0.004, TH*0.7, D-0.015]}/>
           </mesh>
         </group>
       )}
-
       {/* Drawers */}
-      {drawers.map((d, i) => (
-        <group key={`dr${i}`} position={[0, d.y, D / 2 - 0.008]}>
-          {/* Drawer front panel */}
+      {drawers.map((dr, i) => (
+        <group key={`dr${i}`} position={[0, dr.y, D/2-0.008]}>
           <mesh material={mats.drawer} castShadow receiveShadow>
-            <boxGeometry args={[innerW - 0.006, d.h, 0.018]} />
+            <boxGeometry args={[innerW-0.006, dr.h, 0.018]}/>
           </mesh>
-          {/* Edge highlight top */}
-          <mesh position={[0, d.h / 2 - 0.001, 0.01]} material={mats.edgeBand}>
-            <boxGeometry args={[innerW - 0.006, 0.001, 0.018]} />
+          <mesh position={[0, dr.h/2-0.001, 0.01]} material={mats.edgeBand}>
+            <boxGeometry args={[innerW-0.006, 0.001, 0.018]}/>
           </mesh>
-          {/* Handle */}
-          <DrawerHandle width={innerW - 0.02} material={mats.handle} />
+          <DrawerHandle width={innerW-0.02} material={mats.handle}/>
         </group>
       ))}
-
       {/* Doors */}
       {mod.doors > 0 && mod.drawers === 0 && !mod.rod && mod.shelves === 0 && (
         <group>
-          <mesh position={[0, PL + bodyH / 2, D / 2 - 0.003]} material={mats.door} castShadow receiveShadow>
-            <boxGeometry args={[W - 0.005, bodyH - 0.005, 0.018]} />
+          <mesh position={[0, PL+bodyH/2, D/2-0.003]} material={mats.door} castShadow receiveShadow>
+            <boxGeometry args={[W-0.005, bodyH-0.005, 0.018]}/>
           </mesh>
-          {/* Door handle (vertical small bar) */}
-          <mesh position={[W * 0.3, PL + bodyH / 2, D / 2 + 0.018]} rotation={[0, 0, 0]} material={mats.handle} castShadow>
-            <capsuleGeometry args={[0.004, 0.05, 4, 8]} />
+          <mesh position={[W*0.3, PL+bodyH/2, D/2+0.018]} material={mats.handle} castShadow>
+            <capsuleGeometry args={[0.004, 0.05, 4, 8]}/>
           </mesh>
         </group>
       )}
@@ -487,25 +355,21 @@ function CabinetModule3D({ mod, x, cabinetH, cabinetD, plinthH, thickness, mats,
    ═══════════════════════════════════════════════════════════════ */
 
 function CabinetGroup({ modules, cabinetW, cabinetH, cabinetD, plinthH, thickness, mats }) {
-  const totalW = cabinetW / 100;
+  const totalW  = cabinetW / 100;
   const offsetX = -totalW / 2;
-
   const positions = useMemo(() => {
     let cursor = 0;
     return modules.map(m => { const x = cursor; cursor += m.width / 100; return x; });
   }, [modules]);
-
   return (
-    <group position={[0, 0, -cabinetD / 100 / 2]}>
+    <group position={[0, 0, -cabinetD/100/2]}>
       {modules.map((mod, i) => (
         <CabinetModule3D
           key={mod.id}
           mod={mod}
           x={offsetX + positions[i]}
-          cabinetH={cabinetH}
-          cabinetD={cabinetD}
-          plinthH={plinthH}
-          thickness={thickness}
+          cabinetH={cabinetH} cabinetD={cabinetD}
+          plinthH={plinthH} thickness={thickness}
           mats={mats}
           isFirst={i === 0}
           isLast={i === modules.length - 1}
@@ -516,25 +380,15 @@ function CabinetGroup({ modules, cabinetW, cabinetH, cabinetD, plinthH, thicknes
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   POST-PROCESSING EFFECTS
+   POST-PROCESSING
    ═══════════════════════════════════════════════════════════════ */
 
 function PostEffects() {
   return (
     <EffectComposer multisampling={4}>
-      <N8AO
-        aoRadius={0.35}
-        intensity={2.5}
-        distanceFalloff={0.5}
-        quality="high"
-      />
-      <Bloom
-        intensity={0.04}
-        luminanceThreshold={0.92}
-        luminanceSmoothing={0.7}
-        mipmapBlur
-      />
-      <Vignette eskil={false} offset={0.1} darkness={0.35} />
+      <N8AO aoRadius={0.35} intensity={2.5} distanceFalloff={0.5} quality="high"/>
+      <Bloom intensity={0.04} luminanceThreshold={0.92} luminanceSmoothing={0.7} mipmapBlur/>
+      <Vignette eskil={false} offset={0.1} darkness={0.35}/>
     </EffectComposer>
   );
 }
@@ -545,112 +399,41 @@ function PostEffects() {
 
 function Scene({ cabinet, modules }) {
   const mats = useMaterials();
-
   const W  = Number(cabinet.width)     || 0;
   const H  = Number(cabinet.height)    || 0;
   const D  = Number(cabinet.depth)     || 60;
   const TH = Number(cabinet.thickness) || 1.8;
   const PL = Number(cabinet.plinth)    || 0;
-  const Hm = H / 100;
-  const Wm = W / 100;
-  const Dm = D / 100;
-
-  const roomW = Math.max(Wm * 2, 5);
-  const roomH = Math.max(Hm + 0.4, 2.7);
-  const roomD = Math.max(Dm * 3.5, 3.5);
-  const camDistance = Math.max(Wm, Hm) * 1.6;
-
+  const Hm = H/100, Wm = W/100, Dm = D/100;
+  const roomW = Math.max(Wm*2, 5);
+  const roomH = Math.max(Hm+0.4, 2.7);
+  const roomD = Math.max(Dm*3.5, 3.5);
   return (
     <>
-      {/* ── Lighting (3-point + ambient) ── */}
-      <ambientLight intensity={0.45} color="#fff5eb" />
-
-      {/* Key light (warm, top-right) */}
-      <directionalLight
-        position={[3, 5, 4]}
-        intensity={1.6}
-        color="#fff8f0"
-        castShadow
-        shadow-mapSize-width={4096}
-        shadow-mapSize-height={4096}
-        shadow-camera-far={25}
-        shadow-camera-left={-6}
-        shadow-camera-right={6}
-        shadow-camera-top={6}
-        shadow-camera-bottom={-2}
-        shadow-bias={-0.00008}
-        shadow-normalBias={0.02}
-      />
-
-      {/* Fill light (cool, left) */}
-      <directionalLight position={[-3, 3.5, 2]} intensity={0.3} color="#e8eeff" />
-
-      {/* Rim / back light */}
-      <directionalLight position={[0, 4, -3]} intensity={0.15} color="#ffe8d0" />
-
-      {/* Room ceiling light */}
-      <pointLight position={[0, roomH - 0.08, roomD * 0.15]} intensity={0.8} color="#fff5eb" distance={roomH * 3} decay={1.5} />
-
-      {/* Spot focused on cabinet */}
-      <spotLight
-        position={[0, roomH - 0.1, Dm * 2]}
-        angle={0.65}
-        penumbra={0.6}
-        intensity={0.9}
-        color="#fff8f0"
-        castShadow
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
-        shadow-bias={-0.0001}
-      />
-
-      {/* Subtle warm bounce from floor */}
-      <hemisphereLight skyColor="#f0ece6" groundColor="#c8a882" intensity={0.25} />
-
-      {/* Environment reflections */}
-      <Environment preset="apartment" />
-
-      {/* Room */}
-      <Room roomW={roomW} roomH={roomH} roomD={roomD} mats={mats} />
-
-      {/* Cabinet — against back wall, offset so back panel doesn't clip */}
-      <group position={[0, 0, -roomD / 2 + Dm + 0.05]}>
-        <CabinetGroup
-          modules={modules}
-          cabinetW={W}
-          cabinetH={H}
-          cabinetD={D}
-          plinthH={PL}
-          thickness={TH}
-          mats={mats}
-        />
+      <ambientLight intensity={0.45} color="#fff5eb"/>
+      <directionalLight position={[3,5,4]} intensity={1.6} color="#fff8f0" castShadow
+        shadow-mapSize-width={4096} shadow-mapSize-height={4096}
+        shadow-camera-far={25} shadow-camera-left={-6} shadow-camera-right={6}
+        shadow-camera-top={6} shadow-camera-bottom={-2}
+        shadow-bias={-0.00008} shadow-normalBias={0.02}/>
+      <directionalLight position={[-3,3.5,2]} intensity={0.3} color="#e8eeff"/>
+      <directionalLight position={[0,4,-3]} intensity={0.15} color="#ffe8d0"/>
+      <pointLight position={[0,roomH-0.08,roomD*0.15]} intensity={0.8} color="#fff5eb" distance={roomH*3} decay={1.5}/>
+      <spotLight position={[0,roomH-0.1,Dm*2]} angle={0.65} penumbra={0.6} intensity={0.9} color="#fff8f0"
+        castShadow shadow-mapSize-width={2048} shadow-mapSize-height={2048} shadow-bias={-0.0001}/>
+      <hemisphereLight skyColor="#f0ece6" groundColor="#c8a882" intensity={0.25}/>
+      <Environment preset="apartment"/>
+      <Room roomW={roomW} roomH={roomH} roomD={roomD} mats={mats}/>
+      <group position={[0, 0, -roomD/2 + Dm + 0.05]}>
+        <CabinetGroup modules={modules} cabinetW={W} cabinetH={H} cabinetD={D} plinthH={PL} thickness={TH} mats={mats}/>
       </group>
-
-      {/* Contact shadow on floor */}
-      <ContactShadows
-        position={[0, 0.001, 0]}
-        opacity={0.5}
-        scale={roomW}
-        blur={2}
-        far={5}
-        color="#2a1a0a"
-      />
-
-      {/* Post-processing */}
-      <PostEffects />
-
-      {/* Camera controls */}
-      <OrbitControls
-        makeDefault
-        target={[0, Hm * 0.45, -roomD / 2 + Dm + 0.05]}
-        minDistance={0.4}
-        maxDistance={camDistance * 3}
-        minPolarAngle={0.15}
-        maxPolarAngle={Math.PI / 2 - 0.05}
-        enablePan
-        enableDamping
-        dampingFactor={0.06}
-      />
+      <ContactShadows position={[0,0.001,0]} opacity={0.5} scale={roomW} blur={2} far={5} color="#2a1a0a"/>
+      <PostEffects/>
+      <OrbitControls makeDefault
+        target={[0, Hm*0.45, -roomD/2+Dm+0.05]}
+        minDistance={0.4} maxDistance={Math.max(Wm,Hm)*1.6*3}
+        minPolarAngle={0.15} maxPolarAngle={Math.PI/2-0.05}
+        enablePan enableDamping dampingFactor={0.06}/>
     </>
   );
 }
@@ -672,34 +455,21 @@ export default function ProfessionalRealisticViewer({ cabinet, name }) {
   const W  = Number(cabinet.width)  || 0;
   const H  = Number(cabinet.height) || 0;
   const D  = Number(cabinet.depth)  || 60;
-  const Hm = H / 100;
-  const Wm = W / 100;
+  const Hm = H/100, Wm = W/100;
   const camDist = Math.max(Wm, Hm) * 1.6;
 
   return (
     <div className="relative w-full rounded-2xl overflow-hidden shadow-2xl" style={{ height: 750 }}>
-      <Canvas
-        shadows
-        camera={{
-          position: [camDist * 0.35, Hm * 0.5, camDist * 1.1],
-          fov: 40,
-          near: 0.01,
-          far: 100,
-        }}
-        gl={{
-          antialias: true,
-          toneMapping: THREE.ACESFilmicToneMapping,
-          toneMappingExposure: 1.1,
-          outputColorSpace: THREE.SRGBColorSpace,
-        }}
-        dpr={[1, 2]}
+      <Canvas shadows
+        camera={{ position:[camDist*0.35, Hm*0.5, camDist*1.1], fov:40, near:0.01, far:100 }}
+        gl={{ antialias:true, toneMapping:THREE.ACESFilmicToneMapping, toneMappingExposure:1.1, outputColorSpace:THREE.SRGBColorSpace }}
+        dpr={[1,2]}
       >
         <Suspense fallback={null}>
-          <Scene cabinet={cabinet} name={name} modules={modules} />
+          <Scene cabinet={cabinet} name={name} modules={modules}/>
         </Suspense>
       </Canvas>
 
-      {/* UI Overlays */}
       <div className="absolute top-4 left-4 z-20 bg-white/90 backdrop-blur-sm px-4 py-3 rounded-xl shadow-md border border-gray-100">
         <div className="text-sm font-bold text-gray-800 flex items-center gap-1.5">
           🌟 Vue Réaliste — {name || 'Meuble'} ({modules.length} modules)
@@ -708,13 +478,11 @@ export default function ProfessionalRealisticViewer({ cabinet, name }) {
           {W} × {H} × {D} cm • Tourner / zoomer avec la souris
         </div>
       </div>
-
       <div className="absolute bottom-4 right-4 z-20 bg-white/90 backdrop-blur-sm px-3 py-2 rounded-lg shadow-md border border-gray-100 text-xs text-gray-500">
         🖱️ Clic gauche : tourner • Molette : zoom • Clic droit : déplacer
       </div>
-
       <div className="absolute bottom-4 left-4 z-20 bg-white/90 backdrop-blur-sm px-3 py-2 rounded-lg shadow-md border border-gray-100 text-xs text-gray-500">
-        Total: {(W / 100).toFixed(2)} m linéaires
+        Total: {(W/100).toFixed(2)} m linéaires
       </div>
     </div>
   );
