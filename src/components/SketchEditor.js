@@ -26,7 +26,6 @@ const uid   = () => Math.random().toString(36).slice(2, 9);
 const toNum = (v, d = 0) => { const n = Number(v); return Number.isFinite(n) ? n : d; };
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
-// ─── Normalise les modules depuis initialResult ────────────────────────────────
 const normalizeModulesFromResult = (result, width = 0) => {
   const cabinet  = result?.cabinet || {};
   const raw      = Array.isArray(cabinet.modules) ? cabinet.modules : [];
@@ -46,7 +45,6 @@ const normalizeModulesFromResult = (result, width = 0) => {
   }));
 };
 
-// ─── Normalise les items libres (tablettes/tringles) depuis initialResult ─────
 const normalizeItemsFromResult = (result) => {
   const cabinet = result?.cabinet || {};
   const raw     = Array.isArray(cabinet.modules) ? cabinet.modules : [];
@@ -67,7 +65,6 @@ const normalizeItemsFromResult = (result) => {
 
 const jointThickness = (isDouble, t) => isDouble ? t * 2 : t;
 
-// ─── Calcul géométrie modules ─────────────────────────────────────────────────
 function computeMRects(facadeModules, joints, thPx, drawW, drawH, mL, mT, plPx) {
   const innerH     = drawH - plPx;
   const totalSepPx = joints.reduce((acc, j) => acc + (j ? 2 * thPx : thPx), 0) + 2 * thPx;
@@ -89,7 +86,6 @@ function computeMRects(facadeModules, joints, thPx, drawW, drawH, mL, mT, plPx) 
   });
 }
 
-// ─── Composant SVG façade ─────────────────────────────────────────────────────
 function FacadeRealisteSVG({
   svgW, svgH, cabW, cabH, plinth, thick,
   facadeModules, facadeItems, joints,
@@ -141,8 +137,6 @@ function FacadeRealisteSVG({
   return (
     <g>
       {defs}
-
-      {/* Corps */}
       <rect x={mL} y={mT} width={drawW} height={drawH} fill="url(#pcGW)" stroke={WOOD_STROKE} strokeWidth="2.5"/>
       <rect x={mL+thPx} y={mT+thPx} width={drawW-2*thPx} height={innerH-thPx} fill="#ede4d3"/>
       {plPx > 2 && (
@@ -156,7 +150,6 @@ function FacadeRealisteSVG({
       <rect x={mL} y={mT}              width={drawW}  height={thPx}  fill="url(#pcGT)" stroke={WOOD_STROKE} strokeWidth="1.5"/>
       <rect x={mL} y={mT+innerH-thPx}  width={drawW}  height={thPx}  fill="url(#pcGT)" stroke={WOOD_STROKE} strokeWidth="1.5"/>
 
-      {/* Séparateurs */}
       {mRects.map(({ x, w, i }) => {
         if (i >= facadeModules.length - 1) return null;
         const isDouble = joints[i];
@@ -175,7 +168,6 @@ function FacadeRealisteSVG({
         );
       })}
 
-      {/* Modules : fond + tiroirs + portes */}
       {mRects.map(({ x, w, m, i, intTop, intBottom, intH: iH }) => {
         const nbD     = m.drawers || 0;
         const drawerH = Math.min(iH * 0.15, 46);
@@ -216,17 +208,13 @@ function FacadeRealisteSVG({
         });
 
         const numY = intTop + Math.max(30, (iH - drawPx) * 0.45);
-
         const hitZone = (isPlace || isAdd) ? (
           <rect key={`hit-${i}`} x={x} y={intTop} width={w} height={iH}
             fill="transparent" style={{ cursor: 'cell' }}
             onMouseDown={e => {
               e.stopPropagation();
-              if (isPlace) {
-                onFacadePointerDown(e, i);
-              } else {
-                onModuleClick(i, activeTool);
-              }
+              if (isPlace) { onFacadePointerDown(e, i); }
+              else { onModuleClick(i, activeTool); }
             }}/>
         ) : null;
 
@@ -246,13 +234,11 @@ function FacadeRealisteSVG({
         );
       })}
 
-      {/* Items libres : tablettes + tringles (draggables) */}
       {facadeItems.map(item => {
         const mr = mRects[item.modIdx];
         if (!mr) return null;
         const { x, w, intTop, intH: iH } = mr;
         const ey = intTop + item.yRatio * iH;
-
         if (item.type === 'shelf') {
           return (
             <g key={item.id}
@@ -285,7 +271,6 @@ function FacadeRealisteSVG({
         return null;
       })}
 
-      {/* Cotes générales */}
       <line x1={mL} y1={mT-26} x2={mL+drawW} y2={mT-26} stroke={DIM_COLOR} strokeWidth="1.5"/>
       <line x1={mL}       y1={mT-32} x2={mL}       y2={mT-20} stroke={DIM_COLOR} strokeWidth="1.5"/>
       <line x1={mL+drawW} y1={mT-32} x2={mL+drawW} y2={mT-20} stroke={DIM_COLOR} strokeWidth="1.5"/>
@@ -299,7 +284,6 @@ function FacadeRealisteSVG({
   );
 }
 
-// ════════════════════════════════════════════════════════════════════════════════
 export default function SketchEditor({ image, scanImage, initialResult, apiKey, onComplete, onCancel }) {
   const rawImg             = image || scanImage || null;
   const svgRef             = useRef(null);
@@ -313,9 +297,15 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
   const initialCab           = initialResult?.cabinet || {};
   const dimensionsFromWizard = Boolean(initialResult?._dimensionsFromWizard);
 
+  // ─── FIX v3.7 : on ignore le cache localStorage si initialResult est frais ──
+  // Le cache est vidé par App.js à chaque nouveau scan (handleScanComplete).
+  // Ici on ne lit le cache que s'il existe ET qu'il n'y a pas de résultat frais
+  // provenant d'un nouveau scan (détecté par l'absence de cache = removeItem fait).
   const savedState = (() => {
-    try { const r = localStorage.getItem(LS_SKETCH_KEY); return r ? JSON.parse(r) : null; }
-    catch { return null; }
+    try {
+      const r = localStorage.getItem(LS_SKETCH_KEY);
+      return r ? JSON.parse(r) : null;
+    } catch { return null; }
   })();
 
   const [tool,          setTool]          = useState('drawer');
@@ -381,34 +371,24 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
   const totalJointsWidth   = joints.reduce((s, d) => s + jointThickness(d, thickness), 0);
   const totalInteriorWidth = Math.max(1, toNum(cabinetDims.width, 200) - thickness * 2 - totalJointsWidth);
 
-  // ─── 🔥 FIX v3.6 : Re-synchronise tous les états quand initialResult change ──
-  // Nécessaire après "Relancer Claude" : onComplete() fournit un nouveau
-  // initialResult au parent, qui le passe en prop. Sans ce useEffect, les
-  // useState ci-dessus (initialisés une seule fois) ne se recalculent jamais.
+  // ─── FIX v3.6 : Re-synchronise tous les états quand initialResult change ─────
   const prevResultRef = useRef(initialResult);
   useEffect(() => {
     if (prevResultRef.current === initialResult) return;
     prevResultRef.current = initialResult;
-
     const cab = initialResult?.cabinet || {};
-
     setCabinetDims({
       width:  toNum(cab.width,  200),
       height: toNum(cab.height, 240),
       plinth: toNum(cab.plinth,   0),
     });
-
     const newModules = normalizeModulesFromResult(initialResult, toNum(cab.width, 200));
     setFacadeModules(newModules);
     setFacadeItems(normalizeItemsFromResult(initialResult));
     setJoints(Array(Math.max(0, newModules.length - 1)).fill(true));
-
-    // Permet à didAutoSwitchRef de re-déclencher le switch vers 'photo'
-    // après la prochaine capture de la nouvelle façade
     didAutoSwitchRef.current = false;
   }, [initialResult]);
 
-  // ─── Cabinet courant : reconstruit depuis l'état éditable ─────────────────────
   const currentCabinet = useMemo(() => {
     const w = cabinetDims.width;
     const h = cabinetDims.height;
@@ -416,9 +396,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     if (!w || !h) return null;
     const interiorH = Math.max(1, h - pl);
     return {
-      width: w,
-      height: h,
-      plinth: pl,
+      width: w, height: h, plinth: pl,
       modules: facadeModules.map((m, i) => ({
         id: i + 1,
         width: m.width,
@@ -440,13 +418,9 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     }));
   }, [elements, cabinetDims, facadeModules, facadeItems, generalNotes, joints]);
 
-  useEffect(() => {
-    saveToStorage();
-  }, [saveToStorage]);
-
+  useEffect(() => { saveToStorage(); }, [saveToStorage]);
   const handleSave = saveToStorage;
 
-  // ─── Capture facadePng depuis CabinetElevationFront ───────────────────────────
   const didAutoSwitchRef = useRef(false);
   useEffect(() => {
     if (!currentCabinet) return;
@@ -456,10 +430,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
       const png = await captureFacadeToImage(facadeContainerRef);
       if (png) {
         setFacadePng(png);
-        if (isFirst) {
-          setBaseView('photo');
-          didAutoSwitchRef.current = true;
-        }
+        if (isFirst) { setBaseView('photo'); didAutoSwitchRef.current = true; }
       }
     }, delay);
     return () => clearTimeout(timer);
@@ -631,27 +602,21 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
   const handleRelancer = useCallback(async () => {
     setLoading(true);
     setError(null);
-
     try {
       await new Promise(resolve => requestAnimationFrame(resolve));
-
       const facadeSvg = facadeSvgRef.current;
       if (!facadeSvg) throw new Error('SVG façade hors-écran introuvable');
-
       const clone = facadeSvg.cloneNode(true);
       clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
       clone.setAttribute('width',  FACADE_W);
       clone.setAttribute('height', FACADE_H);
-
       const svgStr  = new XMLSerializer().serializeToString(clone);
       const b64svg  = btoa(unescape(encodeURIComponent(svgStr)));
       const dataUrl = 'data:image/svg+xml;base64,' + b64svg;
-
       const canvas = document.createElement('canvas');
       canvas.width  = FACADE_W * 2;
       canvas.height = FACADE_H * 2;
       const ctx2d = canvas.getContext('2d');
-
       await new Promise((resolve, reject) => {
         const img = new window.Image();
         img.onload = () => {
@@ -663,45 +628,31 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
         img.onerror = reject;
         img.src = dataUrl;
       });
-
       const base64 = canvas.toDataURL('image/png').split(',')[1];
-
       const SERVER = 'https://panelcut-server.vercel.app';
       let res = await fetch(`${SERVER}/api/refine`, {
-        method:  'POST',
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          image:     base64,
-          mediaType: 'image/png',
-          userNotes: buildContextPrompt(),
-          prompt:    buildContextPrompt(),
-        }),
+        body: JSON.stringify({ image: base64, mediaType: 'image/png', userNotes: buildContextPrompt(), prompt: buildContextPrompt() }),
       });
       if (res.status === 404 || res.status === 405) {
         res = await fetch(`${SERVER}/api/scan`, {
-          method:  'POST',
+          method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ image: base64, mediaType: 'image/png' }),
         });
       }
       if (!res.ok) throw new Error(`Erreur serveur (${res.status})`);
-
       const data = await res.json();
       const parsed = data.result || data;
       if (onComplete) onComplete(parsed);
-
     } catch (err) {
       console.error('handleRelancer error:', err);
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  }, [
-    onComplete, imgSize,
-    elements, cabinetDims, facadeModules,
-    facadeItems, generalNotes, joints,
-    buildContextPrompt,
-  ]);
+  }, [onComplete, imgSize, elements, cabinetDims, facadeModules, facadeItems, generalNotes, joints, buildContextPrompt]);
 
   const renderElement = (el) => {
     if (el.type === 'dim') return (
@@ -740,7 +691,6 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
   return (
     <div className="fixed inset-0 z-50 bg-black/90 flex flex-col">
 
-      {/* SVG façade hors-écran dédié à la capture "Relancer Claude" */}
       <svg
         ref={facadeSvgRef}
         xmlns="http://www.w3.org/2000/svg"
@@ -775,17 +725,15 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
         </div>
       )}
 
-      {/* HEADER */}
       <div className="flex justify-between items-center p-3 bg-slate-900 border-b border-slate-700">
         <div className="flex items-center gap-2">
           <h2 className="text-white font-bold">✏️ Éditeur Intelligent</h2>
-          <span className="text-[10px] font-mono font-black text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/30">v3.6</span>
+          <span className="text-[10px] font-mono font-black text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/30">v3.7</span>
         </div>
         <div className="flex gap-2">
           {error && <span className="text-red-400 text-sm self-center mr-2">{error}</span>}
           <button onClick={onCancel} className="px-3 py-1 bg-slate-700 text-white rounded">Annuler</button>
-          <button onClick={handleSave}
-            className="px-4 py-1 rounded font-bold text-white bg-green-600 hover:bg-green-500">
+          <button onClick={handleSave} className="px-4 py-1 rounded font-bold text-white bg-green-600 hover:bg-green-500">
             💾 Enregistrer
           </button>
           <button onClick={handleRelancer} disabled={loading}
@@ -795,7 +743,6 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
         </div>
       </div>
 
-      {/* BARRE JOINTS */}
       {joints.length > 0 && (
         <div className="flex items-center gap-2 px-3 py-2 bg-slate-800/80 border-b border-amber-900/30 overflow-x-auto">
           <span className="text-xs font-bold text-amber-400 whitespace-nowrap shrink-0">🔩 Joints :</span>
@@ -816,7 +763,6 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
         </div>
       )}
 
-      {/* TOOLBAR OUTILS */}
       <div className="flex gap-2 p-2 bg-slate-800 overflow-x-auto border-b border-slate-700">
         <div className="flex items-center gap-1 mr-2">
           <button onClick={()=>setBaseView('photo')}
@@ -843,7 +789,6 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
         <div className="ml-auto text-xs text-slate-400 self-center px-2 whitespace-nowrap">{hint}</div>
       </div>
 
-      {/* DIMS ÉDITABLES */}
       <div className="bg-slate-900 border-b border-slate-700 p-2 flex flex-wrap gap-2 items-center text-xs">
         <span className="text-slate-400">Cotes :</span>
         <label className="text-slate-300">L <input value={cabinetDims.width} onChange={e=>setCabinetDims(v=>({...v,width:toNum(e.target.value,0)}))} className="w-20 ml-1 px-1 py-0.5 bg-slate-800 border border-slate-600 rounded"/> cm</label>
@@ -863,7 +808,6 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
         ))}
       </div>
 
-      {/* CANVAS SVG principal */}
       <div className="flex-1 overflow-auto bg-slate-950 flex justify-center p-4">
         <svg ref={svgRef} width={imgSize.w} height={imgSize.h}
           className="shadow-2xl"
@@ -872,11 +816,9 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
           onMouseUp={handlePointerUp}     onMouseLeave={handlePointerUp}
           onTouchStart={handlePointerDown} onTouchMove={handlePointerMove}
           onTouchEnd={handlePointerUp}>
-
           {baseView === 'photo' && imgSrc && (
             <image href={imgSrc} width={imgSize.w} height={imgSize.h} preserveAspectRatio="xMidYMid meet"/>
           )}
-
           {baseView === 'facade' && (
             <FacadeRealisteSVG
               svgW={imgSize.w} svgH={imgSize.h}
@@ -893,19 +835,16 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
               activeTool={tool}
             />
           )}
-
           {elements.filter(el => ['dim','note'].includes(el.type)).map(renderElement)}
         </svg>
       </div>
 
-      {/* NOTES GÉNÉRALES */}
       <div className="bg-slate-900 border-t border-slate-700 p-2">
         <textarea value={generalNotes} onChange={e=>setGeneralNotes(e.target.value)}
           placeholder="📝 Notes pour Claude (ex: 2 tiroirs en bas du module 3, porte vitrée à gauche...)"
           className="w-full h-16 px-3 py-2 bg-slate-800 border border-slate-600 rounded text-sm text-slate-200 placeholder-slate-500 resize-none"/>
       </div>
 
-      {/* MODAL cote */}
       {editingDimId && (() => {
         const dim = elements.find(e=>e.id===editingDimId);
         if (!dim) return null;
@@ -933,7 +872,6 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
         );
       })()}
 
-      {/* MODAL note */}
       {editingNoteId && (() => {
         const note = elements.find(e=>e.id===editingNoteId);
         if (!note) return null;

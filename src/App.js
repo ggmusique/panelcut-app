@@ -40,6 +40,8 @@ const GIT_HASH   = process.env.REACT_APP_GIT_HASH  || 'dev';
 const LS_SCREEN  = 'pc_screen';
 const LS_PROJECT = 'pc_project';
 const LS_RESULTS = 'pc_results';
+// Clé du cache de l'éditeur de croquis — doit matcher SketchEditor.js
+const LS_SKETCH_KEY = 'pc_sketch_editor';
 
 function lsGet(key, fallback) {
   try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
@@ -168,6 +170,11 @@ export default function App() {
   };
 
   const handleScanComplete = (scanResult, scanImageBase64) => {
+    // ─── FIX v3.7 : vider le cache du SketchEditor avant chaque nouveau scan ───
+    // Sans ce clear, SketchEditor.js lit l'ancien état (localStorage) et ignore
+    // complètement le nouveau scanResult passé en prop.
+    try { localStorage.removeItem(LS_SKETCH_KEY); } catch {}
+
     const pieces = (scanResult.pieces || []).map(p => ({
       name:   String(p.name   || 'Pièce').trim(),
       length: Math.abs(parseFloat(p.length) || 0),
@@ -246,7 +253,6 @@ export default function App() {
       newScanResult.result?.cabinet ||
       project.cabinet;
     const cabinet = reconstructModulesFromFlat(rawCabinet);
-    console.log('[FIX CHECK] cabinet from re-scan:', cabinet);
     setProject(p => ({ ...p, pieces, cabinet, scanResult: newScanResult }));
     setScreen(SCREENS.PIECES);
   };
@@ -284,9 +290,6 @@ export default function App() {
 
   const hasHeader = ![SCREENS.AUTH, SCREENS.SKETCH, SCREENS.LANDING, SCREENS.WIZARD, SCREENS.HISTORY].includes(screen);
   const hasSteps  = steps.length > 0;
-  
-  // ← LOG CABINET (déjà présent)
-  console.log('🔍 Cabinet data:', project.cabinet);
 
   return (
     <div className="app min-h-screen bg-[#0f1620] text-slate-200 font-sans dark:bg-slate-950 dark:text-slate-100 transition-colors duration-300">
