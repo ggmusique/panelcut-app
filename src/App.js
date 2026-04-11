@@ -53,6 +53,19 @@ function lsClear() {
   [LS_SCREEN, LS_PROJECT, LS_RESULTS].forEach(k => localStorage.removeItem(k));
 }
 
+// ── Nettoie les pieces nulles/invalides dans un projet venant du localStorage
+function sanitizeProject(p) {
+  if (!p) return { ...DEFAULT_PROJECT };
+  return {
+    ...DEFAULT_PROJECT,
+    ...p,
+    pieces: (Array.isArray(p.pieces) ? p.pieces : Object.values(p.pieces || {}))
+      .filter(piece => piece && typeof piece === 'object' && piece.length > 0 && piece.height > 0),
+    furniture: Array.isArray(p.furniture) ? p.furniture : [],
+    panel: p.panel && p.panel.w && p.panel.h ? p.panel : DEFAULT_PROJECT.panel,
+  };
+}
+
 function reconstructModulesFromFlat(cabinet) {
   if (!cabinet) return null;
   if (Array.isArray(cabinet.modules) && cabinet.modules.length > 0) return cabinet;
@@ -78,13 +91,15 @@ function reconstructModulesFromFlat(cabinet) {
 
 function normalizePieces(raw) {
   const arr = Array.isArray(raw) ? raw : Object.values(raw || {});
-  // ── filter(Boolean) AVANT le map pour éviter "p is null"
-  return arr.filter(Boolean).map(p => ({
-    name:   String(p.name   || 'Pièce').trim(),
-    length: Math.abs(parseFloat(p.length) || 0),
-    height: Math.abs(parseFloat(p.height) || 0),
-    qty:    Math.max(1, parseInt(p.qty, 10) || 1),
-  })).filter(p => p.length > 0 && p.height > 0);
+  return arr
+    .filter(Boolean)
+    .map(p => ({
+      name:   String(p.name   || 'Pièce').trim(),
+      length: Math.abs(parseFloat(p.length) || 0),
+      height: Math.abs(parseFloat(p.height) || 0),
+      qty:    Math.max(1, parseInt(p.qty, 10) || 1),
+    }))
+    .filter(p => p.length > 0 && p.height > 0);
 }
 
 export default function App() {
@@ -103,7 +118,9 @@ export default function App() {
     const stored = lsGet(LS_SCREEN, SCREENS.LANDING);
     return Object.values(SCREENS).includes(stored) ? stored : SCREENS.LANDING;
   });
-  const [project, setProjectRaw] = useState(() => lsGet(LS_PROJECT, { ...DEFAULT_PROJECT }));
+
+  // ── sanitizeProject nettoie le localStorage corrompu dès le chargement
+  const [project, setProjectRaw] = useState(() => sanitizeProject(lsGet(LS_PROJECT, null)));
   const [results, setResultsRaw] = useState(() => lsGet(LS_RESULTS, null));
 
   const projectRef = useRef(project);
@@ -175,9 +192,12 @@ export default function App() {
   };
 
   const handleOptimize = useCallback((overridePieces, overridePanel) => {
-    const p      = projectRef.current;
-    const pieces = normalizePieces(overridePieces || p.pieces);
-    const panel  = overridePanel || p.panel;
+    const p = projectRef.current;
+    // Passe les pieces brutes directement — engine.js et engineV2.js les sécurisent eux-mêmes
+    const pieces = overridePieces
+      ? normalizePieces(overridePieces)
+      : (Array.isArray(p.pieces) ? p.pieces : Object.values(p.pieces || {})).filter(Boolean);
+    const panel = overridePanel || p.panel;
 
     if (!pieces.length) {
       setComputeError('Aucune pièce valide à optimiser.');
@@ -215,7 +235,7 @@ export default function App() {
   const handleLoadProject = async (id) => {
     const { data, error } = await loadProject(id);
     if (error || !data) return;
-    const p = { ...data.project_data, supabaseId: data.id };
+    const p = sanitizeProject({ ...data.project_data, supabaseId: data.id });
     setProject(p);
     if (data.results_data) { setResults(data.results_data); setScreen(SCREENS.RESULTS); }
     else setScreen(SCREENS.PIECES);
