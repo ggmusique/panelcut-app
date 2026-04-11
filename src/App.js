@@ -78,7 +78,8 @@ function reconstructModulesFromFlat(cabinet) {
 
 function normalizePieces(raw) {
   const arr = Array.isArray(raw) ? raw : Object.values(raw || {});
-  return arr.map(p => ({
+  // ── filter(Boolean) AVANT le map pour éviter "p is null"
+  return arr.filter(Boolean).map(p => ({
     name:   String(p.name   || 'Pièce').trim(),
     length: Math.abs(parseFloat(p.length) || 0),
     height: Math.abs(parseFloat(p.height) || 0),
@@ -175,7 +176,6 @@ export default function App() {
 
   const handleOptimize = useCallback((overridePieces, overridePanel) => {
     const p      = projectRef.current;
-    // normalizePieces sécurise aussi le cas où pieces est un objet {}
     const pieces = normalizePieces(overridePieces || p.pieces);
     const panel  = overridePanel || p.panel;
 
@@ -192,7 +192,6 @@ export default function App() {
         const res = optimise(pieces, panel, { kerf: p.kerf, tolerance: p.tolerance });
         setResults(res);
         setScreen(SCREENS.RESULTS);
-        // sauvegarde asynchrone non-bloquante
         const u = userRef.current;
         if (u) {
           setSaving(true);
@@ -204,7 +203,6 @@ export default function App() {
         console.error('[handleOptimize]', err);
         setComputeError('Erreur moteur : ' + (err?.message || String(err)));
       } finally {
-        // Toujours débloquer le bouton, même en cas d'erreur
         setComputing(false);
       }
     }, 50);
