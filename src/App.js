@@ -196,7 +196,11 @@ export default function App() {
       qty:    Math.max(1, parseInt(p.qty, 10) || 1),
     })).filter(p => p.length > 0 && p.height > 0);
 
-    const cabinet = newScanResult.cabinet || project.cabinet;
+    const cabinet =
+      newScanResult.cabinet ||
+      newScanResult.result?.cabinet ||
+      project.cabinet;
+    console.log('[FIX CHECK] cabinet from re-scan:', cabinet);
     setProject(p => ({ ...p, pieces, cabinet, scanResult: newScanResult }));
     setScreen(SCREENS.PIECES);
   };
