@@ -6,6 +6,7 @@ import CabinetPlan3D from './CabinetPlan3D';
 import CabinetElevationFront from './CabinetElevationFront';
 import BoardList from './BoardList';
 import ProfessionalRealisticViewer from '../visualization/ProfessionalRealisticViewer';
+import { isRodPiece } from '../utils/isRodPiece';
 
 const PIECE_COLORS = [
   { fill: 'rgba(245,158,11,0.25)',  stroke: '#f59e0b', glow: 'rgba(245,158,11,0.4)' },
@@ -216,6 +217,9 @@ export default function Results({ t, results, project }) {
   const [planView, setPlanView] = useState('facade');
   const colorMap = {};
 
+  // Tringles (rods) excluded from optimization
+  const rodPieces = (project.pieces || []).filter(isRodPiece);
+
   // Coerce toutes les dimensions en Number pour éviter les problèmes de type string
   const rawCabinet = project.cabinet || null;
   const cabinet = rawCabinet ? {
@@ -297,7 +301,7 @@ export default function Results({ t, results, project }) {
               </div>
             </div>
             <div className="bg-[#111] border border-white/5 rounded-xl p-4">
-              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Pièces</h3>
+              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Pièces bois optimisées</h3>
               <div className="flex flex-wrap gap-2">
                 {Object.entries(colorMap).map(([name, c]) => (
                   <div key={name} className="flex items-center gap-2 bg-[#0a0a0a] px-3 py-1.5 rounded-lg border border-white/5">
@@ -307,6 +311,24 @@ export default function Results({ t, results, project }) {
                 ))}
               </div>
             </div>
+            {rodPieces.length > 0 && (
+              <div className="bg-[#111] border border-pink-500/20 rounded-xl p-4">
+                <h3 className="text-xs font-bold text-pink-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                  🔩 Tringles — hors optimisation bois
+                </h3>
+                <div className="flex flex-col gap-2">
+                  {rodPieces.map((p, i) => (
+                    <div key={i} className="flex items-center justify-between bg-[#0a0a0a] px-3 py-2 rounded-lg border border-pink-500/10">
+                      <span className="text-sm text-slate-300 font-medium">{p.name}</span>
+                      <div className="flex items-center gap-3 text-xs text-slate-500">
+                        <span className="font-mono text-slate-400">{p.length}×{p.height} cm</span>
+                        <span className="bg-pink-500/10 text-pink-400 px-2 py-0.5 rounded border border-pink-500/20 font-bold">×{p.qty}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             {hasCabinet && (
               <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-3 flex items-center gap-3">
                 <Box className="w-4 h-4 text-blue-400 flex-shrink-0" />

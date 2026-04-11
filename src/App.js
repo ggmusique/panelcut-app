@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { optimise } from './engineV2';
 import { I18N, useLang } from './i18n';
+import { isRodPiece } from './utils/isRodPiece';
 import { supabase, saveProject, loadProject, signOut } from './supabase';
 import PiecesList from './components/PiecesList';
 import Results from './components/Results';
@@ -138,10 +139,11 @@ export default function App() {
   };
 
   const handleOptimize = useCallback(() => {
-    if (!project.pieces.length) return;
+    const woodPieces = (project.pieces || []).filter(p => !isRodPiece(p));
+    if (!woodPieces.length) return;
     setComputing(true);
     setTimeout(async () => {
-      const res = optimise(project.pieces, project.panel, { kerf: project.kerf, tolerance: project.tolerance });
+      const res = optimise(woodPieces, project.panel, { kerf: project.kerf, tolerance: project.tolerance });
       setResults(res); setComputing(false); setScreen(SCREENS.RESULTS);
       if (user) {
         setSaving(true);
@@ -151,7 +153,8 @@ export default function App() {
     }, 50);
   }, [project, user]);
 
-  const canGoNext = screen === SCREENS.PIECES && project.pieces.length > 0 && !computing;
+  const woodPieceCount = (project.pieces || []).filter(p => !isRodPiece(p)).length;
+  const canGoNext = screen === SCREENS.PIECES && woodPieceCount > 0 && !computing;
   const showNext = screen === SCREENS.PIECES;
 
   const goNext = () => {
@@ -168,12 +171,17 @@ export default function App() {
   };
 
   const handleScanComplete = (scanResult, scanImageBase64) => {
-    const pieces = (scanResult.pieces || []).map(p => ({
-      name:   String(p.name   || 'Pièce').trim(),
-      length: Math.abs(parseFloat(p.length) || 0),
-      height: Math.abs(parseFloat(p.height) || 0),
-      qty:    Math.max(1, parseInt(p.qty, 10) || 1),
-    })).filter(p => p.length > 0 && p.height > 0);
+    const pieces = (scanResult.pieces || []).map(p => {
+      const name  = String(p.name || 'Pièce').trim();
+      const rod   = p.isRod === true || p.type === 'rod' || /tringle/i.test(name);
+      return {
+        name,
+        length: Math.abs(parseFloat(p.length) || 0),
+        height: Math.abs(parseFloat(p.height) || 0),
+        qty:    Math.max(1, parseInt(p.qty, 10) || 1),
+        ...(rod && { isRod: true }),
+      };
+    }).filter(p => p.length > 0 && p.height > 0);
 
     const cabinet = scanResult.cabinet || null;
 
@@ -234,12 +242,17 @@ export default function App() {
   }
 
   const handleRefinementComplete = (newScanResult) => {
-    const pieces = (newScanResult.pieces || []).map(p => ({
-      name:   String(p.name   || 'Pièce').trim(),
-      length: Math.abs(parseFloat(p.length) || 0),
-      height: Math.abs(parseFloat(p.height) || 0),
-      qty:    Math.max(1, parseInt(p.qty, 10) || 1),
-    })).filter(p => p.length > 0 && p.height > 0);
+    const pieces = (newScanResult.pieces || []).map(p => {
+      const name  = String(p.name || 'Pièce').trim();
+      const rod   = p.isRod === true || p.type === 'rod' || /tringle/i.test(name);
+      return {
+        name,
+        length: Math.abs(parseFloat(p.length) || 0),
+        height: Math.abs(parseFloat(p.height) || 0),
+        qty:    Math.max(1, parseInt(p.qty, 10) || 1),
+        ...(rod && { isRod: true }),
+      };
+    }).filter(p => p.length > 0 && p.height > 0);
 
     const rawCabinet =
       newScanResult.cabinet ||
