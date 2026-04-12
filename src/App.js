@@ -33,6 +33,7 @@ const DEFAULT_PROJECT = {
   kerf: 3, tolerance: 10, pricePerPanel: 39.8,
   pieces: [], furniture: [], supabaseId: null, cabinet: null,
   scanImage: null, scanResult: null,
+  sketchDraft: null,
 };
 
 const APP_VERSION = process.env.REACT_APP_VERSION || '1.0.0';
@@ -41,6 +42,7 @@ const GIT_HASH   = process.env.REACT_APP_GIT_HASH  || 'dev';
 const LS_SCREEN  = 'pc_screen';
 const LS_PROJECT = 'pc_project';
 const LS_RESULTS = 'pc_results';
+const LS_SKETCH  = 'pc_sketch_editor';
 
 function lsGet(key, fallback) {
   try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
@@ -50,7 +52,7 @@ function lsSet(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
 }
 function lsClear() {
-  [LS_SCREEN, LS_PROJECT, LS_RESULTS].forEach(k => localStorage.removeItem(k));
+  [LS_SCREEN, LS_PROJECT, LS_RESULTS, LS_SKETCH].forEach(k => localStorage.removeItem(k));
 }
 
 export default function App() {
@@ -122,6 +124,7 @@ export default function App() {
   }, []);
 
   const startNew = (devisNum = '') => {
+    localStorage.removeItem(LS_SKETCH);
     setProject({ ...DEFAULT_PROJECT, devisNum });
     setResults(null);
     setScreen(SCREENS.WIZARD);
@@ -147,7 +150,17 @@ export default function App() {
       setResults(res); setComputing(false); setScreen(SCREENS.RESULTS);
       if (user) {
         setSaving(true);
-        await saveProject(project, res);
+        const { data, planError } = await saveProject(project, res);
+        if (data?.id && !project.supabaseId) {
+          setProject(prev => ({ ...prev, supabaseId: data.id }));
+        }
+        if (planError) {
+          console.error('Erreur sync plan Supabase:', planError);
+          setSaveMsg('Plan ❌');
+          setSaving(false);
+          setTimeout(() => setSaveMsg(''), 3000);
+          return;
+        }
         setSaving(false); setSaveMsg('OK'); setTimeout(() => setSaveMsg(''), 2000);
       }
     }, 50);
@@ -171,6 +184,7 @@ export default function App() {
   };
 
   const handleScanComplete = (scanResult, scanImageBase64) => {
+    localStorage.removeItem(LS_SKETCH);
     const pieces = (scanResult.pieces || []).map(p => {
       const name  = String(p.name || 'Pièce').trim();
       const rod   = p.isRod === true || p.type === 'rod' || /tringle/i.test(name);
@@ -191,6 +205,7 @@ export default function App() {
       cabinet,
       scanImage:  scanImageBase64 || null,
       scanResult: scanResult,
+      sketchDraft: null,
     }));
     setResults(null);
     setScreen(SCREENS.SKETCH);
@@ -268,14 +283,24 @@ export default function App() {
         shelves: Array.isArray(m.shelves) ? m.shelves.length : (m.shelves ?? null),
       }))
     );
-    setProject(p => ({ ...p, pieces, cabinet, scanResult: newScanResult }));
+    setProject(p => ({ ...p, pieces, cabinet, scanResult: newScanResult, sketchDraft: null }));
     setScreen(SCREENS.PIECES);
   };
 
   const handleSave = async () => {
     if (!user) return;
     setSaving(true);
-    await saveProject(project, results);
+    const { data, planError } = await saveProject(project, results);
+    if (data?.id && !project.supabaseId) {
+      setProject(prev => ({ ...prev, supabaseId: data.id }));
+    }
+    if (planError) {
+      console.error('Erreur sync plan Supabase:', planError);
+      setSaveMsg('Plan ❌');
+      setSaving(false);
+      setTimeout(() => setSaveMsg(''), 3000);
+      return;
+    }
     setSaving(false); setSaveMsg('OK'); setTimeout(() => setSaveMsg(''), 2000);
   };
 
@@ -293,7 +318,7 @@ export default function App() {
 
   const showBack = [SCREENS.PIECES, SCREENS.RESULTS, SCREENS.FACADE, SCREENS.FACADE_REALISTIC].includes(screen);
   const showSave = user && [SCREENS.PIECES, SCREENS.RESULTS].includes(screen);
-  const canAnnotate = screen === SCREENS.PIECES && !!project.scanImage;
+  const canAnnotate = screen === SCREENS.PIECES && !!(project.scanImage || project.scanResult || project.sketchDraft);
 
   let headerTitle = 'PanelCut Pro', headerSubtitle = '', steps = [];
   if (screen === SCREENS.PIECES)  { headerTitle = project.name || 'Nouveau projet'; steps = [{ label: 'Panneau', active: true }, { label: 'Pièces', active: true }, { label: 'Résultats', active: false }]; }
@@ -323,6 +348,8 @@ export default function App() {
           image={project.scanImage}
           initialResult={project.scanResult}
           apiKey={apiKey}
+          draft={project.sketchDraft}
+          onDraftChange={(draft) => setProject(p => ({ ...p, sketchDraft: draft }))}
           onComplete={handleRefinementComplete}
           onCancel={() => setScreen(SCREENS.PIECES)}
         />

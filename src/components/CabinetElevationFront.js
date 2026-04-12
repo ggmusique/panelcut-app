@@ -61,6 +61,7 @@ function normalizeModules(cabinet) {
         drawers: nbDrawers,
         drawerItems,
         doors: Math.max(0, parseInt(m.doors ?? m.nb_doors ?? 0, 10)),
+        slidingDoors: Math.max(0, parseInt(m.slidingDoors ?? m.nb_sliding_doors ?? 0, 10)),
       };
     }).filter(m => m.width > 0);
   }
@@ -84,6 +85,7 @@ function normalizeModules(cabinet) {
       drawers: isOuter ? drawersPerOuter : 0,
       drawerItems: [],
       doors: 0,
+      slidingDoors: 0,
     };
   });
 }
@@ -97,6 +99,7 @@ export default function CabinetElevationFront({ cabinet, name = 'Meuble' }) {
   const W  = toNum(cabinet.width, 0);
   const H  = toNum(cabinet.height, 0);
   const PL = Math.max(0, toNum(cabinet.plinth, 0));
+  const globalSliding = cabinet?.globalSlidingDoors || null;
 
   // ── Layout SVG ──
   const PAD    = 60;   // marges
@@ -173,11 +176,24 @@ export default function CabinetElevationFront({ cabinet, name = 'Meuble' }) {
         {/* Panneau dessus */}
         <rect x={ox} y={oy} width={DRAW_W} height={10} fill="#e5e7eb" stroke="#374151" strokeWidth={0.5} />
 
+        {globalSliding && (
+          <g>
+            <line x1={ox + 6} y1={oy + 8} x2={ox + DRAW_W - 6} y2={oy + 8} stroke="#3b82f6" strokeWidth={2} />
+            <line x1={ox + 6} y1={oy + INNER_H - 8} x2={ox + DRAW_W - 6} y2={oy + INNER_H - 8} stroke="#3b82f6" strokeWidth={2} />
+            <text x={ox + DRAW_W / 2} y={oy + 24} textAnchor="middle" fontSize={11} fontWeight={700} fill="#2563eb">
+              {globalSliding.count || 2} vantaux coulissants · H {globalSliding.heightCm || (H - PL)} cm
+            </text>
+          </g>
+        )}
+
         {/* ── Modules ── */}
         {moduleRects.map((m) => {
           const mx  = m.x;
           const mw  = m.w;
           const mid = mx + mw / 2;
+          const drawerZoneRatio = Math.min(0.5, Math.max(0, m.drawers * 0.15));
+          const drawerZonePx = INNER_H * drawerZoneRatio;
+          const drawerZoneTop = oy + INNER_H - drawerZonePx;
 
           // ─ Séparateur vertical
           const sep = (
@@ -212,7 +228,7 @@ export default function CabinetElevationFront({ cabinet, name = 'Meuble' }) {
               })
             : m.shelves > 0
               ? Array.from({ length: m.shelves }, (_, si) => {
-                  const syPx = oy + ((si + 1) / (m.shelves + 1)) * INNER_H;
+                  const syPx = Math.min(oy + ((si + 1) / (m.shelves + 1)) * INNER_H, drawerZoneTop - 3);
                   return (
                     <rect key={`shelf-${m.id}-${si}`}
                       x={mx + 4} y={syPx - 2}
@@ -230,36 +246,44 @@ export default function CabinetElevationFront({ cabinet, name = 'Meuble' }) {
                 const dhPx  = d.h * sy;
                 return (
                   <g key={`drawer-${m.id}-${di}`}>
-                    <rect x={mx + 6} y={dyTop} width={mw - 12} height={Math.max(dhPx, 12)}
-                      fill="rgba(139,92,246,0.08)" stroke="#6d28d9" strokeWidth={1.3} rx={2}
-                    />
+                      <rect x={mx + 6} y={dyTop} width={mw - 12} height={Math.max(dhPx, 12)}
+                      fill="rgba(180,140,95,0.16)" stroke="#8b5e34" strokeWidth={1.3} rx={2}
+                      />
                     <rect
                       x={mx + mw / 2 - 18} y={dyTop + Math.max(dhPx, 12) / 2 - 4}
-                      width={36} height={8} rx={4}
-                      fill="none" stroke="#4c1d95" strokeWidth={1.8}
+                        width={36} height={8} rx={4}
+                      fill="none" stroke="#5b4635" strokeWidth={1.8}
                     />
                   </g>
                 );
               })
             : m.drawers > 0
               ? Array.from({ length: m.drawers }, (_, di) => {
-                  const totalH = INNER_H * 0.38;
-                  const dh     = totalH / m.drawers;
-                  const dyTop  = oy + INNER_H - totalH + di * dh;
+                  const dh     = drawerZonePx / m.drawers;
+                  const dyTop  = drawerZoneTop + di * dh;
                   return (
                     <g key={`drawer-${m.id}-${di}`}>
                       <rect x={mx + 6} y={dyTop + 2} width={mw - 12} height={dh - 4}
-                        fill="rgba(139,92,246,0.08)" stroke="#6d28d9" strokeWidth={1.3} rx={2}
+                        fill="rgba(180,140,95,0.16)" stroke="#8b5e34" strokeWidth={1.3} rx={2}
                       />
                       <rect
                         x={mx + mw / 2 - 18} y={dyTop + dh / 2 - 4}
                         width={36} height={8} rx={4}
-                        fill="none" stroke="#4c1d95" strokeWidth={1.8}
+                        fill="none" stroke="#5b4635" strokeWidth={1.8}
                       />
                     </g>
                   );
                 })
               : null;
+
+          const slidingElems = m.slidingDoors > 0 ? (
+            <g key={`sliding-${m.id}`}>
+              <line x1={mx + 6} y1={oy + 8} x2={mx + mw - 6} y2={oy + 8} stroke="#3b82f6" strokeWidth={1.5} />
+              <line x1={mx + 6} y1={oy + INNER_H - 8} x2={mx + mw - 6} y2={oy + INNER_H - 8} stroke="#3b82f6" strokeWidth={1.5} />
+              <rect x={mx + 6} y={oy + 12} width={mw * 0.56} height={INNER_H - 24} fill="rgba(147,197,253,0.16)" stroke="#60a5fa" strokeWidth={1} />
+              <rect x={mx + mw * 0.38} y={oy + 12} width={mw * 0.56} height={INNER_H - 24} fill="rgba(147,197,253,0.24)" stroke="#3b82f6" strokeWidth={1} />
+            </g>
+          ) : null;
 
           // ─ Numéro du module
           const numElem = (
@@ -287,8 +311,9 @@ export default function CabinetElevationFront({ cabinet, name = 'Meuble' }) {
             <g key={`module-${m.id}`}>
               {sep}
               {rodElems}
-              {shelfElems}
               {drawerElems}
+              {shelfElems}
+              {slidingElems}
               {numElem}
               {coteElem}
             </g>
