@@ -296,10 +296,26 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
   const imgSrc               = facadePng || rawImg;
   const initialCab           = initialResult?.cabinet || {};
   const dimensionsFromWizard = Boolean(initialResult?._dimensionsFromWizard);
+  const sketchFingerprint = useMemo(() => {
+    const cab = initialResult?.cabinet || {};
+    const mods = Array.isArray(cab.modules)
+      ? cab.modules.map((m) => ({
+          w: Number(m?.width ?? m?.w ?? 0),
+          d: Number(m?.drawers ?? m?.nb_drawers ?? 0),
+          s: Array.isArray(m?.shelves) ? m.shelves.length : Number(m?.shelves ?? m?.nb_shelves ?? 0),
+          r: Array.isArray(m?.rods) ? m.rods.length : Number(Boolean(m?.rod ?? m?.rods ?? m?.tringle)),
+        }))
+      : [];
+    return JSON.stringify({
+      w: Number(cab.width ?? 0),
+      h: Number(cab.height ?? 0),
+      p: Number(cab.plinth ?? 0),
+      m: mods,
+      pieces: Array.isArray(initialResult?.pieces) ? initialResult.pieces.length : 0,
+    });
+  }, [initialResult]);
 
-  // ─── FIX v3.8 : ignorer le cache localStorage si un scan frais est fourni ───
-  // Sans ce garde-fou, l'éditeur peut réafficher le projet précédent
-  // après un nouveau scan (bug de "projet d'avant").
+  // ─── Cache intelligent : restaurer uniquement le brouillon du même scan ─────
   const hasFreshScanResult = Boolean(
     initialResult && (
       initialResult.cabinet ||
@@ -307,10 +323,14 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     )
   );
   const savedState = (() => {
-    if (hasFreshScanResult) return null;
     try {
       const r = localStorage.getItem(LS_SKETCH_KEY);
-      return r ? JSON.parse(r) : null;
+      if (!r) return null;
+      const parsed = JSON.parse(r);
+      const state = parsed?.state || parsed;
+      const savedFingerprint = parsed?.fingerprint || null;
+      if (!savedFingerprint) return hasFreshScanResult ? null : state;
+      return savedFingerprint === sketchFingerprint ? state : null;
     } catch { return null; }
   })();
 
@@ -420,9 +440,12 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
 
   const saveToStorage = useCallback(() => {
     localStorage.setItem(LS_SKETCH_KEY, JSON.stringify({
-      elements, cabinetDims, facadeModules, facadeItems, generalNotes, joints,
+      fingerprint: sketchFingerprint,
+      state: {
+        elements, cabinetDims, facadeModules, facadeItems, generalNotes, joints,
+      },
     }));
-  }, [elements, cabinetDims, facadeModules, facadeItems, generalNotes, joints]);
+  }, [elements, cabinetDims, facadeModules, facadeItems, generalNotes, joints, sketchFingerprint]);
 
   useEffect(() => { saveToStorage(); }, [saveToStorage]);
   const handleSave = saveToStorage;

@@ -403,18 +403,22 @@ function CabinetModule3D({ mod, x, cabinetH, cabinetD, plinthH, thickness, mats,
   const bodyH = H - PL;
 
   const shelves = useMemo(() => {
+    const drawerZoneH = bodyH * Math.min(0.5, Math.max(0, mod.drawers * 0.15));
+    const minShelfY = PL + drawerZoneH + TH * 0.9;
     if (Array.isArray(mod.shelfYs) && mod.shelfYs.length > 0) {
-      return mod.shelfYs.map((yCm) => PL + yCm / 100);
+      return mod.shelfYs
+        .map((yCm) => Math.max(minShelfY, PL + yCm / 100))
+        .sort((a, b) => b - a);
     }
     if (mod.shelves <= 0) return [];
     return Array.from({ length: mod.shelves }, (_, i) =>
       PL + ((i + 1) / (mod.shelves + 1)) * bodyH
     );
-  }, [mod.shelves, mod.shelfYs, PL, bodyH]);
+  }, [mod.shelves, mod.shelfYs, mod.drawers, PL, TH, bodyH]);
 
   const drawers = useMemo(() => {
     if (mod.drawers <= 0) return [];
-    const zoneH = bodyH * 0.38;
+    const zoneH = bodyH * Math.min(0.5, Math.max(0, mod.drawers * 0.15));
     const zoneBottom = PL;
     return Array.from({ length: mod.drawers }, (_, i) => {
       const dh = zoneH / mod.drawers;
