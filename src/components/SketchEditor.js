@@ -25,6 +25,7 @@ const MARGIN               = { l: 65, r: 52, t: 55, b: 65 };
 const uid   = () => Math.random().toString(36).slice(2, 9);
 const toNum = (v, d = 0) => { const n = Number(v); return Number.isFinite(n) ? n : d; };
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+const defaultDrawerParts = () => ({ front: true, back: true, left: true, right: true, bottom: true });
 
 const normalizeModulesFromResult = (result, width = 0) => {
   const cabinet  = result?.cabinet || {};
@@ -363,6 +364,8 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     if (savedState?.facadeModules) return savedState.facadeModules;
     return normalizeModulesFromResult(initialResult, toNum(initialCab.width, 200));
   });
+  const [selectedModuleIdx, setSelectedModuleIdx] = useState(0);
+  const [moduleDetails, setModuleDetails] = useState(() => savedState?.moduleDetails || []);
 
   const [widthInputs, setWidthInputs] = useState(
     () => (savedState?.facadeModules || normalizeModulesFromResult(initialResult, toNum(initialCab.width, 200)))
@@ -371,6 +374,18 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
 
   useEffect(() => {
     setWidthInputs(facadeModules.map(m => String(m.width)));
+  }, [facadeModules.length]);
+  useEffect(() => {
+    setSelectedModuleIdx((idx) => Math.max(0, Math.min(idx, Math.max(0, facadeModules.length - 1))));
+    setModuleDetails((prev) => {
+      return facadeModules.map((_, i) => ({
+        hasBack: prev[i]?.hasBack ?? true,
+        drawerParts: {
+          ...defaultDrawerParts(),
+          ...(prev[i]?.drawerParts || {}),
+        },
+      }));
+    });
   }, [facadeModules.length]);
 
   const commitWidth = (idx) => {
@@ -416,6 +431,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     });
     const newModules = normalizeModulesFromResult(initialResult, toNum(cab.width, 200));
     setFacadeModules(newModules);
+    setModuleDetails(newModules.map(() => ({ hasBack: true, drawerParts: defaultDrawerParts() })));
     setFacadeItems(normalizeItemsFromResult(initialResult));
     setJoints(Array(Math.max(0, newModules.length - 1)).fill(true));
     didAutoSwitchRef.current = false;
@@ -434,6 +450,11 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
         width: m.width,
         drawers: m.drawers,
         doors: m.doors,
+        hasBack: moduleDetails[i]?.hasBack ?? true,
+        drawerParts: {
+          ...defaultDrawerParts(),
+          ...(moduleDetails[i]?.drawerParts || {}),
+        },
         rods: facadeItems
           .filter(it => it.type === 'rod' && Number(it.modIdx) === i)
           .map(it => ({ y: (1 - it.yRatio) * interiorH })),
@@ -442,18 +463,18 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
           .map(it => ({ y: (1 - it.yRatio) * interiorH })),
       })),
     };
-  }, [cabinetDims, facadeModules, facadeItems]);
+  }, [cabinetDims, facadeModules, facadeItems, moduleDetails]);
 
   const saveToStorage = useCallback(() => {
     const payload = {
       fingerprint: sketchFingerprint,
       state: {
-        elements, cabinetDims, facadeModules, facadeItems, generalNotes, joints,
+        elements, cabinetDims, facadeModules, facadeItems, moduleDetails, generalNotes, joints,
       },
     };
     localStorage.setItem(LS_SKETCH_KEY, JSON.stringify(payload));
     if (onDraftChangeRef.current) onDraftChangeRef.current(payload);
-  }, [elements, cabinetDims, facadeModules, facadeItems, generalNotes, joints, sketchFingerprint]);
+  }, [elements, cabinetDims, facadeModules, facadeItems, moduleDetails, generalNotes, joints, sketchFingerprint]);
 
   useEffect(() => { saveToStorage(); }, [saveToStorage]);
   const handleSave = saveToStorage;
@@ -626,7 +647,12 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
       const nbRod    = items.filter(it => it.type === 'rod').length;
       const nbDrawers = typeof m.drawers === 'number' ? m.drawers : 0;
       const nbDoors   = typeof m.doors   === 'number' ? m.doors   : 0;
-      ctx += `  M${i+1}: L=${m.width.toFixed(2)}cm  tiroirs=${nbDrawers}  tablettes=${nbShelf}  tringles=${nbRod}  portes=${nbDoors}\n`;
+      const det = moduleDetails[i] || { hasBack: true, drawerParts: defaultDrawerParts() };
+      const dp = { ...defaultDrawerParts(), ...(det.drawerParts || {}) };
+      ctx += `  M${i+1}: L=${m.width.toFixed(2)}cm  tiroirs=${nbDrawers}  tablettes=${nbShelf}  tringles=${nbRod}  portes=${nbDoors}  fond=${det.hasBack ? 'oui' : 'non'}\n`;
+      if (nbDrawers > 0) {
+        ctx += `      tiroir: facade=${dp.front ? 'oui' : 'non'} arriere=${dp.back ? 'oui' : 'non'} coteG=${dp.left ? 'oui' : 'non'} coteD=${dp.right ? 'oui' : 'non'} fond=${dp.bottom ? 'oui' : 'non'}\n`;
+      }
     });
     if (dims.length > 0) { ctx += 'COTES :\n'; dims.forEach(d => { if(d.label) ctx += `  ${d.label} cm\n`; }); }
     if (notes.length > 0) { ctx += 'NOTES :\n'; notes.forEach((n,i) => ctx += `  ${i+1}. "${n.text}"\n`); }
@@ -634,7 +660,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     ctx += `\nCOTES MEUBLE: L=${cabinetDims.width} H=${cabinetDims.height} plinthe=${cabinetDims.plinth} cm\n`;
     ctx += `INSTRUCTION: Tiens compte des doubles montants pour les largeurs nettes.`;
     return ctx;
-  }, [elements, dimensionsFromWizard, cabinetDims, thickness, joints, totalJointsWidth, totalInteriorWidth, facadeModules, facadeItems, generalNotes]);
+  }, [elements, dimensionsFromWizard, cabinetDims, thickness, joints, totalJointsWidth, totalInteriorWidth, facadeModules, facadeItems, moduleDetails, generalNotes]);
 
   const handleRelancer = useCallback(async () => {
     setLoading(true);
@@ -865,6 +891,58 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
           </label>
         ))}
       </div>
+
+      {facadeModules.length > 0 && (
+        <div className="bg-slate-900/95 border-b border-slate-700 px-3 py-2 flex flex-wrap items-center gap-3 text-xs">
+          <span className="text-amber-300 font-bold">🧩 Détail menuiserie:</span>
+          <div className="flex items-center gap-1">
+            {facadeModules.map((_, i) => (
+              <button
+                key={`md-${i}`}
+                onClick={() => setSelectedModuleIdx(i)}
+                className={`px-2 py-1 rounded border ${selectedModuleIdx === i ? 'bg-amber-500/20 border-amber-400 text-amber-300' : 'bg-slate-800 border-slate-600 text-slate-300'}`}
+              >
+                M{i + 1}
+              </button>
+            ))}
+          </div>
+          <label className="flex items-center gap-1 text-slate-200">
+            <input
+              type="checkbox"
+              checked={moduleDetails[selectedModuleIdx]?.hasBack ?? true}
+              onChange={(e) => setModuleDetails(prev => prev.map((d, i) => i === selectedModuleIdx ? { ...d, hasBack: e.target.checked } : d))}
+            />
+            Fond module
+          </label>
+          <span className="text-slate-500">Tiroir :</span>
+          {[
+            ['front', 'Façade'],
+            ['back', 'Arrière'],
+            ['left', 'Côté G'],
+            ['right', 'Côté D'],
+            ['bottom', 'Fond'],
+          ].map(([key, label]) => (
+            <label key={key} className="flex items-center gap-1 text-slate-200">
+              <input
+                type="checkbox"
+                checked={moduleDetails[selectedModuleIdx]?.drawerParts?.[key] ?? true}
+                onChange={(e) => setModuleDetails(prev => prev.map((d, i) => {
+                  if (i !== selectedModuleIdx) return d;
+                  return {
+                    ...d,
+                    drawerParts: {
+                      ...defaultDrawerParts(),
+                      ...(d?.drawerParts || {}),
+                      [key]: e.target.checked,
+                    },
+                  };
+                }))}
+              />
+              {label}
+            </label>
+          ))}
+        </div>
+      )}
 
       <div className="flex-1 overflow-auto bg-slate-950 flex justify-center p-4">
         <svg ref={svgRef} width={imgSize.w} height={imgSize.h}

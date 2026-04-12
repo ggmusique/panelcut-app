@@ -189,6 +189,13 @@ function normalizeModules(cabinet) {
     return detailed.map((m, i) => {
       const shelfYs = normalizeYList(m.shelves);
       const rodYs = normalizeYList(m.rods);
+      const drawerParts = {
+        front: m?.drawerParts?.front !== false,
+        back: m?.drawerParts?.back !== false,
+        left: m?.drawerParts?.left !== false,
+        right: m?.drawerParts?.right !== false,
+        bottom: m?.drawerParts?.bottom !== false,
+      };
       return {
         id:      i + 1,
         width:   Math.max(0, Number(m.width ?? m.w ?? m.largeur) || 0),
@@ -198,6 +205,8 @@ function normalizeModules(cabinet) {
         doors:   getCount(m.doors, getCount(m.nb_doors, 0)),
         rod:     rodYs.length > 0 || hasRod(m),
         rodYs,
+        hasBack: m?.hasBack !== false,
+        drawerParts,
       };
     }).filter(m => m.width > 0);
   }
@@ -209,6 +218,8 @@ function normalizeModules(cabinet) {
     shelves: Math.max(0, parseInt(cabinet?.nb_shelves ?? 0, 10) || 0),
     drawers: Math.max(0, parseInt(cabinet?.nb_drawers ?? 0, 10) || 0),
     doors: 1, rod: false,
+    hasBack: true,
+    drawerParts: { front: true, back: true, left: true, right: true, bottom: true },
   }));
 }
 
@@ -433,13 +444,22 @@ function CabinetModule3D({ mod, x, cabinetH, cabinetD, plinthH, thickness, mats,
     return mod.rod ? [PL + bodyH * 0.78] : [];
   }, [mod.rod, mod.rodYs, PL, bodyH]);
   const innerW = W - TH * 2;
+  const drawerParts = {
+    front: mod?.drawerParts?.front !== false,
+    back: mod?.drawerParts?.back !== false,
+    left: mod?.drawerParts?.left !== false,
+    right: mod?.drawerParts?.right !== false,
+    bottom: mod?.drawerParts?.bottom !== false,
+  };
 
   return (
     <group position={[x + W / 2, 0, 0]}>
       {/* Back panel (melamine) */}
-      <mesh position={[0, PL + bodyH / 2, -D / 2 + 0.003]} material={mats.back} castShadow receiveShadow>
-        <boxGeometry args={[W - TH, bodyH, 0.005]} />
-      </mesh>
+      {mod.hasBack !== false && (
+        <mesh position={[0, PL + bodyH / 2, -D / 2 + 0.003]} material={mats.back} castShadow receiveShadow>
+          <boxGeometry args={[W - TH, bodyH, 0.005]} />
+        </mesh>
+      )}
 
       {/* Left divider */}
       {isFirst && (
@@ -501,16 +521,37 @@ function CabinetModule3D({ mod, x, cabinetH, cabinetD, plinthH, thickness, mats,
       {/* Drawers */}
       {drawers.map((d, i) => (
         <group key={`dr${i}`} position={[0, d.y, D / 2 - 0.008]}>
-          {/* Drawer front panel */}
-          <mesh material={mats.drawer} castShadow receiveShadow>
-            <boxGeometry args={[innerW - 0.006, d.h, 0.018]} />
-          </mesh>
-          {/* Edge highlight top */}
-          <mesh position={[0, d.h / 2 - 0.001, 0.01]} material={mats.edgeBand}>
-            <boxGeometry args={[innerW - 0.006, 0.001, 0.018]} />
-          </mesh>
-          {/* Handle */}
-          <DrawerHandle width={innerW - 0.02} material={mats.handle} />
+          {drawerParts.front && (
+            <>
+              <mesh material={mats.drawer} castShadow receiveShadow>
+                <boxGeometry args={[innerW - 0.006, d.h, 0.018]} />
+              </mesh>
+              <mesh position={[0, d.h / 2 - 0.001, 0.01]} material={mats.edgeBand}>
+                <boxGeometry args={[innerW - 0.006, 0.001, 0.018]} />
+              </mesh>
+              <DrawerHandle width={innerW - 0.02} material={mats.handle} />
+            </>
+          )}
+          {drawerParts.left && (
+            <mesh position={[-innerW / 2 + 0.006, 0, -0.09]} material={mats.interior} castShadow receiveShadow>
+              <boxGeometry args={[0.012, d.h - 0.004, 0.18]} />
+            </mesh>
+          )}
+          {drawerParts.right && (
+            <mesh position={[innerW / 2 - 0.006, 0, -0.09]} material={mats.interior} castShadow receiveShadow>
+              <boxGeometry args={[0.012, d.h - 0.004, 0.18]} />
+            </mesh>
+          )}
+          {drawerParts.back && (
+            <mesh position={[0, 0, -0.18]} material={mats.interior} castShadow receiveShadow>
+              <boxGeometry args={[innerW - 0.016, d.h - 0.004, 0.01]} />
+            </mesh>
+          )}
+          {drawerParts.bottom && (
+            <mesh position={[0, -d.h / 2 + 0.004, -0.09]} material={mats.interior} castShadow receiveShadow>
+              <boxGeometry args={[innerW - 0.016, 0.008, 0.18]} />
+            </mesh>
+          )}
         </group>
       ))}
 
@@ -537,10 +578,6 @@ function CabinetModule3D({ mod, x, cabinetH, cabinetD, plinthH, thickness, mats,
 function CabinetGroup({ modules, cabinetW, cabinetH, cabinetD, plinthH, thickness, mats }) {
   const totalW = cabinetW / 100;
   const offsetX = -totalW / 2;
-  const totalH = cabinetH / 100;
-  const plinth = plinthH / 100;
-  const bodyH = totalH - plinth;
-  const thickM = thickness / 100;
 
   const positions = useMemo(() => {
     let cursor = 0;
@@ -549,16 +586,6 @@ function CabinetGroup({ modules, cabinetW, cabinetH, cabinetD, plinthH, thicknes
 
   return (
     <group position={[0, 0, -cabinetD / 100 / 2]}>
-      {/* Fond global forcé pour garantir la lecture visuelle en 3D */}
-      <mesh
-        position={[0, plinth + bodyH / 2, -cabinetD / 100 / 2 + 0.004]}
-        material={mats.back}
-        castShadow
-        receiveShadow
-      >
-        <boxGeometry args={[Math.max(0.01, totalW - thickM), Math.max(0.01, bodyH), 0.008]} />
-      </mesh>
-
       {modules.map((mod, i) => (
         <CabinetModule3D
           key={mod.id}
