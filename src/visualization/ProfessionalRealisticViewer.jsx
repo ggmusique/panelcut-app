@@ -677,7 +677,7 @@ export default function ProfessionalRealisticViewer({ cabinet, name }) {
   const camDist = Math.max(Wm, Hm) * 1.6;
 
   return (
-    <div className="relative w-full rounded-2xl overflow-hidden shadow-2xl" style={{ height: 750 }}>
+    <div className="relative w-full rounded-2xl overflow-hidden shadow-2xl" style={{ height: 750 }} onWheel={e => e.stopPropagation()}>
       <Canvas
         shadows
         camera={{
