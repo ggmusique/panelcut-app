@@ -259,7 +259,15 @@ export default function App() {
       newScanResult.result?.cabinet ||
       project.cabinet;
     const cabinet = reconstructModulesFromFlat(rawCabinet);
-    console.log('[FIX CHECK] cabinet from re-scan:', cabinet);
+    console.log('[FIX1] modules transmis à project.cabinet:',
+      cabinet.modules?.map(m => ({
+        id: m.id,
+        width: m.width,
+        drawers: m.drawers,
+        rods: m.rods?.length,
+        shelves: m.shelves?.length || m.shelves,
+      }))
+    );
     setProject(p => ({ ...p, pieces, cabinet, scanResult: newScanResult }));
     setScreen(SCREENS.PIECES);
   };

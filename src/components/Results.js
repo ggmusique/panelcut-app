@@ -1,8 +1,6 @@
 import { useState } from 'react';
 import { exportPDF } from '../pdfExport';
-import { Download, Scissors, RotateCw, Layers, ChevronLeft, ChevronRight, Maximize2, BarChart2, Map, List, Box } from 'lucide-react';
-import CabinetPlan2D from './CabinetPlan2D';
-import CabinetPlan3D from './CabinetPlan3D';
+import { Download, Scissors, RotateCw, Layers, ChevronLeft, ChevronRight, List, Box } from 'lucide-react';
 import CabinetElevationFront from './CabinetElevationFront';
 import BoardList from './BoardList';
 import ProfessionalRealisticViewer from '../visualization/ProfessionalRealisticViewer';
@@ -163,39 +161,12 @@ function CutList({ panel }) {
   );
 }
 
-function PlanSubTabs({ active, onChange }) {
-  return (
-    <div className="flex bg-[#0a0a0a] border border-white/5 rounded-lg p-0.5 gap-0.5 mb-4 overflow-x-auto">
-      {[
-        { id: 'facade',   label: '🧱 Façade — style croquis' },
-        { id: '2d',       label: '📐 Vue 2D — 3 vues ortho' },
-        { id: '3d',       label: '📦 Vue 3D — Isométrique' },
-        { id: 'realistic', label: '🌟 Vue Réaliste Client' },   // ← NOUVEL ONGLET
-      ].map(t => (
-        <button 
-          key={t.id} 
-          onClick={() => onChange(t.id)}
-          className={'flex-1 py-2.5 px-4 rounded-md text-xs font-bold transition-all whitespace-nowrap ' +
-            (active === t.id 
-              ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-lg' 
-              : 'text-slate-400 hover:text-white hover:bg-white/5')
-          }
-        >
-          {t.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-// ── TabBar : Plans visible seulement si cabinet disponible
-function TabBar({ active, onChange, hasCabinet }) {
+// ── TabBar : 3 onglets clairs
+function TabBar({ active, onChange }) {
   const tabs = [
-    { id: 'resume',  label: 'Résumé',   icon: <BarChart2 className="w-4 h-4" /> },
-    { id: 'visual',  label: 'Visuel',   icon: <Maximize2 className="w-4 h-4" /> },
-    { id: 'cuts',    label: 'Coupes',   icon: <Scissors  className="w-4 h-4" /> },
-    { id: 'boards',  label: 'Planches', icon: <List      className="w-4 h-4" /> },
-    ...(hasCabinet ? [{ id: 'plans', label: 'Plans', icon: <Map className="w-4 h-4" /> }] : []),
+    { id: 'plan',    label: 'Façade + Coupes', icon: <Layers className="w-4 h-4" /> },
+    { id: 'planches', label: 'Planches',       icon: <List   className="w-4 h-4" /> },
+    { id: '3d',      label: 'Vue 3D client',   icon: <Box    className="w-4 h-4" /> },
   ];
   return (
     <div className="flex bg-[#111] border border-white/5 rounded-xl p-1 gap-1 overflow-x-auto">
@@ -213,8 +184,7 @@ function TabBar({ active, onChange, hasCabinet }) {
 
 export default function Results({ t, results, project }) {
   const [currentPanel, setCurrentPanel] = useState(0);
-  const [tab, setTab]       = useState('resume');
-  const [planView, setPlanView] = useState('facade');
+  const [tab, setTab] = useState('plan');
   const colorMap = {};
 
   // Tringles (rods) excluded from optimization
@@ -263,13 +233,13 @@ export default function Results({ t, results, project }) {
   return (
     <div className="min-h-screen bg-[#050505] text-slate-200 pb-32 font-sans">
       <div className="sticky top-16 z-20 bg-[#050505]/95 backdrop-blur-xl pt-3 pb-2 px-4">
-        <TabBar active={tab} onChange={setTab} hasCabinet={hasCabinet} />
+        <TabBar active={tab} onChange={setTab} />
       </div>
 
       <div className="px-4 py-4 max-w-7xl mx-auto">
 
-        {/* ── RÉSUMÉ */}
-        {tab === 'resume' && (
+        {/* ── FAÇADE + COUPES */}
+        {tab === 'plan' && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-bold text-white flex items-center gap-2"><Layers className="w-5 h-5 text-orange-500" /> Résultats</h2>
@@ -301,17 +271,6 @@ export default function Results({ t, results, project }) {
                 <div className="text-[10px] text-slate-500 mt-1">Matière</div>
               </div>
             </div>
-            <div className="bg-[#111] border border-white/5 rounded-xl p-4">
-              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Pièces bois optimisées</h3>
-              <div className="flex flex-wrap gap-2">
-                {Object.entries(colorMap).map(([name, c]) => (
-                  <div key={name} className="flex items-center gap-2 bg-[#0a0a0a] px-3 py-1.5 rounded-lg border border-white/5">
-                    <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ background:c.fill, border:`1px solid ${c.stroke}`, boxShadow:`0 0 6px ${c.glow}` }} />
-                    <span className="text-sm text-slate-300 font-medium">{name}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
             {rodPieces.length > 0 && (
               <div className="bg-[#111] border border-pink-500/20 rounded-xl p-4">
                 <h3 className="text-xs font-bold text-pink-400 uppercase tracking-wider mb-3 flex items-center gap-2">
@@ -331,46 +290,10 @@ export default function Results({ t, results, project }) {
               </div>
             )}
             {hasCabinet && (
-              <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-3 flex items-center gap-3">
-                <Box className="w-4 h-4 text-blue-400 flex-shrink-0" />
-                <div>
-                  <p className="text-sm font-bold text-blue-300">Plans 2D + 3D disponibles</p>
-                  <p className="text-xs text-slate-400">{cabinet.width}×{cabinet.height}×{cabinet.depth} cm</p>
-                </div>
-                <button onClick={() => setTab('plans')} className="ml-auto text-xs font-bold text-blue-400 hover:text-blue-300 whitespace-nowrap">Voir →</button>
-              </div>
+              <CabinetElevationFront cabinet={cabinet} name={project.name} />
             )}
-            <button onClick={() => setTab('visual')} className="w-full py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm font-bold text-slate-300 flex items-center justify-center gap-2 transition-colors">
-              <Maximize2 className="w-4 h-4" /> Voir le visuel du panneau →
-            </button>
-            <button onClick={() => setTab('boards')} className="w-full py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm font-bold text-slate-300 flex items-center justify-center gap-2 transition-colors">
-              <List className="w-4 h-4" /> Voir la liste des planches →
-            </button>
-            <button onClick={() => setTab('cuts')} className="w-full py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm font-bold text-slate-300 flex items-center justify-center gap-2 transition-colors">
-              <Scissors className="w-4 h-4" /> Voir la séquence de coupes →
-            </button>
-          </div>
-        )}
-
-        {/* ── VISUEL */}
-        {tab === 'visual' && (
-          <div className="space-y-4">
             <PanelNav />
             <PanelSVG panel={panel} panelW={panelW} panelH={panelH} kerf={kerf} colorMap={colorMap} />
-            <CutList panel={panel} />
-            <div className="flex justify-center gap-2">
-              {results.panels.map((_, i) => (
-                <button key={i} onClick={() => setCurrentPanel(i)}
-                  className={`w-3 h-3 rounded-full transition-all duration-300 ${i===currentPanel?'bg-orange-500 scale-125 shadow-[0_0_10px_rgba(249,115,22,0.6)]':'bg-[#333] hover:bg-slate-500'}`} />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* ── COUPES */}
-        {tab === 'cuts' && (
-          <div className="space-y-4">
-            <PanelNav />
             <div className="bg-[#111] border border-white/5 rounded-xl p-4">
               <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2"><Scissors className="w-4 h-4 text-orange-500" /> Séquence de découpe</h3>
               <div className="space-y-2">
@@ -388,58 +311,37 @@ export default function Results({ t, results, project }) {
                 })}
               </div>
             </div>
+            <div className="flex justify-center gap-2">
+              {results.panels.map((_, i) => (
+                <button key={i} onClick={() => setCurrentPanel(i)}
+                  className={`w-3 h-3 rounded-full transition-all duration-300 ${i===currentPanel?'bg-orange-500 scale-125 shadow-[0_0_10px_rgba(249,115,22,0.6)]':'bg-[#333] hover:bg-slate-500'}`} />
+              ))}
+            </div>
           </div>
         )}
 
         {/* ── PLANCHES */}
-        {tab === 'boards' && <BoardList results={results} project={project} />}
+        {tab === 'planches' && <BoardList results={results} project={project} />}
 
-        {/* ── PLANS 2D / 3D */}
-        {tab === 'plans' && (
+        {/* ── VUE 3D CLIENT */}
+        {tab === '3d' && (
           <div className="space-y-4">
             {hasCabinet ? (
-  <>
-    <PlanSubTabs active={planView} onChange={setPlanView} />
-
-    {/* Vue façade (existante) */}
-    <div style={planView !== 'facade' ? { display: 'none' } : {}}>
-      <CabinetElevationFront cabinet={cabinet} name={project.name} />
-    </div>
-
-    {/* Vue 2D (existante) */}
-    <div style={planView !== '2d' ? { display: 'none' } : {}}>
-      <CabinetPlan2D cabinet={cabinet} name={project.name} />
-      {/* ta légende existante */}
-    </div>
-
-    {/* Vue 3D (existante) */}
-    <div style={planView !== '3d' ? { display: 'none' } : {}}>
-      <CabinetPlan3D cabinet={cabinet} name={project.name} />
-    </div>
-
-    {/* === NOUVELLE VUE RÉALISTE === */}
-    <div style={planView !== 'realistic' ? { display: 'none' } : {}}>
-      <div className="flex items-center gap-2 text-xs text-slate-500 px-1 mb-3">
-        <span className="text-amber-400">🌟</span>
-        <span>Vue photoréaliste 3D — tournable et zoomable pour présentation client</span>
-      </div>
-      
-      <ProfessionalRealisticViewer cabinet={cabinet} name={project.name} />
-    </div>
-  </>
-) : (
-              /* ─ Pas de cabinet : inviter à faire un scan */
+              <>
+                <div className="flex items-center gap-2 text-xs text-slate-500 px-1">
+                  <span className="text-amber-400">🌟</span>
+                  <span>Vue photoréaliste pour présentation client</span>
+                </div>
+                <ProfessionalRealisticViewer cabinet={cabinet} name={project.name} />
+              </>
+            ) : (
               <div className="flex flex-col items-center justify-center py-16 gap-4 text-center">
                 <div className="text-5xl">📐</div>
-                <p className="text-white font-bold text-lg">Plans non disponibles</p>
+                <p className="text-white font-bold text-lg">Vue 3D non disponible</p>
                 <p className="text-sm text-slate-400 max-w-xs">
-                  Les plans 2D et 3D sont générés automatiquement depuis un scan IA.
-                  Lancez un nouveau projet avec Scan IA pour obtenir les vues industrielles.
+                  La vue 3D est générée automatiquement depuis un scan IA.
+                  Lancez un nouveau projet avec Scan IA pour obtenir la vue réaliste.
                 </p>
-                <div className="bg-[#111] border border-white/10 rounded-xl p-4 text-left text-xs text-slate-500 max-w-sm">
-                  <p className="text-slate-400 font-bold mb-2">💡 Debug info</p>
-                  <p>project.cabinet = {JSON.stringify(project.cabinet)?.slice(0, 80) || 'null'}</p>
-                </div>
               </div>
             )}
           </div>
