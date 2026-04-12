@@ -319,7 +319,7 @@ function FacadeRealisteSVG({
   );
 }
 
-export default function SketchEditor({ image, scanImage, initialResult, apiKey, draft, onDraftChange, onComplete, onCancel }) {
+export default function SketchEditor({ image, scanImage, initialResult, apiKey, draft, onDraftChange, onComplete, onCancel, onSave }) {
   const rawImg             = image || scanImage || null;
   const svgRef             = useRef(null);
   const facadeSvgRef       = useRef(null);
@@ -361,17 +361,15 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
   );
   const savedState = (() => {
     try {
-      const draftFingerprint = draft?.fingerprint || null;
-      const draftState = draft?.state || draft || null;
-      if (draftFingerprint && draftFingerprint === sketchFingerprint && draftState) return draftState;
-
+      if (draft?.state && Object.keys(draft.state).length > 0) return draft.state;
       const r = localStorage.getItem(LS_SKETCH_KEY);
       if (!r) return null;
       const parsed = JSON.parse(r);
       const state = parsed?.state || parsed;
       const savedFingerprint = parsed?.fingerprint || null;
+      if (savedFingerprint && savedFingerprint === sketchFingerprint) return state;
       if (!savedFingerprint) return hasFreshScanResult ? null : state;
-      return savedFingerprint === sketchFingerprint ? state : null;
+      return hasFreshScanResult ? null : state;
     } catch { return null; }
   })();
 
@@ -902,7 +900,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
         <div className="flex gap-2">
           {error && <span className="text-red-400 text-sm self-center mr-2">{error}</span>}
           <button onClick={onCancel} className="px-3 py-1 bg-slate-700 text-white rounded">Annuler</button>
-          <button onClick={handleSave} className="px-4 py-1 rounded font-bold text-white bg-green-600 hover:bg-green-500">
+          <button onClick={async () => { handleSave(); if (onSave) await onSave(currentCabinet); }} className="px-4 py-1 rounded font-bold text-white bg-green-600 hover:bg-green-500">
             💾 Enregistrer
           </button>
           <button onClick={handleRelancer} disabled={loading}
