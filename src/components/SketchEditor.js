@@ -191,7 +191,7 @@ function FacadeRealisteSVG({
             <g key={`dr-${i}-${di}`}
               onClick={e => { e.stopPropagation(); if (isErase) onModuleErase(i, 'drawer'); }}
               style={{ cursor: isErase ? 'pointer' : 'default' }}>
-              <rect x={x+2} y={dy+1} width={w-4} height={drawerH-2} fill="#e8d9bc" stroke={WOOD_STROKE} strokeWidth="1" rx="1"/>
+              <rect x={x+2} y={dy+1} width={w-4} height={drawerH-2} fill={WOOD_FILL} stroke={WOOD_STROKE} strokeWidth="1" rx="1"/>
               <line x1={x+2} y1={dy+1} x2={x+w-2} y2={dy+1} stroke={WOOD_STROKE} strokeWidth="0.5"/>
               <rect x={x+w/2-14} y={dy+drawerH/2-3.5} width="28" height="7" fill="#9ca3af" stroke="#6b7280" strokeWidth="0.8" rx="3"/>
               <ellipse cx={x+w/2} cy={dy+drawerH/2} rx="3.5" ry="2.5" fill="#6b7280"/>
