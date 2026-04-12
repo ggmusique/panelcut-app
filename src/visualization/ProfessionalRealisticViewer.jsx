@@ -148,16 +148,34 @@ function createBumpCanvas(src) {
    ═══════════════════════════════════════════════════════════════ */
 
 function normalizeModules(cabinet) {
+  const getCount = (value, fallback = 0) => {
+    if (Array.isArray(value)) return value.length;
+    const n = parseInt(value, 10);
+    return Number.isFinite(n) ? Math.max(0, n) : fallback;
+  };
+
+  const hasRod = (moduleData) => {
+    if (Array.isArray(moduleData?.rods)) return moduleData.rods.length > 0;
+    if (Array.isArray(moduleData?.rod)) return moduleData.rod.length > 0;
+    return Boolean(
+      moduleData?.rod ??
+      moduleData?.rods ??
+      moduleData?.tringle ??
+      moduleData?.hanging ??
+      moduleData?.penderie
+    );
+  };
+
   const raw = Array.isArray(cabinet?.modules) ? cabinet.modules : [];
   const detailed = raw.filter(m => typeof m === 'object' && m !== null);
   if (detailed.length > 0) {
     return detailed.map((m, i) => ({
       id:      i + 1,
       width:   Math.max(0, Number(m.width ?? m.w ?? m.largeur) || 0),
-      shelves: Math.max(0, parseInt(m.shelves ?? m.nb_shelves ?? 0, 10) || 0),
-      drawers: Math.max(0, parseInt(m.drawers ?? m.nb_drawers ?? 0, 10) || 0),
-      doors:   Math.max(0, parseInt(m.doors   ?? m.nb_doors   ?? 0, 10) || 0),
-      rod:     Boolean(m.rod ?? m.tringle ?? m.hanging ?? m.penderie ?? false),
+      shelves: getCount(m.shelves, getCount(m.nb_shelves, 0)),
+      drawers: getCount(m.drawers, getCount(m.drawerItems, getCount(m.nb_drawers, 0))),
+      doors:   getCount(m.doors, getCount(m.nb_doors, 0)),
+      rod:     hasRod(m),
     })).filter(m => m.width > 0);
   }
   const W  = Math.max(0, Number(cabinet?.width) || 0);
