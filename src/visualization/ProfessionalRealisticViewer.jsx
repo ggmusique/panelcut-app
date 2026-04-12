@@ -259,7 +259,7 @@ function useMaterials() {
     const intTex    = mkTex(intCanvas);
 
     // Back panel (light melamine gray)
-    const backCanvas = createWoodCanvas({ baseR: 215, baseG: 210, baseB: 205, grainR: 192, grainG: 187, grainB: 182, density: 25, knots: 0, noiseAmt: 6 });
+    const backCanvas = createWoodCanvas({ baseR: 188, baseG: 158, baseB: 126, grainR: 150, grainG: 122, grainB: 92, density: 55, knots: 1, noiseAmt: 10 });
     const backTex    = mkTex(backCanvas);
 
     // Drawer front (slightly warmer)
@@ -426,11 +426,9 @@ function CabinetModule3D({ mod, x, cabinetH, cabinetD, plinthH, thickness, mats,
   const bodyH = H - PL;
 
   const shelves = useMemo(() => {
-    const drawerZoneH = bodyH * Math.min(0.5, Math.max(0, mod.drawers * 0.15));
-    const minShelfY = PL + drawerZoneH + TH * 0.9;
     if (Array.isArray(mod.shelfYs) && mod.shelfYs.length > 0) {
       return mod.shelfYs
-        .map((yCm) => Math.max(minShelfY, PL + yCm / 100))
+        .map((yCm) => PL + yCm / 100)
         .sort((a, b) => b - a);
     }
     if (mod.shelves <= 0) return [];
@@ -477,8 +475,8 @@ function CabinetModule3D({ mod, x, cabinetH, cabinetD, plinthH, thickness, mats,
     <group position={[x + W / 2, 0, 0]}>
       {/* Back panel (melamine) */}
       {mod.hasBack !== false && (
-        <mesh position={[0, PL + bodyH / 2, -D / 2 + 0.003]} material={mats.back} castShadow receiveShadow>
-          <boxGeometry args={[W - TH, bodyH, 0.005]} />
+        <mesh position={[0, PL + bodyH / 2, -D / 2 + 0.01]} material={mats.back} castShadow receiveShadow>
+          <boxGeometry args={[W - TH, bodyH, 0.012]} />
         </mesh>
       )}
 

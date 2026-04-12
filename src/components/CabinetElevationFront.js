@@ -217,7 +217,7 @@ export default function CabinetElevationFront({ cabinet, name = 'Meuble' }) {
           // ─ Tablettes
           const shelfElems = m.shelfPositions.length > 0
             ? m.shelfPositions.map((yCm, si) => {
-                const syPx = Math.min(cmToY(yCm), drawerZoneTop - 3);
+                const syPx = cmToY(yCm);
                 return (
                   <rect key={`shelf-${m.id}-${si}`}
                     x={mx + 4} y={syPx - 4}
@@ -246,13 +246,13 @@ export default function CabinetElevationFront({ cabinet, name = 'Meuble' }) {
                 const dhPx  = d.h * sy;
                 return (
                   <g key={`drawer-${m.id}-${di}`}>
-                    <rect x={mx + 6} y={dyTop} width={mw - 12} height={Math.max(dhPx, 12)}
-                      fill="rgba(139,92,246,0.08)" stroke="#6d28d9" strokeWidth={1.3} rx={2}
-                    />
+                      <rect x={mx + 6} y={dyTop} width={mw - 12} height={Math.max(dhPx, 12)}
+                      fill="rgba(180,140,95,0.16)" stroke="#8b5e34" strokeWidth={1.3} rx={2}
+                      />
                     <rect
                       x={mx + mw / 2 - 18} y={dyTop + Math.max(dhPx, 12) / 2 - 4}
-                      width={36} height={8} rx={4}
-                      fill="none" stroke="#4c1d95" strokeWidth={1.8}
+                        width={36} height={8} rx={4}
+                      fill="none" stroke="#5b4635" strokeWidth={1.8}
                     />
                   </g>
                 );
@@ -264,12 +264,12 @@ export default function CabinetElevationFront({ cabinet, name = 'Meuble' }) {
                   return (
                     <g key={`drawer-${m.id}-${di}`}>
                       <rect x={mx + 6} y={dyTop + 2} width={mw - 12} height={dh - 4}
-                        fill="rgba(139,92,246,0.08)" stroke="#6d28d9" strokeWidth={1.3} rx={2}
+                        fill="rgba(180,140,95,0.16)" stroke="#8b5e34" strokeWidth={1.3} rx={2}
                       />
                       <rect
                         x={mx + mw / 2 - 18} y={dyTop + dh / 2 - 4}
                         width={36} height={8} rx={4}
-                        fill="none" stroke="#4c1d95" strokeWidth={1.8}
+                        fill="none" stroke="#5b4635" strokeWidth={1.8}
                       />
                     </g>
                   );

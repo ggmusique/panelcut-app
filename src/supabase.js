@@ -79,43 +79,46 @@ export async function saveProject(project, results) {
     updated_at:   new Date().toISOString(),
   };
 
-  const buildPlanPayload = (projectId) => ({
-    project_id: projectId,
-    user_id: user.id,
-    title: `${project.name || 'Sans titre'} — Plan façade`,
-    type: 'facade',
-    svg_data: project?.sketchDraft?.state
-      ? JSON.stringify({
-          cabinetDims: project.sketchDraft.state.cabinetDims || null,
-          facadeModules: project.sketchDraft.state.facadeModules || [],
-          facadeItems: project.sketchDraft.state.facadeItems || [],
-          moduleDetails: project.sketchDraft.state.moduleDetails || [],
-        })
-      : null,
-    metadata: {
-      project_name: project.name || null,
-      devis_num: project.devisNum || null,
-      panel: project.panel || null,
-      cabinet: project.cabinet || null,
-      has_draft: Boolean(project?.sketchDraft?.state),
-      updated_at: new Date().toISOString(),
-    },
-  });
+  const buildPlanPayload = (projectId, forcedType = null) => {
+    const payload = {
+      project_id: projectId,
+      user_id: user.id,
+      title: `${project.name || 'Sans titre'} — Plan façade`,
+      svg_data: project?.sketchDraft?.state
+        ? JSON.stringify({
+            cabinetDims: project.sketchDraft.state.cabinetDims || null,
+            facadeModules: project.sketchDraft.state.facadeModules || [],
+            facadeItems: project.sketchDraft.state.facadeItems || [],
+            moduleDetails: project.sketchDraft.state.moduleDetails || [],
+          })
+        : null,
+      metadata: {
+        project_name: project.name || null,
+        devis_num: project.devisNum || null,
+        panel: project.panel || null,
+        cabinet: project.cabinet || null,
+        has_draft: Boolean(project?.sketchDraft?.state),
+        updated_at: new Date().toISOString(),
+      },
+    };
+    if (forcedType) payload.type = forcedType;
+    return payload;
+  };
 
   const syncPlan = async (projectId) => {
-    const planPayload = buildPlanPayload(projectId);
+    const basePlanPayload = buildPlanPayload(projectId);
     const { data: existing, error: fetchErr } = await supabase
       .from('plans')
-      .select('id')
+      .select('id, type')
       .eq('project_id', projectId)
       .eq('user_id', user.id)
-      .eq('type', 'facade')
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
     if (fetchErr) return { error: fetchErr };
 
     if (existing?.id) {
+      const planPayload = buildPlanPayload(projectId, existing.type || null);
       const { data, error } = await supabase
         .from('plans')
         .update(planPayload)
@@ -128,9 +131,22 @@ export async function saveProject(project, results) {
 
     const { data, error } = await supabase
       .from('plans')
-      .insert(planPayload)
+      .insert(basePlanPayload)
       .select('id, project_id, type, created_at')
       .single();
+    if (!error) return { data, error };
+    // Fallback pour contraintes CHECK sur "type"
+    if (error?.code === '23514') {
+      const fallbackTypes = ['svg', 'facade_svg', 'plan_svg', 'plan'];
+      for (const t of fallbackTypes) {
+        const { data: d2, error: e2 } = await supabase
+          .from('plans')
+          .insert(buildPlanPayload(projectId, t))
+          .select('id, project_id, type, created_at')
+          .single();
+        if (!e2) return { data: d2, error: null };
+      }
+    }
     return { data, error };
   };
 
