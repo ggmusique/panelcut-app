@@ -150,7 +150,17 @@ export default function App() {
       setResults(res); setComputing(false); setScreen(SCREENS.RESULTS);
       if (user) {
         setSaving(true);
-        await saveProject(project, res);
+        const { data, planError } = await saveProject(project, res);
+        if (data?.id && !project.supabaseId) {
+          setProject(prev => ({ ...prev, supabaseId: data.id }));
+        }
+        if (planError) {
+          console.error('Erreur sync plan Supabase:', planError);
+          setSaveMsg('Plan ❌');
+          setSaving(false);
+          setTimeout(() => setSaveMsg(''), 3000);
+          return;
+        }
         setSaving(false); setSaveMsg('OK'); setTimeout(() => setSaveMsg(''), 2000);
       }
     }, 50);
@@ -280,7 +290,17 @@ export default function App() {
   const handleSave = async () => {
     if (!user) return;
     setSaving(true);
-    await saveProject(project, results);
+    const { data, planError } = await saveProject(project, results);
+    if (data?.id && !project.supabaseId) {
+      setProject(prev => ({ ...prev, supabaseId: data.id }));
+    }
+    if (planError) {
+      console.error('Erreur sync plan Supabase:', planError);
+      setSaveMsg('Plan ❌');
+      setSaving(false);
+      setTimeout(() => setSaveMsg(''), 3000);
+      return;
+    }
     setSaving(false); setSaveMsg('OK'); setTimeout(() => setSaveMsg(''), 2000);
   };
 

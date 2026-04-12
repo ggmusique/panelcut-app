@@ -417,7 +417,7 @@ function RodBracket({ position, material }) {
    CABINET MODULE (3D) — detailed with textures
    ═══════════════════════════════════════════════════════════════ */
 
-function CabinetModule3D({ mod, x, cabinetH, cabinetD, plinthH, thickness, mats, isFirst, isLast }) {
+function CabinetModule3D({ mod, x, cabinetH, cabinetD, plinthH, thickness, mats, isFirst, isLast, hideFrontDoors = false }) {
   const W  = mod.width / 100;
   const H  = cabinetH / 100;
   const D  = cabinetD / 100;
@@ -577,7 +577,7 @@ function CabinetModule3D({ mod, x, cabinetH, cabinetD, plinthH, thickness, mats,
       ))}
 
       {/* Sliding doors */}
-      {mod.slidingDoors > 0 && (
+      {!hideFrontDoors && mod.slidingDoors > 0 && (
         <group>
           <mesh position={[0, H - TH - 0.01, D / 2 - 0.01]} material={mats.handle}>
             <boxGeometry args={[W - 0.01, 0.008, 0.01]} />
@@ -595,7 +595,7 @@ function CabinetModule3D({ mod, x, cabinetH, cabinetD, plinthH, thickness, mats,
       )}
 
       {/* Doors */}
-      {mod.slidingDoors === 0 && mod.doors > 0 && mod.drawers === 0 && !mod.rod && mod.shelves === 0 && (
+      {!hideFrontDoors && mod.slidingDoors === 0 && mod.doors > 0 && mod.drawers === 0 && !mod.rod && mod.shelves === 0 && (
         <group>
           <mesh position={[0, PL + bodyH / 2, D / 2 - 0.003]} material={mats.door} castShadow receiveShadow>
             <boxGeometry args={[W - 0.005, bodyH - 0.005, 0.018]} />
@@ -614,7 +614,7 @@ function CabinetModule3D({ mod, x, cabinetH, cabinetD, plinthH, thickness, mats,
    CABINET GROUP
    ═══════════════════════════════════════════════════════════════ */
 
-function CabinetGroup({ modules, cabinetW, cabinetH, cabinetD, plinthH, thickness, mats }) {
+function CabinetGroup({ modules, cabinetW, cabinetH, cabinetD, plinthH, thickness, mats, globalSlidingDoors }) {
   const totalW = cabinetW / 100;
   const offsetX = -totalW / 2;
 
@@ -625,6 +625,28 @@ function CabinetGroup({ modules, cabinetW, cabinetH, cabinetD, plinthH, thicknes
 
   return (
     <group position={[0, 0, -cabinetD / 100 / 2]}>
+      {globalSlidingDoors?.count > 0 && (
+        <group>
+          <mesh position={[0, cabinetH / 100 - thickness / 100 - 0.01, cabinetD / 100 / 2 - 0.012]} material={mats.handle}>
+            <boxGeometry args={[totalW - 0.01, 0.01, 0.012]} />
+          </mesh>
+          <mesh position={[0, plinthH / 100 + 0.01, cabinetD / 100 / 2 - 0.012]} material={mats.handle}>
+            <boxGeometry args={[totalW - 0.01, 0.01, 0.012]} />
+          </mesh>
+          {Array.from({ length: Math.max(2, Math.min(4, globalSlidingDoors.count || 2)) }, (_, idx) => {
+            const panelW = totalW / Math.max(2, Math.min(4, globalSlidingDoors.count || 2)) * 1.22;
+            const x = -totalW / 2 + panelW / 2 + idx * (totalW / Math.max(2, Math.min(4, globalSlidingDoors.count || 2)));
+            const z = cabinetD / 100 / 2 - 0.025 - (idx % 2) * 0.017;
+            const h = Math.max(0.5, (globalSlidingDoors.heightCm || (cabinetH - plinthH)) / 100);
+            return (
+              <mesh key={`global-slide-${idx}`} position={[x, plinthH / 100 + h / 2, z]} material={mats.door} castShadow receiveShadow>
+                <boxGeometry args={[panelW, h, 0.014]} />
+              </mesh>
+            );
+          })}
+        </group>
+      )}
+
       {modules.map((mod, i) => (
         <CabinetModule3D
           key={mod.id}
@@ -637,6 +659,7 @@ function CabinetGroup({ modules, cabinetW, cabinetH, cabinetD, plinthH, thicknes
           mats={mats}
           isFirst={i === 0}
           isLast={i === modules.length - 1}
+          hideFrontDoors={Boolean(globalSlidingDoors?.count > 0)}
         />
       ))}
     </group>
@@ -751,6 +774,7 @@ function Scene({ cabinet, modules }) {
           plinthH={PL}
           thickness={TH}
           mats={mats}
+          globalSlidingDoors={cabinet?.globalSlidingDoors || null}
         />
       </group>
 

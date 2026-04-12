@@ -98,6 +98,7 @@ function computeMRects(facadeModules, joints, thPx, drawW, drawH, mL, mT, plPx) 
 function FacadeRealisteSVG({
   svgW, svgH, cabW, cabH, plinth, thick,
   facadeModules, facadeItems, joints,
+  globalSliding,
   onFacadePointerDown,
   onItemPointerDown,
   onItemErase,
@@ -304,6 +305,16 @@ function FacadeRealisteSVG({
       <line x1={mL+drawW+18} y1={mT+drawH} x2={mL+drawW+30} y2={mT+drawH} stroke={DIM_COLOR} strokeWidth="1.5"/>
       <text x={mL+drawW+40} y={mT+drawH/2} textAnchor="middle" fill={DIM_COLOR} fontSize="13" fontWeight="700"
         transform={`rotate(90 ${mL+drawW+40} ${mT+drawH/2})`}>{cabH} cm</text>
+
+      {globalSliding?.enabled && (
+        <g>
+          <line x1={mL+4} y1={mT+10} x2={mL+drawW-4} y2={mT+10} stroke="#38bdf8" strokeWidth="2" />
+          <line x1={mL+4} y1={mT+innerH-10} x2={mL+drawW-4} y2={mT+innerH-10} stroke="#38bdf8" strokeWidth="2" />
+          <text x={mL + drawW/2} y={mT + 24} textAnchor="middle" fill="#0ea5e9" fontSize="11" fontWeight="700">
+            {globalSliding.count} vantaux coulissants · H {globalSliding.heightCm} cm
+          </text>
+        </g>
+      )}
     </g>
   );
 }
@@ -389,6 +400,11 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
   });
   const [selectedModuleIdx, setSelectedModuleIdx] = useState(0);
   const [moduleDetails, setModuleDetails] = useState(() => savedState?.moduleDetails || []);
+  const [globalSliding, setGlobalSliding] = useState(() => savedState?.globalSliding || {
+    enabled: false,
+    count: 2,
+    heightCm: Math.max(80, toNum(initialCab.height, 240) - toNum(initialCab.plinth, 0)),
+  });
 
   const [widthInputs, setWidthInputs] = useState(
     () => (savedState?.facadeModules || normalizeModulesFromResult(initialResult, toNum(initialCab.width, 200)))
@@ -462,6 +478,11 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     const newModules = normalizeModulesFromResult(initialResult, toNum(cab.width, 200));
     setFacadeModules(newModules);
     setModuleDetails(newModules.map((m) => defaultModuleDetail(m.drawers || 0)));
+    setGlobalSliding({
+      enabled: false,
+      count: 2,
+      heightCm: Math.max(80, toNum(cab.height, 240) - toNum(cab.plinth, 0)),
+    });
     setFacadeItems(normalizeItemsFromResult(initialResult));
     setJoints(Array(Math.max(0, newModules.length - 1)).fill(true));
     didAutoSwitchRef.current = false;
@@ -475,6 +496,12 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     const interiorH = Math.max(1, h - pl);
     return {
       width: w, height: h, plinth: pl,
+      globalSlidingDoors: globalSliding.enabled
+        ? {
+            count: Math.max(2, Math.min(4, parseInt(globalSliding.count, 10) || 2)),
+            heightCm: Math.max(40, toNum(globalSliding.heightCm, h - pl)),
+          }
+        : null,
       modules: facadeModules.map((m, i) => {
         const details = {
           ...defaultModuleDetail(m.drawers || 0),
@@ -511,18 +538,19 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
         };
       }),
     };
-  }, [cabinetDims, facadeModules, facadeItems, moduleDetails]);
+  }, [cabinetDims, facadeModules, facadeItems, moduleDetails, globalSliding]);
 
   const saveToStorage = useCallback(() => {
     const payload = {
       fingerprint: sketchFingerprint,
       state: {
         elements, cabinetDims, facadeModules, facadeItems, moduleDetails, generalNotes, joints,
+        globalSliding,
       },
     };
     localStorage.setItem(LS_SKETCH_KEY, JSON.stringify(payload));
     if (onDraftChangeRef.current) onDraftChangeRef.current(payload);
-  }, [elements, cabinetDims, facadeModules, facadeItems, moduleDetails, generalNotes, joints, sketchFingerprint]);
+  }, [elements, cabinetDims, facadeModules, facadeItems, moduleDetails, generalNotes, joints, globalSliding, sketchFingerprint]);
 
   useEffect(() => { saveToStorage(); }, [saveToStorage]);
   const handleSave = saveToStorage;
@@ -709,10 +737,13 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     if (dims.length > 0) { ctx += 'COTES :\n'; dims.forEach(d => { if(d.label) ctx += `  ${d.label} cm\n`; }); }
     if (notes.length > 0) { ctx += 'NOTES :\n'; notes.forEach((n,i) => ctx += `  ${i+1}. "${n.text}"\n`); }
     if (generalNotes.trim()) ctx += `NOTES GÉNÉRALES : ${generalNotes.trim()}\n`;
+    if (globalSliding.enabled) {
+      ctx += `PORTES COULISSANTES GLOBALES: oui (vantaux=${globalSliding.count}, hauteur=${globalSliding.heightCm} cm)\n`;
+    }
     ctx += `\nCOTES MEUBLE: L=${cabinetDims.width} H=${cabinetDims.height} plinthe=${cabinetDims.plinth} cm\n`;
     ctx += `INSTRUCTION: Tiens compte des doubles montants pour les largeurs nettes.`;
     return ctx;
-  }, [elements, dimensionsFromWizard, cabinetDims, thickness, joints, totalJointsWidth, totalInteriorWidth, facadeModules, facadeItems, moduleDetails, generalNotes]);
+  }, [elements, dimensionsFromWizard, cabinetDims, thickness, joints, totalJointsWidth, totalInteriorWidth, facadeModules, facadeItems, moduleDetails, generalNotes, globalSliding]);
 
   const handleRelancer = useCallback(async () => {
     setLoading(true);
@@ -844,6 +875,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
           facadeModules={facadeModules}
           facadeItems={facadeItems}
           joints={joints}
+          globalSliding={globalSliding}
           onFacadePointerDown={() => {}}
           onItemPointerDown={() => {}}
           onItemErase={() => {}}
@@ -947,6 +979,39 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
 
       {facadeModules.length > 0 && (
         <div className="bg-slate-900/95 border-b border-slate-700 px-3 py-2 flex flex-wrap items-center gap-3 text-xs">
+          <span className="text-cyan-300 font-bold">🚪↔️ Coulissantes meuble:</span>
+          <label className="flex items-center gap-1 text-slate-200">
+            <input
+              type="checkbox"
+              checked={globalSliding.enabled}
+              onChange={(e) => setGlobalSliding((v) => ({ ...v, enabled: e.target.checked }))}
+            />
+            Activer
+          </label>
+          {globalSliding.enabled && (
+            <>
+              <label className="text-slate-300">Vantaux
+                <input
+                  type="number"
+                  min="2"
+                  max="4"
+                  value={globalSliding.count}
+                  onChange={(e) => setGlobalSliding((v) => ({ ...v, count: Math.max(2, Math.min(4, toNum(e.target.value, 2))) }))}
+                  className="w-12 ml-1 px-1 py-0.5 bg-slate-800 border border-slate-600 rounded"
+                />
+              </label>
+              <label className="text-slate-300">H(cm)
+                <input
+                  type="number"
+                  min="40"
+                  value={globalSliding.heightCm}
+                  onChange={(e) => setGlobalSliding((v) => ({ ...v, heightCm: Math.max(40, toNum(e.target.value, 180)) }))}
+                  className="w-14 ml-1 px-1 py-0.5 bg-slate-800 border border-slate-600 rounded"
+                />
+              </label>
+            </>
+          )}
+
           <span className="text-amber-300 font-bold">🧩 Détail menuiserie:</span>
           <div className="flex items-center gap-1">
             {facadeModules.map((_, i) => (
@@ -1020,7 +1085,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
                       if (i !== selectedModuleIdx) return d;
                       const curr = Array.isArray(d.drawerHeights) ? d.drawerHeights : [];
                       const next = Array.from({ length: facadeModules[selectedModuleIdx]?.drawers || 0 }, (_, idx) => Math.max(5, toNum(curr[idx], 24)));
-                      next[di] = Math.max(5, toNum(e.target.value, 24));
+                      next[di] = toNum(e.target.value, next[di] ?? 24);
                       return { ...d, drawerHeights: next };
                     }))}
                     className="w-14 ml-1 px-1 py-0.5 bg-slate-800 border border-slate-600 rounded"
@@ -1051,6 +1116,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
               facadeModules={facadeModules}
               facadeItems={facadeItems}
               joints={joints}
+              globalSliding={globalSliding}
               onFacadePointerDown={handleFacadePointerDown}
               onItemPointerDown={handleItemPointerDown}
               onItemErase={handleItemErase}

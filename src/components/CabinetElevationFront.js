@@ -99,6 +99,7 @@ export default function CabinetElevationFront({ cabinet, name = 'Meuble' }) {
   const W  = toNum(cabinet.width, 0);
   const H  = toNum(cabinet.height, 0);
   const PL = Math.max(0, toNum(cabinet.plinth, 0));
+  const globalSliding = cabinet?.globalSlidingDoors || null;
 
   // ── Layout SVG ──
   const PAD    = 60;   // marges
@@ -174,6 +175,16 @@ export default function CabinetElevationFront({ cabinet, name = 'Meuble' }) {
 
         {/* Panneau dessus */}
         <rect x={ox} y={oy} width={DRAW_W} height={10} fill="#e5e7eb" stroke="#374151" strokeWidth={0.5} />
+
+        {globalSliding && (
+          <g>
+            <line x1={ox + 6} y1={oy + 8} x2={ox + DRAW_W - 6} y2={oy + 8} stroke="#3b82f6" strokeWidth={2} />
+            <line x1={ox + 6} y1={oy + INNER_H - 8} x2={ox + DRAW_W - 6} y2={oy + INNER_H - 8} stroke="#3b82f6" strokeWidth={2} />
+            <text x={ox + DRAW_W / 2} y={oy + 24} textAnchor="middle" fontSize={11} fontWeight={700} fill="#2563eb">
+              {globalSliding.count || 2} vantaux coulissants · H {globalSliding.heightCm || (H - PL)} cm
+            </text>
+          </g>
+        )}
 
         {/* ── Modules ── */}
         {moduleRects.map((m) => {
