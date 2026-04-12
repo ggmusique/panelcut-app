@@ -265,7 +265,7 @@ export default function App() {
         width: m.width,
         drawers: m.drawers,
         rods: m.rods?.length,
-        shelves: m.shelves?.length || m.shelves,
+        shelves: Array.isArray(m.shelves) ? m.shelves.length : (m.shelves ?? null),
       }))
     );
     setProject(p => ({ ...p, pieces, cabinet, scanResult: newScanResult }));

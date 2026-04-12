@@ -337,9 +337,9 @@ export default function Results({ t, results, project }) {
             ) : (
               <div className="flex flex-col items-center justify-center py-16 gap-4 text-center">
                 <div className="text-5xl">📐</div>
-                <p className="text-white font-bold text-lg">Vue 3D non disponible</p>
+                <p className="text-white font-bold text-lg">Vue 3D client non disponible</p>
                 <p className="text-sm text-slate-400 max-w-xs">
-                  La vue 3D est générée automatiquement depuis un scan IA.
+                  La vue 3D client est générée automatiquement depuis un scan IA.
                   Lancez un nouveau projet avec Scan IA pour obtenir la vue réaliste.
                 </p>
               </div>
