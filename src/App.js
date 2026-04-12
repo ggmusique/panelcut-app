@@ -366,6 +366,23 @@ export default function App() {
           onDraftChange={(draft) => setProject(p => ({ ...p, sketchDraft: draft }))}
           onComplete={handleRefinementComplete}
           onCancel={() => setScreen(SCREENS.PIECES)}
+          onSave={async (currentCabinet) => {
+            const updatedProject = {
+              ...project,
+              cabinet: currentCabinet || project.cabinet,
+              sketchDraft: project.sketchDraft,
+            };
+            setProject(updatedProject);
+            await new Promise(r => setTimeout(r, 50));
+            const { data, planError } = await saveProject(updatedProject, results);
+            if (data?.id && !project.supabaseId) {
+              setProject(prev => ({ ...prev, supabaseId: data.id }));
+            }
+            if (!planError) {
+              setSaveMsg('OK');
+              setTimeout(() => setSaveMsg(''), 2000);
+            }
+          }}
         />
       )}
 
