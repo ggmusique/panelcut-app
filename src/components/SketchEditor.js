@@ -284,13 +284,15 @@ function FacadeRealisteSVG({
   );
 }
 
-export default function SketchEditor({ image, scanImage, initialResult, apiKey, onComplete, onCancel }) {
+export default function SketchEditor({ image, scanImage, initialResult, apiKey, draft, onDraftChange, onComplete, onCancel }) {
   const rawImg             = image || scanImage || null;
   const svgRef             = useRef(null);
   const facadeSvgRef       = useRef(null);
   const facadeContainerRef = useRef(null);
+  const onDraftChangeRef   = useRef(onDraftChange);
   const drag               = useRef({ on: false, startX: 0, startY: 0, elStartX: 0, elStartY: 0 });
   const facadeDrag         = useRef({ active: false, itemId: null, startY: 0, startYRatio: 0, modIdx: -1 });
+  useEffect(() => { onDraftChangeRef.current = onDraftChange; }, [onDraftChange]);
 
   const [facadePng, setFacadePng] = useState(null);
   const imgSrc               = facadePng || rawImg;
@@ -324,6 +326,10 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
   );
   const savedState = (() => {
     try {
+      const draftFingerprint = draft?.fingerprint || null;
+      const draftState = draft?.state || draft || null;
+      if (draftFingerprint && draftFingerprint === sketchFingerprint && draftState) return draftState;
+
       const r = localStorage.getItem(LS_SKETCH_KEY);
       if (!r) return null;
       const parsed = JSON.parse(r);
@@ -439,12 +445,14 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
   }, [cabinetDims, facadeModules, facadeItems]);
 
   const saveToStorage = useCallback(() => {
-    localStorage.setItem(LS_SKETCH_KEY, JSON.stringify({
+    const payload = {
       fingerprint: sketchFingerprint,
       state: {
         elements, cabinetDims, facadeModules, facadeItems, generalNotes, joints,
       },
-    }));
+    };
+    localStorage.setItem(LS_SKETCH_KEY, JSON.stringify(payload));
+    if (onDraftChangeRef.current) onDraftChangeRef.current(payload);
   }, [elements, cabinetDims, facadeModules, facadeItems, generalNotes, joints, sketchFingerprint]);
 
   useEffect(() => { saveToStorage(); }, [saveToStorage]);

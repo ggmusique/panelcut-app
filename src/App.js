@@ -33,6 +33,7 @@ const DEFAULT_PROJECT = {
   kerf: 3, tolerance: 10, pricePerPanel: 39.8,
   pieces: [], furniture: [], supabaseId: null, cabinet: null,
   scanImage: null, scanResult: null,
+  sketchDraft: null,
 };
 
 const APP_VERSION = process.env.REACT_APP_VERSION || '1.0.0';
@@ -194,6 +195,7 @@ export default function App() {
       cabinet,
       scanImage:  scanImageBase64 || null,
       scanResult: scanResult,
+      sketchDraft: null,
     }));
     setResults(null);
     setScreen(SCREENS.SKETCH);
@@ -271,7 +273,7 @@ export default function App() {
         shelves: Array.isArray(m.shelves) ? m.shelves.length : (m.shelves ?? null),
       }))
     );
-    setProject(p => ({ ...p, pieces, cabinet, scanResult: newScanResult }));
+    setProject(p => ({ ...p, pieces, cabinet, scanResult: newScanResult, sketchDraft: null }));
     setScreen(SCREENS.PIECES);
   };
 
@@ -326,6 +328,8 @@ export default function App() {
           image={project.scanImage}
           initialResult={project.scanResult}
           apiKey={apiKey}
+          draft={project.sketchDraft}
+          onDraftChange={(draft) => setProject(p => ({ ...p, sketchDraft: draft }))}
           onComplete={handleRefinementComplete}
           onCancel={() => setScreen(SCREENS.PIECES)}
         />

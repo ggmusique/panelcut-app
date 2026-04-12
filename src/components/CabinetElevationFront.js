@@ -178,6 +178,9 @@ export default function CabinetElevationFront({ cabinet, name = 'Meuble' }) {
           const mx  = m.x;
           const mw  = m.w;
           const mid = mx + mw / 2;
+          const drawerZoneRatio = Math.min(0.5, Math.max(0, m.drawers * 0.15));
+          const drawerZonePx = INNER_H * drawerZoneRatio;
+          const drawerZoneTop = oy + INNER_H - drawerZonePx;
 
           // ─ Séparateur vertical
           const sep = (
@@ -201,7 +204,7 @@ export default function CabinetElevationFront({ cabinet, name = 'Meuble' }) {
           // ─ Tablettes
           const shelfElems = m.shelfPositions.length > 0
             ? m.shelfPositions.map((yCm, si) => {
-                const syPx = cmToY(yCm);
+                const syPx = Math.min(cmToY(yCm), drawerZoneTop - 3);
                 return (
                   <rect key={`shelf-${m.id}-${si}`}
                     x={mx + 4} y={syPx - 4}
@@ -212,7 +215,7 @@ export default function CabinetElevationFront({ cabinet, name = 'Meuble' }) {
               })
             : m.shelves > 0
               ? Array.from({ length: m.shelves }, (_, si) => {
-                  const syPx = oy + ((si + 1) / (m.shelves + 1)) * INNER_H;
+                  const syPx = Math.min(oy + ((si + 1) / (m.shelves + 1)) * INNER_H, drawerZoneTop - 3);
                   return (
                     <rect key={`shelf-${m.id}-${si}`}
                       x={mx + 4} y={syPx - 2}
@@ -243,9 +246,8 @@ export default function CabinetElevationFront({ cabinet, name = 'Meuble' }) {
               })
             : m.drawers > 0
               ? Array.from({ length: m.drawers }, (_, di) => {
-                  const totalH = INNER_H * 0.38;
-                  const dh     = totalH / m.drawers;
-                  const dyTop  = oy + INNER_H - totalH + di * dh;
+                  const dh     = drawerZonePx / m.drawers;
+                  const dyTop  = drawerZoneTop + di * dh;
                   return (
                     <g key={`drawer-${m.id}-${di}`}>
                       <rect x={mx + 6} y={dyTop + 2} width={mw - 12} height={dh - 4}
