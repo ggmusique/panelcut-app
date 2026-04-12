@@ -79,7 +79,7 @@ export async function saveProject(project, results) {
     updated_at:   new Date().toISOString(),
   };
 
-  const buildPlanPayload = (projectId, forcedType = null) => {
+  const buildPlanPayload = (projectId, forcedType = '2d') => {
     const payload = {
       project_id: projectId,
       user_id: user.id,
@@ -101,7 +101,7 @@ export async function saveProject(project, results) {
         updated_at: new Date().toISOString(),
       },
     };
-    if (forcedType) payload.type = forcedType;
+    payload.type = forcedType || '2d';
     return payload;
   };
 
@@ -118,7 +118,7 @@ export async function saveProject(project, results) {
     if (fetchErr) return { error: fetchErr };
 
     if (existing?.id) {
-      const planPayload = buildPlanPayload(projectId, existing.type || null);
+      const planPayload = buildPlanPayload(projectId, existing.type || '2d');
       const { data, error } = await supabase
         .from('plans')
         .update(planPayload)
@@ -137,7 +137,7 @@ export async function saveProject(project, results) {
     if (!error) return { data, error };
     // Fallback pour contraintes CHECK sur "type"
     if (error?.code === '23514') {
-      const fallbackTypes = ['svg', 'facade_svg', 'plan_svg', 'plan'];
+      const fallbackTypes = ['2d', 'scan', '3d'];
       for (const t of fallbackTypes) {
         const { data: d2, error: e2 } = await supabase
           .from('plans')
