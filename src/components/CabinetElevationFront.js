@@ -311,11 +311,11 @@ export default function CabinetElevationFront({ cabinet, name = 'Meuble' }) {
             <g key={`module-${m.id}`}>
               {sep}
               {rodElems}
-                {shelfElems}
-                {drawerElems}
-                {slidingElems}
-                {numElem}
-                {coteElem}
+              {drawerElems}
+              {shelfElems}
+              {slidingElems}
+              {numElem}
+              {coteElem}
             </g>
           );
         })}

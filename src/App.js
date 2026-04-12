@@ -318,7 +318,7 @@ export default function App() {
 
   const showBack = [SCREENS.PIECES, SCREENS.RESULTS, SCREENS.FACADE, SCREENS.FACADE_REALISTIC].includes(screen);
   const showSave = user && [SCREENS.PIECES, SCREENS.RESULTS].includes(screen);
-  const canAnnotate = screen === SCREENS.PIECES && !!project.scanImage;
+  const canAnnotate = screen === SCREENS.PIECES && !!(project.scanImage || project.scanResult || project.sketchDraft);
 
   let headerTitle = 'PanelCut Pro', headerSubtitle = '', steps = [];
   if (screen === SCREENS.PIECES)  { headerTitle = project.name || 'Nouveau projet'; steps = [{ label: 'Panneau', active: true }, { label: 'Pièces', active: true }, { label: 'Résultats', active: false }]; }

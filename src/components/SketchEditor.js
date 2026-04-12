@@ -30,7 +30,7 @@ const defaultDrawerParts = () => ({ front: true, back: true, left: true, right: 
 const defaultModuleDetail = (drawerCount = 0) => ({
   hasBack: true,
   slidingDoors: 0,
-  drawerHeights: Array(Math.max(0, drawerCount)).fill(24),
+  drawerHeights: Array(Math.max(0, drawerCount)).fill(18),
   drawerParts: defaultDrawerParts(),
 });
 
@@ -424,7 +424,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
         drawerHeights: (() => {
           const count = Math.max(0, facadeModules[i]?.drawers || 0);
           const base = Array.isArray(prev[i]?.drawerHeights) ? prev[i].drawerHeights : [];
-          return Array.from({ length: count }, (_, di) => Math.max(5, toNum(base[di], 24)));
+          return Array.from({ length: count }, (_, di) => Math.max(5, toNum(base[di], 18)));
         })(),
         drawerParts: {
           ...defaultDrawerParts(),
@@ -512,7 +512,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
           },
         };
         const drawerHeights = Array.isArray(details.drawerHeights)
-          ? details.drawerHeights.map((v) => Math.max(5, toNum(v, 24)))
+          ? details.drawerHeights.map((v) => Math.max(5, toNum(v, 18)))
           : [];
         let drawerY = 0;
         const drawerItems = drawerHeights.map((heightCm) => {
@@ -729,7 +729,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
       const dp = { ...defaultDrawerParts(), ...(det.drawerParts || {}) };
       ctx += `  M${i+1}: L=${m.width.toFixed(2)}cm  tiroirs=${nbDrawers}  tablettes=${nbShelf}  tringles=${nbRod}  portes=${nbDoors}  coulissantes=${det.slidingDoors || 0}  fond=${det.hasBack ? 'oui' : 'non'}\n`;
       if (nbDrawers > 0) {
-        const hList = Array.isArray(det.drawerHeights) ? det.drawerHeights.map(v => Math.max(5, toNum(v, 24))) : [];
+        const hList = Array.isArray(det.drawerHeights) ? det.drawerHeights.map(v => Math.max(5, toNum(v, 18))) : [];
         ctx += `      hauteurs_tiroirs_cm=${hList.join(',') || 'auto'}\n`;
         ctx += `      tiroir: facade=${dp.front ? 'oui' : 'non'} arriere=${dp.back ? 'oui' : 'non'} coteG=${dp.left ? 'oui' : 'non'} coteD=${dp.right ? 'oui' : 'non'} fond=${dp.bottom ? 'oui' : 'non'}\n`;
       }
@@ -1080,12 +1080,12 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
                     type="number"
                     min="5"
                     step="0.5"
-                    value={moduleDetails[selectedModuleIdx]?.drawerHeights?.[di] ?? 24}
+                    value={moduleDetails[selectedModuleIdx]?.drawerHeights?.[di] ?? 18}
                     onChange={(e) => setModuleDetails(prev => prev.map((d, i) => {
                       if (i !== selectedModuleIdx) return d;
                       const curr = Array.isArray(d.drawerHeights) ? d.drawerHeights : [];
-                      const next = Array.from({ length: facadeModules[selectedModuleIdx]?.drawers || 0 }, (_, idx) => Math.max(5, toNum(curr[idx], 24)));
-                      next[di] = toNum(e.target.value, next[di] ?? 24);
+                      const next = Array.from({ length: facadeModules[selectedModuleIdx]?.drawers || 0 }, (_, idx) => Math.max(5, toNum(curr[idx], 18)));
+                      next[di] = toNum(e.target.value, next[di] ?? 18);
                       return { ...d, drawerHeights: next };
                     }))}
                     className="w-14 ml-1 px-1 py-0.5 bg-slate-800 border border-slate-600 rounded"
