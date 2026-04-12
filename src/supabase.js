@@ -79,6 +79,61 @@ export async function saveProject(project, results) {
     updated_at:   new Date().toISOString(),
   };
 
+  const buildPlanPayload = (projectId) => ({
+    project_id: projectId,
+    user_id: user.id,
+    title: `${project.name || 'Sans titre'} — Plan façade`,
+    type: 'facade',
+    svg_data: project?.sketchDraft?.state
+      ? JSON.stringify({
+          cabinetDims: project.sketchDraft.state.cabinetDims || null,
+          facadeModules: project.sketchDraft.state.facadeModules || [],
+          facadeItems: project.sketchDraft.state.facadeItems || [],
+          moduleDetails: project.sketchDraft.state.moduleDetails || [],
+        })
+      : null,
+    metadata: {
+      project_name: project.name || null,
+      devis_num: project.devisNum || null,
+      panel: project.panel || null,
+      cabinet: project.cabinet || null,
+      has_draft: Boolean(project?.sketchDraft?.state),
+      updated_at: new Date().toISOString(),
+    },
+  });
+
+  const syncPlan = async (projectId) => {
+    const planPayload = buildPlanPayload(projectId);
+    const { data: existing, error: fetchErr } = await supabase
+      .from('plans')
+      .select('id')
+      .eq('project_id', projectId)
+      .eq('user_id', user.id)
+      .eq('type', 'facade')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (fetchErr) return { error: fetchErr };
+
+    if (existing?.id) {
+      const { data, error } = await supabase
+        .from('plans')
+        .update(planPayload)
+        .eq('id', existing.id)
+        .eq('user_id', user.id)
+        .select('id, project_id, type, created_at')
+        .single();
+      return { data, error };
+    }
+
+    const { data, error } = await supabase
+      .from('plans')
+      .insert(planPayload)
+      .select('id, project_id, type, created_at')
+      .single();
+    return { data, error };
+  };
+
   // Upsert si le projet a déjà un id Supabase
   if (project.supabaseId) {
     const { data, error } = await supabase
@@ -88,14 +143,18 @@ export async function saveProject(project, results) {
       .eq('user_id', user.id)
       .select()
       .single();
-    return { data, error };
+    if (error || !data?.id) return { data, error };
+    const { error: planError } = await syncPlan(data.id);
+    return { data, error, planError };
   } else {
     const { data, error } = await supabase
       .from('projects')
       .insert(payload)
       .select()
       .single();
-    return { data, error };
+    if (error || !data?.id) return { data, error };
+    const { error: planError } = await syncPlan(data.id);
+    return { data, error, planError };
   }
 }
 
@@ -130,6 +189,12 @@ export async function loadProject(id) {
 export async function deleteProject(id) {
   const user = await getUser();
   if (!user) return { error: 'not_authenticated' };
+
+  await supabase
+    .from('plans')
+    .delete()
+    .eq('project_id', id)
+    .eq('user_id', user.id);
 
   const { error } = await supabase
     .from('projects')
