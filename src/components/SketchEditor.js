@@ -60,32 +60,13 @@ const normalizeItemsFromResult = (result) => {
   const items   = [];
   raw.forEach((m, modIdx) => {
     if (!m || typeof m !== 'object') return;
-    if (Array.isArray(m.shelves) && m.shelves.length > 0) {
-      const shelfYs = m.shelves
-        .map(s => (typeof s === 'object' && s !== null ? toNum(s.y, null) : toNum(s, null)))
-        .filter(y => y !== null && y >= 0);
-      const interiorH = Math.max(1, toNum(cabinet.height, 240) - toNum(cabinet.plinth, 0));
-      shelfYs.forEach((y) => {
-        items.push({ id: uid(), type: 'shelf', modIdx, yRatio: clamp(1 - (y / interiorH), 0.02, 0.98) });
-      });
-    } else {
-      const nbSh = parseInt(m.shelves ?? m.nb_shelves ?? 0, 10) || 0;
-      for (let si = 0; si < nbSh; si++) {
-        items.push({ id: uid(), type: 'shelf', modIdx, yRatio: (si + 1) / (nbSh + 1) });
-      }
+    const nbSh = parseInt(m.shelves ?? m.nb_shelves ?? 0, 10) || 0;
+    for (let si = 0; si < nbSh; si++) {
+      items.push({ id: uid(), type: 'shelf', modIdx, yRatio: (si + 1) / (nbSh + 1) });
     }
-
-    if (Array.isArray(m.rods) && m.rods.length > 0) {
-      const rodYs = m.rods
-        .map(r => (typeof r === 'object' && r !== null ? toNum(r.y, null) : toNum(r, null)))
-        .filter(y => y !== null && y >= 0);
-      const interiorH = Math.max(1, toNum(cabinet.height, 240) - toNum(cabinet.plinth, 0));
-      rodYs.forEach((y) => {
-        items.push({ id: uid(), type: 'rod', modIdx, yRatio: clamp(1 - (y / interiorH), 0.02, 0.98) });
-      });
-    } else {
-      const hasRod = Boolean(m.rod ?? m.tringle ?? m.hanging ?? m.penderie ?? false);
-      if (hasRod) items.push({ id: uid(), type: 'rod', modIdx, yRatio: 0.32 });
+    const hasRod = Boolean(m.rod ?? m.tringle ?? m.hanging ?? m.penderie ?? false);
+    if (hasRod) {
+      items.push({ id: uid(), type: 'rod', modIdx, yRatio: 0.32 });
     }
   });
   return items;
@@ -116,7 +97,7 @@ function computeMRects(facadeModules, joints, thPx, drawW, drawH, mL, mT, plPx) 
 
 function FacadeRealisteSVG({
   svgW, svgH, cabW, cabH, plinth, thick,
-  facadeModules, facadeItems, joints, moduleDetails,
+  facadeModules, facadeItems, joints,
   globalSliding,
   onFacadePointerDown,
   onItemPointerDown,
@@ -199,34 +180,22 @@ function FacadeRealisteSVG({
 
       {mRects.map(({ x, w, m, i, intTop, intBottom, intH: iH }) => {
         const nbD     = m.drawers || 0;
-        const customHeights = Array.isArray(moduleDetails?.[i]?.drawerHeights)
-          ? moduleDetails[i].drawerHeights.slice(0, nbD).map(v => Math.max(5, toNum(v, 18)))
-          : [];
-        const interiorCm = Math.max(1, cabH - plinth);
-        const cmToPx = iH / interiorCm;
-        const customHeightsPx = customHeights.map(h => h * cmToPx);
-        const fallbackDrawerH = Math.min(iH * 0.12, 34);
-        const drawHeightsPx = customHeightsPx.length === nbD
-          ? customHeightsPx
-          : Array.from({ length: nbD }, () => fallbackDrawerH);
-        const drawPx  = drawHeightsPx.reduce((a, b) => a + b, 0);
-        const nbDoors = m.doors || 0;
-        const nbSliding = m.slidingDoors || 0;
+        const drawerH = Math.min(iH * 0.15, 46);
+        const drawPx  = nbD * drawerH;
+      const nbDoors = m.doors || 0;
+      const nbSliding = m.slidingDoors || 0;
 
-        let accDrawer = 0;
         const tiroirs = Array.from({ length: nbD }, (_, di) => {
-          const hPx = drawHeightsPx[di] || fallbackDrawerH;
-          const dy = intBottom - drawPx + accDrawer;
-          accDrawer += hPx;
+          const dy = intBottom - drawPx + di * drawerH;
           return (
             <g key={`dr-${i}-${di}`}
               onClick={e => { e.stopPropagation(); if (isErase) onModuleErase(i, 'drawer'); }}
               style={{ cursor: isErase ? 'pointer' : 'default' }}>
-              <rect x={x+2} y={dy+1} width={w-4} height={Math.max(hPx-2, 8)} fill="#f8f5ee" stroke={WOOD_STROKE} strokeWidth="1" rx="1"/>
+              <rect x={x+2} y={dy+1} width={w-4} height={drawerH-2} fill="#e8d9bc" stroke={WOOD_STROKE} strokeWidth="1" rx="1"/>
               <line x1={x+2} y1={dy+1} x2={x+w-2} y2={dy+1} stroke={WOOD_STROKE} strokeWidth="0.5"/>
-              <rect x={x+w/2-14} y={dy+hPx/2-3.5} width="28" height="7" fill="#9ca3af" stroke="#6b7280" strokeWidth="0.8" rx="3"/>
-              <ellipse cx={x+w/2} cy={dy+hPx/2} rx="3.5" ry="2.5" fill="#6b7280"/>
-              {isErase && <rect x={x+2} y={dy+1} width={w-4} height={Math.max(hPx-2,8)} fill="red" opacity="0.18" rx="1"/>}
+              <rect x={x+w/2-14} y={dy+drawerH/2-3.5} width="28" height="7" fill="#9ca3af" stroke="#6b7280" strokeWidth="0.8" rx="3"/>
+              <ellipse cx={x+w/2} cy={dy+drawerH/2} rx="3.5" ry="2.5" fill="#6b7280"/>
+              {isErase && <rect x={x+2} y={dy+1} width={w-4} height={drawerH-2} fill="red" opacity="0.18" rx="1"/>}
             </g>
           );
         });
@@ -906,7 +875,6 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
           facadeModules={facadeModules}
           facadeItems={facadeItems}
           joints={joints}
-          moduleDetails={moduleDetails}
           globalSliding={globalSliding}
           onFacadePointerDown={() => {}}
           onItemPointerDown={() => {}}
@@ -1148,7 +1116,6 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
               facadeModules={facadeModules}
               facadeItems={facadeItems}
               joints={joints}
-              moduleDetails={moduleDetails}
               globalSliding={globalSliding}
               onFacadePointerDown={handleFacadePointerDown}
               onItemPointerDown={handleItemPointerDown}
