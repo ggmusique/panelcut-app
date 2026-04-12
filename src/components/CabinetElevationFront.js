@@ -114,6 +114,10 @@ export default function CabinetElevationFront({ cabinet, name = 'Meuble' }) {
   const ox = PAD;
   const oy = PAD + 30; // origine Y du dessus du meuble
 
+  const TH_PX    = toNum(cabinet.thickness ?? 1.8, 1.8) * sy; // épaisseur panneau en px (axe y)
+  const iH       = INNER_H - 2 * TH_PX;                       // hauteur intérieure nette
+  const intBottom = oy + INNER_H - TH_PX;                     // bas de l'espace intérieur
+
   // Calcul positions X des modules
   let cursor = 0;
   const moduleRects = modules.map((m) => {
@@ -192,8 +196,8 @@ export default function CabinetElevationFront({ cabinet, name = 'Meuble' }) {
           const mw  = m.w;
           const mid = mx + mw / 2;
           const drawerZoneRatio = Math.min(0.5, Math.max(0, m.drawers * 0.15));
-          const drawerZonePx = INNER_H * drawerZoneRatio;
-          const drawerZoneTop = oy + INNER_H - drawerZonePx;
+          const drawerZonePx = iH * drawerZoneRatio;
+          const drawerZoneTop = intBottom - drawerZonePx;
 
           // ─ Séparateur vertical
           const sep = (
