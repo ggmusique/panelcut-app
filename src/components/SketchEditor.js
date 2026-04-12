@@ -686,7 +686,12 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
         <circle cx={el.x2} cy={el.y2} r="3" fill="#22d3ee"/>
         <rect x={(el.x1+el.x2)/2-24} y={(el.y1+el.y2)/2-14} width="48" height="18" rx="3"
           fill={el.label?'#0e7490':'#164e63'} stroke="#22d3ee" strokeWidth="1"
-          style={{cursor:'pointer'}} onClick={e=>{e.stopPropagation();setEditingDimId(el.id);}}/>
+          style={{cursor:'pointer'}}
+          onClick={e=>{
+            e.stopPropagation();
+            if (tool === 'erase') { eraseElement(el.id); return; }
+            setEditingDimId(el.id);
+          }}/>
         <text x={(el.x1+el.x2)/2} y={(el.y1+el.y2)/2-2} textAnchor="middle" fill="#22d3ee" fontSize="11" fontWeight="bold" pointerEvents="none">
           {el.label ? `${el.label} cm` : '? cm'}
         </text>

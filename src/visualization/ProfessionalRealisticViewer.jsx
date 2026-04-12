@@ -148,10 +148,27 @@ function createBumpCanvas(src) {
    ═══════════════════════════════════════════════════════════════ */
 
 function normalizeModules(cabinet) {
+  const cabinetHeight = Math.max(0, Number(cabinet?.height) || 0);
+  const plinthHeight = Math.max(0, Number(cabinet?.plinth) || 0);
+  const interiorH = Math.max(1, cabinetHeight - plinthHeight);
+
   const getCount = (value, fallback = 0) => {
     if (Array.isArray(value)) return value.length;
     const n = parseInt(value, 10);
     return Number.isFinite(n) ? Math.max(0, n) : fallback;
+  };
+
+  const normalizeYList = (value) => {
+    if (!Array.isArray(value)) return [];
+    return value
+      .map((v) => {
+        if (typeof v === 'number') return v;
+        if (v && typeof v === 'object') return Number(v.y);
+        return NaN;
+      })
+      .filter((n) => Number.isFinite(n))
+      .map((n) => Math.max(0, Math.min(interiorH, n)))
+      .sort((a, b) => b - a);
   };
 
   const hasRod = (moduleData) => {
@@ -169,14 +186,20 @@ function normalizeModules(cabinet) {
   const raw = Array.isArray(cabinet?.modules) ? cabinet.modules : [];
   const detailed = raw.filter(m => typeof m === 'object' && m !== null);
   if (detailed.length > 0) {
-    return detailed.map((m, i) => ({
-      id:      i + 1,
-      width:   Math.max(0, Number(m.width ?? m.w ?? m.largeur) || 0),
-      shelves: getCount(m.shelves, getCount(m.nb_shelves, 0)),
-      drawers: getCount(m.drawers, getCount(m.drawerItems, getCount(m.nb_drawers, 0))),
-      doors:   getCount(m.doors, getCount(m.nb_doors, 0)),
-      rod:     hasRod(m),
-    })).filter(m => m.width > 0);
+    return detailed.map((m, i) => {
+      const shelfYs = normalizeYList(m.shelves);
+      const rodYs = normalizeYList(m.rods);
+      return {
+        id:      i + 1,
+        width:   Math.max(0, Number(m.width ?? m.w ?? m.largeur) || 0),
+        shelves: shelfYs.length > 0 ? shelfYs.length : getCount(m.shelves, getCount(m.nb_shelves, 0)),
+        shelfYs,
+        drawers: getCount(m.drawers, getCount(m.drawerItems, getCount(m.nb_drawers, 0))),
+        doors:   getCount(m.doors, getCount(m.nb_doors, 0)),
+        rod:     rodYs.length > 0 || hasRod(m),
+        rodYs,
+      };
+    }).filter(m => m.width > 0);
   }
   const W  = Math.max(0, Number(cabinet?.width) || 0);
   const nb = Math.max(1, parseInt(cabinet?.nb_dividers ?? 4, 10) + 1);
@@ -380,11 +403,14 @@ function CabinetModule3D({ mod, x, cabinetH, cabinetD, plinthH, thickness, mats,
   const bodyH = H - PL;
 
   const shelves = useMemo(() => {
+    if (Array.isArray(mod.shelfYs) && mod.shelfYs.length > 0) {
+      return mod.shelfYs.map((yCm) => PL + yCm / 100);
+    }
     if (mod.shelves <= 0) return [];
     return Array.from({ length: mod.shelves }, (_, i) =>
       PL + ((i + 1) / (mod.shelves + 1)) * bodyH
     );
-  }, [mod.shelves, PL, bodyH]);
+  }, [mod.shelves, mod.shelfYs, PL, bodyH]);
 
   const drawers = useMemo(() => {
     if (mod.drawers <= 0) return [];
@@ -396,7 +422,12 @@ function CabinetModule3D({ mod, x, cabinetH, cabinetD, plinthH, thickness, mats,
     });
   }, [mod.drawers, PL, bodyH]);
 
-  const rodY = PL + bodyH * 0.78;
+  const rodYs = useMemo(() => {
+    if (Array.isArray(mod.rodYs) && mod.rodYs.length > 0) {
+      return mod.rodYs.map((yCm) => PL + yCm / 100);
+    }
+    return mod.rod ? [PL + bodyH * 0.78] : [];
+  }, [mod.rod, mod.rodYs, PL, bodyH]);
   const innerW = W - TH * 2;
 
   return (
@@ -453,20 +484,15 @@ function CabinetModule3D({ mod, x, cabinetH, cabinetD, plinthH, thickness, mats,
       ))}
 
       {/* Rod */}
-      {mod.rod && (
-        <group>
+      {rodYs.map((rodY, idx) => (
+        <group key={`rod-${idx}`}>
           <mesh position={[0, rodY, -D * 0.15]} rotation={[0, 0, Math.PI / 2]} material={mats.rod} castShadow>
             <cylinderGeometry args={[0.013, 0.013, innerW - 0.01, 16]} />
           </mesh>
-          {/* Rod brackets */}
           <RodBracket position={[-innerW / 2 + 0.01, rodY, -D * 0.15]} material={mats.rod} />
           <RodBracket position={[innerW / 2 - 0.01, rodY, -D * 0.15]} material={mats.rod} />
-          {/* Rod support shelf (small) */}
-          <mesh position={[0, rodY + 0.04, -0.005]} material={mats.interior} castShadow>
-            <boxGeometry args={[innerW - 0.004, TH * 0.7, D - 0.015]} />
-          </mesh>
         </group>
-      )}
+      ))}
 
       {/* Drawers */}
       {drawers.map((d, i) => (
@@ -507,6 +533,10 @@ function CabinetModule3D({ mod, x, cabinetH, cabinetD, plinthH, thickness, mats,
 function CabinetGroup({ modules, cabinetW, cabinetH, cabinetD, plinthH, thickness, mats }) {
   const totalW = cabinetW / 100;
   const offsetX = -totalW / 2;
+  const totalH = cabinetH / 100;
+  const plinth = plinthH / 100;
+  const bodyH = totalH - plinth;
+  const thickM = thickness / 100;
 
   const positions = useMemo(() => {
     let cursor = 0;
@@ -515,6 +545,16 @@ function CabinetGroup({ modules, cabinetW, cabinetH, cabinetD, plinthH, thicknes
 
   return (
     <group position={[0, 0, -cabinetD / 100 / 2]}>
+      {/* Fond global forcé pour garantir la lecture visuelle en 3D */}
+      <mesh
+        position={[0, plinth + bodyH / 2, -cabinetD / 100 / 2 + 0.004]}
+        material={mats.back}
+        castShadow
+        receiveShadow
+      >
+        <boxGeometry args={[Math.max(0.01, totalW - thickM), Math.max(0.01, bodyH), 0.008]} />
+      </mesh>
+
       {modules.map((mod, i) => (
         <CabinetModule3D
           key={mod.id}
