@@ -393,7 +393,10 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
   );
 
   const [facadeModules, setFacadeModules] = useState(() => {
-    if (savedState?.facadeModules) return savedState.facadeModules;
+    if (savedState?.facadeModules && savedState.facadeModules.length > 0)
+      return savedState.facadeModules;
+    if (draft?.state?.facadeModules && draft.state.facadeModules.length > 0)
+      return draft.state.facadeModules;
     return normalizeModulesFromResult(initialResult, toNum(initialCab.width, 200));
   });
   const [selectedModuleIdx, setSelectedModuleIdx] = useState(0);
@@ -439,7 +442,10 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
   };
 
   const [facadeItems, setFacadeItems] = useState(() => {
-    if (savedState?.facadeItems) return savedState.facadeItems;
+    if (savedState?.facadeItems && savedState.facadeItems.length > 0)
+      return savedState.facadeItems;
+    if (draft?.state?.facadeItems && draft.state.facadeItems.length > 0)
+      return draft.state.facadeItems;
     return normalizeItemsFromResult(initialResult);
   });
 
@@ -551,6 +557,24 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
   }, [elements, cabinetDims, facadeModules, facadeItems, moduleDetails, generalNotes, joints, globalSliding, sketchFingerprint]);
 
   useEffect(() => { saveToStorage(); }, [saveToStorage]);
+  useEffect(() => {
+    if (!onDraftChangeRef.current) return;
+    const payload = {
+      fingerprint: sketchFingerprint,
+      state: {
+        elements,
+        cabinetDims,
+        facadeModules,
+        facadeItems,
+        moduleDetails,
+        generalNotes,
+        joints,
+        globalSliding,
+      },
+    };
+    onDraftChangeRef.current(payload);
+  }, [facadeItems, facadeModules, moduleDetails, globalSliding, joints,
+      cabinetDims, elements, generalNotes, sketchFingerprint]);
   const handleSave = saveToStorage;
 
   const didAutoSwitchRef = useRef(false);
