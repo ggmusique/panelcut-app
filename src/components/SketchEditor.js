@@ -297,11 +297,17 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
   const initialCab           = initialResult?.cabinet || {};
   const dimensionsFromWizard = Boolean(initialResult?._dimensionsFromWizard);
 
-  // ─── FIX v3.7 : on ignore le cache localStorage si initialResult est frais ──
-  // Le cache est vidé par App.js à chaque nouveau scan (handleScanComplete).
-  // Ici on ne lit le cache que s'il existe ET qu'il n'y a pas de résultat frais
-  // provenant d'un nouveau scan (détecté par l'absence de cache = removeItem fait).
+  // ─── FIX v3.8 : ignorer le cache localStorage si un scan frais est fourni ───
+  // Sans ce garde-fou, l'éditeur peut réafficher le projet précédent
+  // après un nouveau scan (bug de "projet d'avant").
+  const hasFreshScanResult = Boolean(
+    initialResult && (
+      initialResult.cabinet ||
+      (Array.isArray(initialResult.pieces) && initialResult.pieces.length > 0)
+    )
+  );
   const savedState = (() => {
+    if (hasFreshScanResult) return null;
     try {
       const r = localStorage.getItem(LS_SKETCH_KEY);
       return r ? JSON.parse(r) : null;

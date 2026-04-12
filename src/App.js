@@ -41,6 +41,7 @@ const GIT_HASH   = process.env.REACT_APP_GIT_HASH  || 'dev';
 const LS_SCREEN  = 'pc_screen';
 const LS_PROJECT = 'pc_project';
 const LS_RESULTS = 'pc_results';
+const LS_SKETCH  = 'pc_sketch_editor';
 
 function lsGet(key, fallback) {
   try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
@@ -50,7 +51,7 @@ function lsSet(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
 }
 function lsClear() {
-  [LS_SCREEN, LS_PROJECT, LS_RESULTS].forEach(k => localStorage.removeItem(k));
+  [LS_SCREEN, LS_PROJECT, LS_RESULTS, LS_SKETCH].forEach(k => localStorage.removeItem(k));
 }
 
 export default function App() {
@@ -122,6 +123,7 @@ export default function App() {
   }, []);
 
   const startNew = (devisNum = '') => {
+    localStorage.removeItem(LS_SKETCH);
     setProject({ ...DEFAULT_PROJECT, devisNum });
     setResults(null);
     setScreen(SCREENS.WIZARD);
@@ -171,6 +173,7 @@ export default function App() {
   };
 
   const handleScanComplete = (scanResult, scanImageBase64) => {
+    localStorage.removeItem(LS_SKETCH);
     const pieces = (scanResult.pieces || []).map(p => {
       const name  = String(p.name || 'Pièce').trim();
       const rod   = p.isRod === true || p.type === 'rod' || /tringle/i.test(name);
