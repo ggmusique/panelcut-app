@@ -638,8 +638,27 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     const yRatio = clamp((y - mr.intTop) / mr.intH, 0.02, 0.98);
     const newItem = { id: uid(), type: tool, modIdx, yRatio };
     setFacadeItems(prev => [...prev, newItem]);
+    setFacadeItems(prev => {
+      const next = [...prev];
+      setTimeout(() => {
+        localStorage.setItem(LS_SKETCH_KEY, JSON.stringify({
+          fingerprint: sketchFingerprint,
+          state: {
+            elements,
+            cabinetDims,
+            facadeModules,
+            facadeItems: next,
+            moduleDetails,
+            generalNotes,
+            joints,
+            globalSliding,
+          },
+        }));
+      }, 0);
+      return next;
+    });
     facadeDrag.current = { active: true, itemId: newItem.id, startY: y, startYRatio: yRatio, modIdx, intTop: mr.intTop, intH: mr.intH };
-  }, [tool, getSVGCoords, getFacadeGeometry]);
+  }, [tool, getSVGCoords, getFacadeGeometry, sketchFingerprint, elements, cabinetDims, facadeModules, moduleDetails, generalNotes, joints, globalSliding]);
 
   const handleItemPointerDown = useCallback((e, itemId) => {
     e.stopPropagation();
@@ -653,14 +672,33 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
   }, [getSVGCoords, getFacadeGeometry, facadeItems]);
 
   const handleModuleClick = useCallback((modIdx, activeTool) => {
-    setFacadeModules(prev => prev.map((m, i) => {
-      if (i !== modIdx) return m;
-      if (activeTool === 'drawer') return { ...m, drawers: m.drawers + 1 };
-      if (activeTool === 'door')   return { ...m, doors: Math.min(m.doors + 1, 2), slidingDoors: 0 };
-      if (activeTool === 'sliding') return { ...m, slidingDoors: 2, doors: 0 };
-      return m;
-    }));
-  }, []);
+    setFacadeModules(prev => {
+      const next = prev.map((m, i) => {
+        if (i !== modIdx) return m;
+        if (activeTool === 'drawer') return { ...m, drawers: m.drawers + 1 };
+        if (activeTool === 'door')   return { ...m, doors: Math.min(m.doors + 1, 2), slidingDoors: 0 };
+        if (activeTool === 'sliding') return { ...m, slidingDoors: 2, doors: 0 };
+        return m;
+      });
+      setTimeout(() => {
+        localStorage.setItem(LS_SKETCH_KEY, JSON.stringify({
+          fingerprint: sketchFingerprint,
+          state: {
+            elements,
+            cabinetDims,
+            facadeModules: next,
+            facadeItems,
+            moduleDetails,
+            generalNotes,
+            joints,
+            globalSliding,
+          },
+        }));
+      }, 0);
+      return next;
+    });
+  }, [sketchFingerprint, elements, cabinetDims, facadeItems,
+      moduleDetails, generalNotes, joints, globalSliding]);
 
   const handleModuleErase = useCallback((modIdx, type) => {
     setFacadeModules(prev => prev.map((m, i) => {
@@ -702,7 +740,28 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
   }, [resizingId, draggingId, getSVGCoords]);
 
   const handlePointerUp = useCallback(() => {
-    facadeDrag.current.active = false;
+    if (facadeDrag.current.active) {
+      facadeDrag.current.active = false;
+      setFacadeItems(prev => {
+        const next = [...prev];
+        localStorage.setItem(LS_SKETCH_KEY, JSON.stringify({
+          fingerprint: sketchFingerprint,
+          state: {
+            elements,
+            cabinetDims,
+            facadeModules,
+            facadeItems: next,
+            moduleDetails,
+            generalNotes,
+            joints,
+            globalSliding,
+          },
+        }));
+        return next;
+      });
+    } else {
+      facadeDrag.current.active = false;
+    }
     if (resizingId) {
       const el = elements.find(e => e.id === resizingId);
       if (el?.type === 'dim') {
@@ -711,7 +770,8 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
       }
     }
     setResizingId(null); setDraggingId(null);
-  }, [resizingId, elements]);
+  }, [resizingId, elements, sketchFingerprint, cabinetDims, facadeModules,
+      moduleDetails, generalNotes, joints, globalSliding]);
 
   const handlePointerDown = useCallback((e) => {
     if (baseView === 'facade' && ['shelf','rod','drawer','door','sliding','erase'].includes(tool)) return;
