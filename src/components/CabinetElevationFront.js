@@ -61,6 +61,7 @@ function normalizeModules(cabinet) {
         drawers: nbDrawers,
         drawerItems,
         doors: Math.max(0, parseInt(m.doors ?? m.nb_doors ?? 0, 10)),
+        slidingDoors: Math.max(0, parseInt(m.slidingDoors ?? m.nb_sliding_doors ?? 0, 10)),
       };
     }).filter(m => m.width > 0);
   }
@@ -84,6 +85,7 @@ function normalizeModules(cabinet) {
       drawers: isOuter ? drawersPerOuter : 0,
       drawerItems: [],
       doors: 0,
+      slidingDoors: 0,
     };
   });
 }
@@ -263,6 +265,15 @@ export default function CabinetElevationFront({ cabinet, name = 'Meuble' }) {
                 })
               : null;
 
+          const slidingElems = m.slidingDoors > 0 ? (
+            <g key={`sliding-${m.id}`}>
+              <line x1={mx + 6} y1={oy + 8} x2={mx + mw - 6} y2={oy + 8} stroke="#3b82f6" strokeWidth={1.5} />
+              <line x1={mx + 6} y1={oy + INNER_H - 8} x2={mx + mw - 6} y2={oy + INNER_H - 8} stroke="#3b82f6" strokeWidth={1.5} />
+              <rect x={mx + 6} y={oy + 12} width={mw * 0.56} height={INNER_H - 24} fill="rgba(147,197,253,0.16)" stroke="#60a5fa" strokeWidth={1} />
+              <rect x={mx + mw * 0.38} y={oy + 12} width={mw * 0.56} height={INNER_H - 24} fill="rgba(147,197,253,0.24)" stroke="#3b82f6" strokeWidth={1} />
+            </g>
+          ) : null;
+
           // ─ Numéro du module
           const numElem = (
             <g key={`num-${m.id}`}>
@@ -289,10 +300,11 @@ export default function CabinetElevationFront({ cabinet, name = 'Meuble' }) {
             <g key={`module-${m.id}`}>
               {sep}
               {rodElems}
-              {shelfElems}
-              {drawerElems}
-              {numElem}
-              {coteElem}
+                {shelfElems}
+                {drawerElems}
+                {slidingElems}
+                {numElem}
+                {coteElem}
             </g>
           );
         })}

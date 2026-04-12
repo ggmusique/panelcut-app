@@ -7,6 +7,7 @@ const TOOLS = [
   { id: 'shelf',  icon: '📦', label: 'Tablette', color: '#34d399' },
   { id: 'rod',    icon: '👔', label: 'Tringle',  color: '#f472b6' },
   { id: 'door',   icon: '🚪', label: 'Porte',    color: '#60a5fa' },
+  { id: 'sliding',icon: '🚪↔️', label: 'Coulissante', color: '#93c5fd' },
   { id: 'dim',    icon: '📏', label: 'Cote',     color: '#22d3ee' },
   { id: 'note',   icon: '📝', label: 'Note',     color: '#fb923c' },
   { id: 'erase',  icon: '🧹', label: 'Effacer',  color: '#f87171' },
@@ -26,6 +27,12 @@ const uid   = () => Math.random().toString(36).slice(2, 9);
 const toNum = (v, d = 0) => { const n = Number(v); return Number.isFinite(n) ? n : d; };
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const defaultDrawerParts = () => ({ front: true, back: true, left: true, right: true, bottom: true });
+const defaultModuleDetail = (drawerCount = 0) => ({
+  hasBack: true,
+  slidingDoors: 0,
+  drawerHeights: Array(Math.max(0, drawerCount)).fill(24),
+  drawerParts: defaultDrawerParts(),
+});
 
 const normalizeModulesFromResult = (result, width = 0) => {
   const cabinet  = result?.cabinet || {};
@@ -37,12 +44,13 @@ const normalizeModulesFromResult = (result, width = 0) => {
       width:   Math.max(1, toNum(m.width ?? m.w ?? m.largeur, 1)),
       drawers: Math.max(0, parseInt(m.drawers ?? m.nb_drawers ?? 0, 10) || 0),
       doors:   Math.max(0, parseInt(m.doors   ?? m.nb_doors   ?? 0, 10) || 0),
+      slidingDoors: Math.max(0, parseInt(m.slidingDoors ?? m.nb_sliding_doors ?? 0, 10) || 0),
     }));
   }
   const n  = Math.max(1, parseInt(cabinet.nb_dividers ?? 4, 10) + 1);
   const mw = width > 0 ? width / n : 50;
   return Array.from({ length: n }, () => ({
-    id: uid(), width: mw, drawers: 0, doors: 0,
+    id: uid(), width: mw, drawers: 0, doors: 0, slidingDoors: 0,
   }));
 };
 
@@ -108,7 +116,7 @@ function FacadeRealisteSVG({
 
   const isErase   = activeTool === 'erase';
   const isPlace   = ['shelf','rod'].includes(activeTool);
-  const isAdd     = ['drawer','door'].includes(activeTool);
+  const isAdd     = ['drawer','door','sliding'].includes(activeTool);
 
   const defs = (
     <defs>
@@ -173,7 +181,8 @@ function FacadeRealisteSVG({
         const nbD     = m.drawers || 0;
         const drawerH = Math.min(iH * 0.15, 46);
         const drawPx  = nbD * drawerH;
-        const nbDoors = m.doors || 0;
+      const nbDoors = m.doors || 0;
+      const nbSliding = m.slidingDoors || 0;
 
         const tiroirs = Array.from({ length: nbD }, (_, di) => {
           const dy = intBottom - drawPx + di * drawerH;
@@ -208,6 +217,19 @@ function FacadeRealisteSVG({
           );
         });
 
+        const sliding = nbSliding > 0 ? (
+          <g
+            onClick={e => { e.stopPropagation(); if (isErase) onModuleErase(i, 'sliding'); }}
+            style={{ cursor: isErase ? 'pointer' : 'default' }}
+          >
+            <rect x={x+3} y={intTop+3} width={w-6} height={iH-6} fill="none" stroke="#60a5fa" strokeWidth="1.3" rx="1" />
+            <line x1={x+6} y1={intTop+8} x2={x+w-6} y2={intTop+8} stroke="#60a5fa" strokeWidth="1.5" />
+            <line x1={x+6} y1={intTop+iH-8} x2={x+w-6} y2={intTop+iH-8} stroke="#60a5fa" strokeWidth="1.5" />
+            <rect x={x+6} y={intTop+12} width={w*0.52} height={iH-24} fill="rgba(147,197,253,0.15)" stroke="#60a5fa" strokeWidth="1" />
+            <rect x={x+w*0.42-6} y={intTop+12} width={w*0.52} height={iH-24} fill="rgba(147,197,253,0.22)" stroke="#3b82f6" strokeWidth="1" />
+          </g>
+        ) : null;
+
         const numY = intTop + Math.max(30, (iH - drawPx) * 0.45);
         const hitZone = (isPlace || isAdd) ? (
           <rect key={`hit-${i}`} x={x} y={intTop} width={w} height={iH}
@@ -224,6 +246,7 @@ function FacadeRealisteSVG({
             <rect x={x} y={intTop} width={w} height={iH} fill="#faf5ed" stroke={WOOD_STROKE} strokeWidth="0.7"/>
             {tiroirs}
             {portes}
+            {sliding}
             <circle cx={x+w/2} cy={numY} r="20" fill="none" stroke={DIM_COLOR} strokeWidth="2"/>
             <text x={x+w/2} y={numY+6} textAnchor="middle" fill={DIM_COLOR} fontWeight="700" fontSize="17">{i+1}</text>
             <line x1={x}   y1={mT+drawH+10} x2={x+w} y2={mT+drawH+10} stroke="#b45309" strokeWidth="1"/>
@@ -379,7 +402,14 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     setSelectedModuleIdx((idx) => Math.max(0, Math.min(idx, Math.max(0, facadeModules.length - 1))));
     setModuleDetails((prev) => {
       return facadeModules.map((_, i) => ({
+        ...defaultModuleDetail(facadeModules[i]?.drawers || 0),
         hasBack: prev[i]?.hasBack ?? true,
+        slidingDoors: prev[i]?.slidingDoors ?? 0,
+        drawerHeights: (() => {
+          const count = Math.max(0, facadeModules[i]?.drawers || 0);
+          const base = Array.isArray(prev[i]?.drawerHeights) ? prev[i].drawerHeights : [];
+          return Array.from({ length: count }, (_, di) => Math.max(5, toNum(base[di], 24)));
+        })(),
         drawerParts: {
           ...defaultDrawerParts(),
           ...(prev[i]?.drawerParts || {}),
@@ -431,7 +461,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     });
     const newModules = normalizeModulesFromResult(initialResult, toNum(cab.width, 200));
     setFacadeModules(newModules);
-    setModuleDetails(newModules.map(() => ({ hasBack: true, drawerParts: defaultDrawerParts() })));
+    setModuleDetails(newModules.map((m) => defaultModuleDetail(m.drawers || 0)));
     setFacadeItems(normalizeItemsFromResult(initialResult));
     setJoints(Array(Math.max(0, newModules.length - 1)).fill(true));
     didAutoSwitchRef.current = false;
@@ -445,23 +475,41 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     const interiorH = Math.max(1, h - pl);
     return {
       width: w, height: h, plinth: pl,
-      modules: facadeModules.map((m, i) => ({
-        id: i + 1,
-        width: m.width,
-        drawers: m.drawers,
-        doors: m.doors,
-        hasBack: moduleDetails[i]?.hasBack ?? true,
-        drawerParts: {
-          ...defaultDrawerParts(),
-          ...(moduleDetails[i]?.drawerParts || {}),
-        },
-        rods: facadeItems
-          .filter(it => it.type === 'rod' && Number(it.modIdx) === i)
-          .map(it => ({ y: (1 - it.yRatio) * interiorH })),
-        shelves: facadeItems
-          .filter(it => it.type === 'shelf' && Number(it.modIdx) === i)
-          .map(it => ({ y: (1 - it.yRatio) * interiorH })),
-      })),
+      modules: facadeModules.map((m, i) => {
+        const details = {
+          ...defaultModuleDetail(m.drawers || 0),
+          ...(moduleDetails[i] || {}),
+          drawerParts: {
+            ...defaultDrawerParts(),
+            ...(moduleDetails[i]?.drawerParts || {}),
+          },
+        };
+        const drawerHeights = Array.isArray(details.drawerHeights)
+          ? details.drawerHeights.map((v) => Math.max(5, toNum(v, 24)))
+          : [];
+        let drawerY = 0;
+        const drawerItems = drawerHeights.map((heightCm) => {
+          const item = { y: drawerY, height: heightCm };
+          drawerY += heightCm;
+          return item;
+        });
+        return {
+          id: i + 1,
+          width: m.width,
+          drawers: m.drawers,
+          drawerItems,
+          doors: m.doors,
+          slidingDoors: details.slidingDoors || 0,
+          hasBack: details.hasBack ?? true,
+          drawerParts: details.drawerParts,
+          rods: facadeItems
+            .filter(it => it.type === 'rod' && Number(it.modIdx) === i)
+            .map(it => ({ y: (1 - it.yRatio) * interiorH })),
+          shelves: facadeItems
+            .filter(it => it.type === 'shelf' && Number(it.modIdx) === i)
+            .map(it => ({ y: (1 - it.yRatio) * interiorH })),
+        };
+      }),
     };
   }, [cabinetDims, facadeModules, facadeItems, moduleDetails]);
 
@@ -558,7 +606,8 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     setFacadeModules(prev => prev.map((m, i) => {
       if (i !== modIdx) return m;
       if (activeTool === 'drawer') return { ...m, drawers: m.drawers + 1 };
-      if (activeTool === 'door')   return { ...m, doors: Math.min(m.doors + 1, 2) };
+      if (activeTool === 'door')   return { ...m, doors: Math.min(m.doors + 1, 2), slidingDoors: 0 };
+      if (activeTool === 'sliding') return { ...m, slidingDoors: 2, doors: 0 };
       return m;
     }));
   }, []);
@@ -568,6 +617,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
       if (i !== modIdx) return m;
       if (type === 'drawer') return { ...m, drawers: Math.max(0, m.drawers - 1) };
       if (type === 'door')   return { ...m, doors:   Math.max(0, m.doors   - 1) };
+      if (type === 'sliding') return { ...m, slidingDoors: 0 };
       return m;
     }));
   }, []);
@@ -614,7 +664,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
   }, [resizingId, elements]);
 
   const handlePointerDown = useCallback((e) => {
-    if (baseView === 'facade' && ['shelf','rod','drawer','door','erase'].includes(tool)) return;
+    if (baseView === 'facade' && ['shelf','rod','drawer','door','sliding','erase'].includes(tool)) return;
     if (tool === 'erase') return;
     e.preventDefault();
     const { x, y } = getSVGCoords(e);
@@ -649,8 +699,10 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
       const nbDoors   = typeof m.doors   === 'number' ? m.doors   : 0;
       const det = moduleDetails[i] || { hasBack: true, drawerParts: defaultDrawerParts() };
       const dp = { ...defaultDrawerParts(), ...(det.drawerParts || {}) };
-      ctx += `  M${i+1}: L=${m.width.toFixed(2)}cm  tiroirs=${nbDrawers}  tablettes=${nbShelf}  tringles=${nbRod}  portes=${nbDoors}  fond=${det.hasBack ? 'oui' : 'non'}\n`;
+      ctx += `  M${i+1}: L=${m.width.toFixed(2)}cm  tiroirs=${nbDrawers}  tablettes=${nbShelf}  tringles=${nbRod}  portes=${nbDoors}  coulissantes=${det.slidingDoors || 0}  fond=${det.hasBack ? 'oui' : 'non'}\n`;
       if (nbDrawers > 0) {
+        const hList = Array.isArray(det.drawerHeights) ? det.drawerHeights.map(v => Math.max(5, toNum(v, 24))) : [];
+        ctx += `      hauteurs_tiroirs_cm=${hList.join(',') || 'auto'}\n`;
         ctx += `      tiroir: facade=${dp.front ? 'oui' : 'non'} arriere=${dp.back ? 'oui' : 'non'} coteG=${dp.left ? 'oui' : 'non'} coteD=${dp.right ? 'oui' : 'non'} fond=${dp.bottom ? 'oui' : 'non'}\n`;
       }
     });
@@ -769,6 +821,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     : tool === 'rod'     ? '👔 Clic dans un module pour placer · glisser pour déplacer'
     : tool === 'drawer'  ? '🗄️ Clic dans un module pour ajouter un tiroir'
     : tool === 'door'    ? '🚪 Clic dans un module pour ajouter une porte'
+    : tool === 'sliding' ? '🚪↔️ Clic dans un module pour poser 2 portes coulissantes'
     : '💡 Dim/Note : tracez sur la façade'
     : '💡 Cliquez pour créer · glissez pour déplacer';
 
@@ -914,6 +967,17 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
             />
             Fond module
           </label>
+          <label className="flex items-center gap-1 text-slate-200">
+            <input
+              type="checkbox"
+              checked={(moduleDetails[selectedModuleIdx]?.slidingDoors || 0) > 0}
+              onChange={(e) => setModuleDetails(prev => prev.map((d, i) => {
+                if (i !== selectedModuleIdx) return d;
+                return { ...d, slidingDoors: e.target.checked ? 2 : 0 };
+              }))}
+            />
+            Portes coulissantes
+          </label>
           <span className="text-slate-500">Tiroir :</span>
           {[
             ['front', 'Façade'],
@@ -941,6 +1005,30 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
               {label}
             </label>
           ))}
+          {(facadeModules[selectedModuleIdx]?.drawers || 0) > 0 && (
+            <div className="flex items-center gap-1">
+              <span className="text-slate-500">Hauteurs (cm):</span>
+              {Array.from({ length: facadeModules[selectedModuleIdx]?.drawers || 0 }, (_, di) => (
+                <label key={`dh-${di}`} className="text-slate-300">
+                  #{di + 1}
+                  <input
+                    type="number"
+                    min="5"
+                    step="0.5"
+                    value={moduleDetails[selectedModuleIdx]?.drawerHeights?.[di] ?? 24}
+                    onChange={(e) => setModuleDetails(prev => prev.map((d, i) => {
+                      if (i !== selectedModuleIdx) return d;
+                      const curr = Array.isArray(d.drawerHeights) ? d.drawerHeights : [];
+                      const next = Array.from({ length: facadeModules[selectedModuleIdx]?.drawers || 0 }, (_, idx) => Math.max(5, toNum(curr[idx], 24)));
+                      next[di] = Math.max(5, toNum(e.target.value, 24));
+                      return { ...d, drawerHeights: next };
+                    }))}
+                    className="w-14 ml-1 px-1 py-0.5 bg-slate-800 border border-slate-600 rounded"
+                  />
+                </label>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

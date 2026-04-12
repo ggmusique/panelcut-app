@@ -189,6 +189,14 @@ function normalizeModules(cabinet) {
     return detailed.map((m, i) => {
       const shelfYs = normalizeYList(m.shelves);
       const rodYs = normalizeYList(m.rods);
+      const drawerItems = Array.isArray(m?.drawerItems)
+        ? m.drawerItems
+            .map((d) => ({
+              y: Number(d?.y),
+              h: Number(d?.height ?? d?.h),
+            }))
+            .filter((d) => Number.isFinite(d.y) && Number.isFinite(d.h) && d.h > 0)
+        : [];
       const drawerParts = {
         front: m?.drawerParts?.front !== false,
         back: m?.drawerParts?.back !== false,
@@ -201,8 +209,10 @@ function normalizeModules(cabinet) {
         width:   Math.max(0, Number(m.width ?? m.w ?? m.largeur) || 0),
         shelves: shelfYs.length > 0 ? shelfYs.length : getCount(m.shelves, getCount(m.nb_shelves, 0)),
         shelfYs,
-        drawers: getCount(m.drawers, getCount(m.drawerItems, getCount(m.nb_drawers, 0))),
+        drawers: drawerItems.length > 0 ? drawerItems.length : getCount(m.drawers, getCount(m.drawerItems, getCount(m.nb_drawers, 0))),
+        drawerItems,
         doors:   getCount(m.doors, getCount(m.nb_doors, 0)),
+        slidingDoors: Math.max(0, parseInt(m?.slidingDoors ?? m?.nb_sliding_doors ?? 0, 10) || 0),
         rod:     rodYs.length > 0 || hasRod(m),
         rodYs,
         hasBack: m?.hasBack !== false,
@@ -217,7 +227,9 @@ function normalizeModules(cabinet) {
     id: i + 1, width: mw,
     shelves: Math.max(0, parseInt(cabinet?.nb_shelves ?? 0, 10) || 0),
     drawers: Math.max(0, parseInt(cabinet?.nb_drawers ?? 0, 10) || 0),
+    drawerItems: [],
     doors: 1, rod: false,
+    slidingDoors: 0,
     hasBack: true,
     drawerParts: { front: true, back: true, left: true, right: true, bottom: true },
   }));
@@ -428,6 +440,15 @@ function CabinetModule3D({ mod, x, cabinetH, cabinetD, plinthH, thickness, mats,
   }, [mod.shelves, mod.shelfYs, mod.drawers, PL, TH, bodyH]);
 
   const drawers = useMemo(() => {
+    if (Array.isArray(mod.drawerItems) && mod.drawerItems.length > 0) {
+      return mod.drawerItems.map((d) => {
+        const h = Math.max(0.05, d.h / 100);
+        return {
+          y: PL + (d.y + d.h / 2) / 100,
+          h: Math.max(0.03, h - 0.004),
+        };
+      });
+    }
     if (mod.drawers <= 0) return [];
     const zoneH = bodyH * Math.min(0.5, Math.max(0, mod.drawers * 0.15));
     const zoneBottom = PL;
@@ -435,7 +456,7 @@ function CabinetModule3D({ mod, x, cabinetH, cabinetD, plinthH, thickness, mats,
       const dh = zoneH / mod.drawers;
       return { y: zoneBottom + i * dh + dh / 2, h: dh - 0.008 };
     });
-  }, [mod.drawers, PL, bodyH]);
+  }, [mod.drawers, mod.drawerItems, PL, bodyH]);
 
   const rodYs = useMemo(() => {
     if (Array.isArray(mod.rodYs) && mod.rodYs.length > 0) {
@@ -555,8 +576,26 @@ function CabinetModule3D({ mod, x, cabinetH, cabinetD, plinthH, thickness, mats,
         </group>
       ))}
 
+      {/* Sliding doors */}
+      {mod.slidingDoors > 0 && (
+        <group>
+          <mesh position={[0, H - TH - 0.01, D / 2 - 0.01]} material={mats.handle}>
+            <boxGeometry args={[W - 0.01, 0.008, 0.01]} />
+          </mesh>
+          <mesh position={[0, PL + 0.01, D / 2 - 0.01]} material={mats.handle}>
+            <boxGeometry args={[W - 0.01, 0.008, 0.01]} />
+          </mesh>
+          <mesh position={[-W * 0.12, PL + bodyH / 2, D / 2 - 0.02]} material={mats.door} castShadow receiveShadow>
+            <boxGeometry args={[W * 0.58, bodyH - 0.02, 0.014]} />
+          </mesh>
+          <mesh position={[W * 0.12, PL + bodyH / 2, D / 2 - 0.037]} material={mats.door} castShadow receiveShadow>
+            <boxGeometry args={[W * 0.58, bodyH - 0.02, 0.014]} />
+          </mesh>
+        </group>
+      )}
+
       {/* Doors */}
-      {mod.doors > 0 && mod.drawers === 0 && !mod.rod && mod.shelves === 0 && (
+      {mod.slidingDoors === 0 && mod.doors > 0 && mod.drawers === 0 && !mod.rod && mod.shelves === 0 && (
         <group>
           <mesh position={[0, PL + bodyH / 2, D / 2 - 0.003]} material={mats.door} castShadow receiveShadow>
             <boxGeometry args={[W - 0.005, bodyH - 0.005, 0.018]} />
