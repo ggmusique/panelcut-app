@@ -818,12 +818,6 @@ function Scene({ cabinet, modules }) {
    MAIN EXPORT
    ═══════════════════════════════════════════════════════════════ */
 
-function getCameraPreset(preset, camDist, Hm) {
-  if (preset === 'face') return [0, Hm * 0.45, camDist * 1.2];
-  if (preset === 'left') return [-camDist * 0.9, Hm * 0.45, camDist * 0.55];
-  return [camDist * 0.35, Hm * 0.5, camDist * 1.1];
-}
-
 export default function ProfessionalRealisticViewer({ cabinet, name, fullScreen = false, presentationMode = false }) {
   if (!cabinet || !cabinet.width || !cabinet.height) {
     return (
@@ -893,16 +887,6 @@ export default function ProfessionalRealisticViewer({ cabinet, name, fullScreen 
         </>
       )}
 
-      {fullScreen && (
-        <div
-          className="absolute left-3 z-30 flex items-center gap-2"
-          style={{ top: 'calc(env(safe-area-inset-top) + 8px)' }}
-        >
-          <button onPointerDown={(e) => e.stopPropagation()} onClick={() => setViewPreset('face')} className="px-2.5 py-1.5 text-xs font-bold rounded-lg bg-black/55 text-white border border-white/20 hover:bg-black/75">Face</button>
-          <button onPointerDown={(e) => e.stopPropagation()} onClick={() => setViewPreset('angle')} className="px-2.5 py-1.5 text-xs font-bold rounded-lg bg-black/55 text-white border border-white/20 hover:bg-black/75">3/4</button>
-          <button onPointerDown={(e) => e.stopPropagation()} onClick={() => setViewPreset('left')} className="px-2.5 py-1.5 text-xs font-bold rounded-lg bg-black/55 text-white border border-white/20 hover:bg-black/75">Latérale</button>
-        </div>
-      )}
     </div>
   );
 }

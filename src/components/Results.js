@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { exportPDF } from '../pdfExport';
+import html2canvas from 'html2canvas';
 import { Download, Scissors, RotateCw, Layers, ChevronLeft, ChevronRight, List, Box, Maximize2, Minimize2 } from 'lucide-react';
 import CabinetElevationFront from './CabinetElevationFront';
 import BoardList from './BoardList';
@@ -188,6 +189,8 @@ export default function Results({ t, results, project }) {
   const [fullPlan, setFullPlan] = useState(false);
   const [full3D, setFull3D] = useState(false);
   const [presentation3D, setPresentation3D] = useState(false);
+  const facadeCaptureRef = useRef(null);
+  const viewerCaptureRef = useRef(null);
   const colorMap = {};
 
   // Tringles (rods) excluded from optimization
@@ -221,6 +224,17 @@ export default function Results({ t, results, project }) {
 
   const nextPanel = () => setCurrentPanel(p => Math.min(results.panels.length - 1, p + 1));
   const prevPanel = () => setCurrentPanel(p => Math.max(0, p - 1));
+  const handleExportPdf = async () => {
+    const capture = async (node) => {
+      if (!node) return null;
+      await new Promise((r) => setTimeout(r, 200));
+      const canvas = await html2canvas(node, { backgroundColor: '#ffffff', scale: 2, useCORS: true });
+      return canvas.toDataURL('image/png');
+    };
+    const facadeImage = await capture(facadeCaptureRef.current);
+    const view3dImage = await capture(viewerCaptureRef.current);
+    exportPDF(results, project, { facadeImage, view3dImage });
+  };
 
   const PanelNav = () => (
     <div className="flex items-center justify-between bg-[#111] p-2 rounded-xl border border-white/5 mb-4">
@@ -246,7 +260,7 @@ export default function Results({ t, results, project }) {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-bold text-white flex items-center gap-2"><Layers className="w-5 h-5 text-orange-500" /> Résultats</h2>
-              <button onClick={() => exportPDF(results, project)} className="flex items-center gap-2 bg-orange-600 hover:bg-orange-500 text-white px-4 py-2.5 rounded-xl text-sm font-bold transition-colors shadow-lg shadow-orange-900/30">
+              <button onClick={handleExportPdf} className="flex items-center gap-2 bg-orange-600 hover:bg-orange-500 text-white px-4 py-2.5 rounded-xl text-sm font-bold transition-colors shadow-lg shadow-orange-900/30">
                 <Download className="w-4 h-4" /> PDF
               </button>
             </div>
@@ -403,6 +417,17 @@ export default function Results({ t, results, project }) {
             </button>
           </div>
           <ProfessionalRealisticViewer cabinet={cabinet} name={project.name} fullScreen presentationMode={presentation3D} />
+        </div>
+      )}
+
+      {hasCabinet && (
+        <div className="fixed -left-[9999px] top-0 w-[1180px] opacity-0 pointer-events-none" aria-hidden="true">
+          <div ref={facadeCaptureRef} className="w-[1120px] bg-white p-4">
+            <CabinetElevationFront cabinet={cabinet} name={project.name} />
+          </div>
+          <div ref={viewerCaptureRef} className="w-[1120px] h-[760px] bg-white p-2">
+            <ProfessionalRealisticViewer cabinet={cabinet} name={project.name} presentationMode />
+          </div>
         </div>
       )}
     </div>
