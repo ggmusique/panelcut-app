@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { exportPDF } from '../pdfExport';
-import { Download, Scissors, RotateCw, Layers, ChevronLeft, ChevronRight, List, Box } from 'lucide-react';
+import { Download, Scissors, RotateCw, Layers, ChevronLeft, ChevronRight, List, Box, Maximize2, Minimize2 } from 'lucide-react';
 import CabinetElevationFront from './CabinetElevationFront';
 import BoardList from './BoardList';
 import ProfessionalRealisticViewer from '../visualization/ProfessionalRealisticViewer';
@@ -185,6 +185,9 @@ function TabBar({ active, onChange }) {
 export default function Results({ t, results, project }) {
   const [currentPanel, setCurrentPanel] = useState(0);
   const [tab, setTab] = useState('plan');
+  const [fullPlan, setFullPlan] = useState(false);
+  const [full3D, setFull3D] = useState(false);
+  const [presentation3D, setPresentation3D] = useState(false);
   const colorMap = {};
 
   // Tringles (rods) excluded from optimization
@@ -290,7 +293,17 @@ export default function Results({ t, results, project }) {
               </div>
             )}
             {hasCabinet && (
-              <CabinetElevationFront cabinet={cabinet} name={project.name} />
+              <div className="relative">
+                <div className="absolute top-2 right-2 z-10">
+                  <button
+                    onClick={() => setFullPlan(true)}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold rounded-lg bg-black/60 text-white border border-white/20 hover:bg-black/80 transition-colors"
+                  >
+                    <Maximize2 className="w-3.5 h-3.5" /> Plein écran
+                  </button>
+                </div>
+                <CabinetElevationFront cabinet={cabinet} name={project.name} />
+              </div>
             )}
             <PanelNav />
             <PanelSVG panel={panel} panelW={panelW} panelH={panelH} kerf={kerf} colorMap={colorMap} />
@@ -331,8 +344,22 @@ export default function Results({ t, results, project }) {
                 <div className="flex items-center gap-2 text-xs text-slate-500 px-1">
                   <span className="text-amber-400">🌟</span>
                   <span>Vue photoréaliste pour présentation client</span>
+                  <button
+                    onClick={() => setPresentation3D(v => !v)}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold rounded-lg border transition-colors ${
+                      presentation3D ? 'bg-emerald-600/25 text-emerald-200 border-emerald-400/40' : 'bg-white/10 text-white border-white/20 hover:bg-white/20'
+                    }`}
+                  >
+                    {presentation3D ? 'Mode standard' : 'Mode présentation'}
+                  </button>
+                  <button
+                    onClick={() => setFull3D(true)}
+                    className="ml-auto flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold rounded-lg bg-white/10 text-white border border-white/20 hover:bg-white/20 transition-colors"
+                  >
+                    <Maximize2 className="w-3.5 h-3.5" /> Plein écran
+                  </button>
                 </div>
-                <ProfessionalRealisticViewer cabinet={cabinet} name={project.name} />
+                <ProfessionalRealisticViewer cabinet={cabinet} name={project.name} presentationMode={presentation3D} />
               </>
             ) : (
               <div className="flex flex-col items-center justify-center py-16 gap-4 text-center">
@@ -348,6 +375,36 @@ export default function Results({ t, results, project }) {
         )}
 
       </div>
+
+      {fullPlan && hasCabinet && (
+        <div className="fixed inset-0 z-[70] bg-black/95 p-2 sm:p-4">
+          <div className="flex justify-end mb-2">
+            <button
+              onClick={() => setFullPlan(false)}
+              className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg bg-white/10 text-white border border-white/20 hover:bg-white/20 transition-colors"
+            >
+              <Minimize2 className="w-4 h-4" /> Quitter plein écran
+            </button>
+          </div>
+          <div className="h-[calc(100dvh-56px)] overflow-auto rounded-xl bg-slate-900 p-2">
+            <CabinetElevationFront cabinet={cabinet} name={project.name} />
+          </div>
+        </div>
+      )}
+
+      {full3D && hasCabinet && (
+        <div className="fixed inset-0 z-[70] bg-black/95">
+          <div className="absolute top-3 right-3 z-30">
+            <button
+              onClick={() => setFull3D(false)}
+              className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg bg-black/60 text-white border border-white/20 hover:bg-black/80 transition-colors"
+            >
+              <Minimize2 className="w-4 h-4" /> Quitter plein écran
+            </button>
+          </div>
+          <ProfessionalRealisticViewer cabinet={cabinet} name={project.name} fullScreen presentationMode={presentation3D} />
+        </div>
+      )}
     </div>
   );
 }

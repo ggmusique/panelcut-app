@@ -1,4 +1,4 @@
-import React, { useMemo, Suspense } from 'react';
+import React, { useMemo, Suspense, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Environment, ContactShadows } from '@react-three/drei';
 import { EffectComposer, N8AO, Bloom, Vignette } from '@react-three/postprocessing';
@@ -593,15 +593,24 @@ function CabinetModule3D({ mod, x, cabinetH, cabinetD, plinthH, thickness, mats,
       )}
 
       {/* Doors */}
-      {!hideFrontDoors && mod.slidingDoors === 0 && mod.doors > 0 && mod.drawers === 0 && !mod.rod && mod.shelves === 0 && (
+      {!hideFrontDoors && mod.slidingDoors === 0 && mod.doors > 0 && (
         <group>
-          <mesh position={[0, PL + bodyH / 2, D / 2 - 0.003]} material={mats.door} castShadow receiveShadow>
-            <boxGeometry args={[W - 0.005, bodyH - 0.005, 0.018]} />
-          </mesh>
-          {/* Door handle (vertical small bar) */}
-          <mesh position={[W * 0.3, PL + bodyH / 2, D / 2 + 0.018]} rotation={[0, 0, 0]} material={mats.handle} castShadow>
-            <capsuleGeometry args={[0.004, 0.05, 4, 8]} />
-          </mesh>
+          {Array.from({ length: Math.min(2, Math.max(1, mod.doors || 1)) }, (_, idx) => {
+            const count = Math.min(2, Math.max(1, mod.doors || 1));
+            const doorW = (W - 0.01) / count;
+            const centerX = -W / 2 + doorW / 2 + idx * doorW;
+            const handleX = idx === 0 ? centerX + doorW * 0.38 : centerX - doorW * 0.38;
+            return (
+              <group key={`door-${idx}`}>
+                <mesh position={[centerX, PL + bodyH / 2, D / 2 - 0.003]} material={mats.door} castShadow receiveShadow>
+                  <boxGeometry args={[doorW, bodyH - 0.005, 0.018]} />
+                </mesh>
+                <mesh position={[handleX, PL + bodyH / 2, D / 2 + 0.018]} material={mats.handle} castShadow>
+                  <capsuleGeometry args={[0.004, 0.05, 4, 8]} />
+                </mesh>
+              </group>
+            );
+          })}
         </group>
       )}
     </group>
@@ -809,7 +818,13 @@ function Scene({ cabinet, modules }) {
    MAIN EXPORT
    ═══════════════════════════════════════════════════════════════ */
 
-export default function ProfessionalRealisticViewer({ cabinet, name }) {
+function getCameraPreset(preset, camDist, Hm) {
+  if (preset === 'face') return [0, Hm * 0.45, camDist * 1.2];
+  if (preset === 'left') return [-camDist * 0.9, Hm * 0.45, camDist * 0.55];
+  return [camDist * 0.35, Hm * 0.5, camDist * 1.1];
+}
+
+export default function ProfessionalRealisticViewer({ cabinet, name, fullScreen = false, presentationMode = false }) {
   if (!cabinet || !cabinet.width || !cabinet.height) {
     return (
       <div className="w-full h-[700px] flex items-center justify-center bg-gray-100 rounded-2xl text-gray-400 text-base">
@@ -825,13 +840,20 @@ export default function ProfessionalRealisticViewer({ cabinet, name }) {
   const Hm = H / 100;
   const Wm = W / 100;
   const camDist = Math.max(Wm, Hm) * 1.6;
+  const [viewPreset, setViewPreset] = useState('angle');
+  const cameraPos = useMemo(() => getCameraPreset(viewPreset, camDist, Hm), [viewPreset, camDist, Hm]);
 
   return (
-    <div className="relative w-full rounded-2xl overflow-hidden shadow-2xl" style={{ height: 750 }} onWheel={e => e.stopPropagation()}>
+    <div
+      className={`relative w-full overflow-hidden shadow-2xl ${fullScreen ? 'rounded-none' : 'rounded-2xl'}`}
+      style={{ height: fullScreen ? '100dvh' : 750 }}
+      onWheel={e => e.stopPropagation()}
+    >
       <Canvas
+        key={`${viewPreset}-${fullScreen ? 'fs' : 'normal'}-${presentationMode ? 'present' : 'std'}`}
         shadows
         camera={{
-          position: [camDist * 0.35, Hm * 0.5, camDist * 1.1],
+          position: cameraPos,
           fov: 40,
           near: 0.01,
           far: 100,
@@ -850,22 +872,34 @@ export default function ProfessionalRealisticViewer({ cabinet, name }) {
       </Canvas>
 
       {/* UI Overlays */}
-      <div className="absolute top-4 left-4 z-20 bg-white/90 backdrop-blur-sm px-4 py-3 rounded-xl shadow-md border border-gray-100">
-        <div className="text-sm font-bold text-gray-800 flex items-center gap-1.5">
-          🌟 Vue Réaliste — {name || 'Meuble'} ({modules.length} modules)
-        </div>
-        <div className="text-xs text-gray-500 mt-1">
-          {W} × {H} × {D} cm • Tourner / zoomer avec la souris
-        </div>
-      </div>
+      {!presentationMode && (
+        <>
+          <div className="absolute top-4 left-4 z-20 bg-white/90 backdrop-blur-sm px-4 py-3 rounded-xl shadow-md border border-gray-100">
+            <div className="text-sm font-bold text-gray-800 flex items-center gap-1.5">
+              🌟 Vue Réaliste — {name || 'Meuble'} ({modules.length} modules)
+            </div>
+            <div className="text-xs text-gray-500 mt-1">
+              {W} × {H} × {D} cm • Tourner / zoomer avec la souris
+            </div>
+          </div>
 
-      <div className="absolute bottom-4 right-4 z-20 bg-white/90 backdrop-blur-sm px-3 py-2 rounded-lg shadow-md border border-gray-100 text-xs text-gray-500">
-        🖱️ Clic gauche : tourner • Molette : zoom • Clic droit : déplacer
-      </div>
+          <div className="absolute bottom-4 right-4 z-20 bg-white/90 backdrop-blur-sm px-3 py-2 rounded-lg shadow-md border border-gray-100 text-xs text-gray-500">
+            🖱️ Clic gauche : tourner • Molette : zoom • Clic droit : déplacer
+          </div>
 
-      <div className="absolute bottom-4 left-4 z-20 bg-white/90 backdrop-blur-sm px-3 py-2 rounded-lg shadow-md border border-gray-100 text-xs text-gray-500">
-        Total: {(W / 100).toFixed(2)} m linéaires
-      </div>
+          <div className="absolute bottom-4 left-4 z-20 bg-white/90 backdrop-blur-sm px-3 py-2 rounded-lg shadow-md border border-gray-100 text-xs text-gray-500">
+            Total: {(W / 100).toFixed(2)} m linéaires
+          </div>
+        </>
+      )}
+
+      {fullScreen && (
+        <div className="absolute top-4 left-4 z-30 flex items-center gap-2">
+          <button onClick={() => setViewPreset('face')} className="px-2.5 py-1.5 text-xs font-bold rounded-lg bg-black/55 text-white border border-white/20 hover:bg-black/75">Face</button>
+          <button onClick={() => setViewPreset('angle')} className="px-2.5 py-1.5 text-xs font-bold rounded-lg bg-black/55 text-white border border-white/20 hover:bg-black/75">3/4</button>
+          <button onClick={() => setViewPreset('left')} className="px-2.5 py-1.5 text-xs font-bold rounded-lg bg-black/55 text-white border border-white/20 hover:bg-black/75">Latérale</button>
+        </div>
+      )}
     </div>
   );
 }
