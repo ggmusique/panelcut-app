@@ -394,7 +394,7 @@ export default function Results({ t, results, project }) {
 
       {full3D && hasCabinet && (
         <div className="fixed inset-0 z-[70] bg-black/95">
-          <div className="absolute top-3 right-3 z-30">
+          <div className="absolute right-3 z-30" style={{ top: 'calc(env(safe-area-inset-top) + 8px)' }}>
             <button
               onClick={() => setFull3D(false)}
               className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg bg-black/60 text-white border border-white/20 hover:bg-black/80 transition-colors"

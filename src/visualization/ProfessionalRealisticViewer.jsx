@@ -850,7 +850,7 @@ export default function ProfessionalRealisticViewer({ cabinet, name, fullScreen 
       onWheel={e => e.stopPropagation()}
     >
       <Canvas
-        key={`${viewPreset}-${fullScreen ? 'fs' : 'normal'}-${presentationMode ? 'present' : 'std'}`}
+        key={`${viewPreset}`}
         shadows
         camera={{
           position: cameraPos,
@@ -894,10 +894,13 @@ export default function ProfessionalRealisticViewer({ cabinet, name, fullScreen 
       )}
 
       {fullScreen && (
-        <div className="absolute top-4 left-4 z-30 flex items-center gap-2">
-          <button onClick={() => setViewPreset('face')} className="px-2.5 py-1.5 text-xs font-bold rounded-lg bg-black/55 text-white border border-white/20 hover:bg-black/75">Face</button>
-          <button onClick={() => setViewPreset('angle')} className="px-2.5 py-1.5 text-xs font-bold rounded-lg bg-black/55 text-white border border-white/20 hover:bg-black/75">3/4</button>
-          <button onClick={() => setViewPreset('left')} className="px-2.5 py-1.5 text-xs font-bold rounded-lg bg-black/55 text-white border border-white/20 hover:bg-black/75">Latérale</button>
+        <div
+          className="absolute left-3 z-30 flex items-center gap-2"
+          style={{ top: 'calc(env(safe-area-inset-top) + 8px)' }}
+        >
+          <button onPointerDown={(e) => e.stopPropagation()} onClick={() => setViewPreset('face')} className="px-2.5 py-1.5 text-xs font-bold rounded-lg bg-black/55 text-white border border-white/20 hover:bg-black/75">Face</button>
+          <button onPointerDown={(e) => e.stopPropagation()} onClick={() => setViewPreset('angle')} className="px-2.5 py-1.5 text-xs font-bold rounded-lg bg-black/55 text-white border border-white/20 hover:bg-black/75">3/4</button>
+          <button onPointerDown={(e) => e.stopPropagation()} onClick={() => setViewPreset('left')} className="px-2.5 py-1.5 text-xs font-bold rounded-lg bg-black/55 text-white border border-white/20 hover:bg-black/75">Latérale</button>
         </div>
       )}
     </div>
