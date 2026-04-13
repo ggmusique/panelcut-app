@@ -1,4 +1,5 @@
 import { useRef, useState, useCallback, useEffect, useMemo } from 'react';
+import { Disc } from 'lucide-react';
 import CabinetElevationFront from './CabinetElevationFront';
 import { captureFacadeToImage } from '../utils/captureFacadeToImage';
 
@@ -17,6 +18,7 @@ const LS_SKETCH_KEY               = 'pc_sketch_editor';
 const FACADE_CAPTURE_WIDTH        = 980;
 const FACADE_CAPTURE_INITIAL_DELAY_MS = 150;
 const FACADE_CAPTURE_DEBOUNCE_MS  = 400;
+const REMOTE_AUTOSAVE_INTERVAL_MS = 30000;
 const WOOD_FILL            = '#f5ede0';
 const WOOD_STROKE          = '#8b6914';
 const DIM_COLOR            = '#dc2626';
@@ -98,6 +100,7 @@ function computeMRects(facadeModules, joints, thPx, drawW, drawH, mL, mT, plPx) 
 function FacadeRealisteSVG({
   svgW, svgH, cabW, cabH, plinth, thick,
   facadeModules, facadeItems, joints,
+  cabinetModules = [],
   globalSliding,
   onFacadePointerDown,
   onItemPointerDown,
@@ -179,14 +182,40 @@ function FacadeRealisteSVG({
       })}
 
       {mRects.map(({ x, w, m, i, intTop, intBottom, intH: iH }) => {
-        const nbD     = m.drawers || 0;
-        const drawerH = Math.min(iH * 0.15, 46);
-        const drawPx  = nbD * drawerH;
-      const nbDoors = m.doors || 0;
-      const nbSliding = m.slidingDoors || 0;
+        const moduleData = cabinetModules[i] || m;
+        const interiorCm = Math.max(1, cabH - plinth);
+        const cmToPx = iH / interiorCm;
+        const nbDoors = moduleData.doors || 0;
+        const nbSliding = moduleData.slidingDoors || 0;
 
-        const tiroirs = Array.from({ length: nbD }, (_, di) => {
-          const dy = intBottom - drawPx + di * drawerH;
+        const shelfHeightsCm = Array.isArray(moduleData?.shelves)
+          ? moduleData.shelves
+              .map((s) => (typeof s === 'object' && s !== null ? toNum(s.y, NaN) : toNum(s, NaN)))
+              .filter((v) => Number.isFinite(v))
+              .sort((a, b) => a - b)
+          : [];
+
+        const sourceDrawerItems = Array.isArray(moduleData?.drawerItems) && moduleData.drawerItems.length > 0
+          ? moduleData.drawerItems
+          : [];
+
+        const resolvedDrawerItems = sourceDrawerItems.length > 0
+          ? sourceDrawerItems
+          : Array.from({ length: m.drawers || 0 }, (_, di) => ({ y: di * 18, height: 18 }));
+
+        const safeDrawerItems = [];
+        for (const dr of resolvedDrawerItems) {
+          const drawerBottomCm = Math.max(0, toNum(dr.y, 0));
+          const drawerHeightCm = Math.max(5, toNum(dr.height ?? dr.h, 18));
+          const drawerTopCm = drawerBottomCm + drawerHeightCm;
+          const hitShelf = shelfHeightsCm.some((shelfCm) => shelfCm > drawerBottomCm && shelfCm < drawerTopCm);
+          if (hitShelf) break;
+          safeDrawerItems.push({ y: drawerBottomCm, height: drawerHeightCm });
+        }
+
+        const tiroirs = safeDrawerItems.map((dr, di) => {
+          const drawerH = Math.max(10, dr.height * cmToPx);
+          const dy = intBottom - (dr.y + dr.height) * cmToPx;
           return (
             <g key={`dr-${i}-${di}`}
               onClick={e => { e.stopPropagation(); if (isErase) onModuleErase(i, 'drawer'); }}
@@ -231,7 +260,8 @@ function FacadeRealisteSVG({
           </g>
         ) : null;
 
-        const numY = intTop + Math.max(30, (iH - drawPx) * 0.45);
+        const usedDrawerHeightPx = safeDrawerItems.reduce((acc, dr) => acc + Math.max(10, dr.height * cmToPx), 0);
+        const numY = intTop + Math.max(30, (iH - usedDrawerHeightPx) * 0.45);
         const hitZone = (isPlace || isAdd) ? (
           <rect key={`hit-${i}`} x={x} y={intTop} width={w} height={iH}
             fill="transparent" style={{ cursor: 'cell' }}
@@ -600,6 +630,37 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
   }, [facadeItems, facadeModules, moduleDetails, globalSliding, joints,
       cabinetDims, elements, generalNotes, sketchFingerprint]);
   const handleSave = saveToStorage;
+  const remoteSaveSnapshot = useMemo(() => JSON.stringify({
+    cabinetDims,
+    facadeModules,
+    facadeItems,
+    moduleDetails,
+    generalNotes,
+    joints,
+    globalSliding,
+  }), [cabinetDims, facadeModules, facadeItems, moduleDetails, generalNotes, joints, globalSliding]);
+  const lastAutoSavedSnapshotRef = useRef('');
+  const autoSavingRef = useRef(false);
+  const triggerRemoteSave = useCallback(async () => {
+    handleSave();
+    if (!onSave || !currentCabinet || autoSavingRef.current) return;
+    autoSavingRef.current = true;
+    try {
+      await onSave(currentCabinet);
+      lastAutoSavedSnapshotRef.current = remoteSaveSnapshot;
+    } finally {
+      autoSavingRef.current = false;
+    }
+  }, [handleSave, onSave, currentCabinet, remoteSaveSnapshot]);
+
+  useEffect(() => {
+    if (!onSave) return;
+    const timer = window.setInterval(() => {
+      if (remoteSaveSnapshot === lastAutoSavedSnapshotRef.current) return;
+      void triggerRemoteSave();
+    }, REMOTE_AUTOSAVE_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [onSave, remoteSaveSnapshot, triggerRemoteSave]);
 
   const didAutoSwitchRef = useRef(false);
   useEffect(() => {
@@ -979,6 +1040,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
           cabW={cabinetDims.width} cabH={cabinetDims.height}
           plinth={cabinetDims.plinth} thick={thickness}
           facadeModules={facadeModules}
+          cabinetModules={currentCabinet?.modules || []}
           facadeItems={facadeItems}
           joints={joints}
           globalSliding={globalSliding}
@@ -1008,8 +1070,13 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
         <div className="flex gap-2">
           {error && <span className="text-red-400 text-sm self-center mr-2">{error}</span>}
           <button onClick={onCancel} className="px-3 py-1 bg-slate-700 text-white rounded">Annuler</button>
-          <button onClick={async () => { handleSave(); if (onSave) await onSave(currentCabinet); }} className="px-4 py-1 rounded font-bold text-white bg-green-600 hover:bg-green-500">
-            💾 Enregistrer
+          <button
+            onClick={() => { void triggerRemoteSave(); }}
+            className="p-1.5 rounded-lg text-slate-300 hover:text-green-400 hover:bg-white/10 transition-colors"
+            title="Enregistrer"
+            aria-label="Enregistrer"
+          >
+            <Disc className="w-4 h-4" />
           </button>
           <button onClick={handleRelancer} disabled={loading}
             className={`px-4 py-1 rounded font-bold text-white ${loading?'bg-orange-800':'bg-orange-600 hover:bg-orange-500'}`}>
@@ -1220,6 +1287,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
               cabW={cabinetDims.width} cabH={cabinetDims.height}
               plinth={cabinetDims.plinth} thick={thickness}
               facadeModules={facadeModules}
+              cabinetModules={currentCabinet?.modules || []}
               facadeItems={facadeItems}
               joints={joints}
               globalSliding={globalSliding}
