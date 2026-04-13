@@ -43,8 +43,14 @@ function normalizeModules(cabinet) {
 
       // --- Tiroirs ---
       const rawDrawers = m.drawers ?? m.nb_drawers ?? 0;
+      const rawDrawerItems = Array.isArray(m.drawerItems) ? m.drawerItems : [];
       let drawerItems = [];
-      if (Array.isArray(rawDrawers)) {
+      if (rawDrawerItems.length > 0) {
+        drawerItems = rawDrawerItems
+          .filter(d => typeof d === 'object' && d !== null)
+          .map(d => ({ y: toNum(d.y, null), h: toNum(d.height ?? d.h ?? 20, 20) }))
+          .filter(d => d.y !== null && d.y >= 0);
+      } else if (Array.isArray(rawDrawers)) {
         drawerItems = rawDrawers
           .filter(d => typeof d === 'object' && d !== null)
           .map(d => ({ y: toNum(d.y, null), h: toNum(d.height ?? d.h ?? 20, 20) }))
