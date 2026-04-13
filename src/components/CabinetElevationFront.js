@@ -8,11 +8,6 @@ function toNum(v, d = 0) {
 /**
  * Normalise les modules depuis cabinet.modules[]
  * Supporte rods[] (tableau de tringles multiples) et rod (legacy booléen/objet)
- *
- * FIX (2026-04-13) :
- *  - Tiroirs : lit drawerPositions en priorité (comme CabinetPlan2D),
- *    puis drawers/nb_drawers en fallback.
- *  - Les positions y/h sont extraites depuis drawerPositions quand disponibles.
  */
 function normalizeModules(cabinet) {
   const raw = Array.isArray(cabinet?.modules) ? cabinet.modules : [];
@@ -47,16 +42,12 @@ function normalizeModules(cabinet) {
       const nbShelves = shelfPositions.length > 0 ? shelfPositions.length : Math.max(0, parseInt(rawShelves, 10) || 0);
 
       // --- Tiroirs ---
-      // FIX : lire drawerPositions en priorité (cohérence avec CabinetPlan2D)
-      const rawDrawers = m.drawerPositions ?? m.drawers ?? m.nb_drawers ?? 0;
+      const rawDrawers = m.drawers ?? m.nb_drawers ?? 0;
       let drawerItems = [];
       if (Array.isArray(rawDrawers)) {
         drawerItems = rawDrawers
           .filter(d => typeof d === 'object' && d !== null)
-          .map(d => ({
-            y: toNum(d.y, null),
-            h: toNum(d.height ?? d.h ?? 20, 20),
-          }))
+          .map(d => ({ y: toNum(d.y, null), h: toNum(d.height ?? d.h ?? 20, 20) }))
           .filter(d => d.y !== null && d.y >= 0);
       }
       const nbDrawers = drawerItems.length > 0 ? drawerItems.length : Math.max(0, parseInt(rawDrawers, 10) || 0);
@@ -204,10 +195,8 @@ export default function CabinetElevationFront({ cabinet, name = 'Meuble' }) {
           const mx  = m.x;
           const mw  = m.w;
           const mid = mx + mw / 2;
-
-          // FIX : zone tiroir = 45% de iH (cohérent avec CabinetPlan2D qui utilise innerH * 0.45)
-          // au lieu de l'ancien iH * 0.15 * nbDrawers qui était trop petit et incohérent
-          const drawerZonePx  = m.drawers > 0 ? iH * 0.45 : 0;
+          const drawerZoneRatio = Math.min(0.5, Math.max(0, m.drawers * 0.15));
+          const drawerZonePx = iH * drawerZoneRatio;
           const drawerZoneTop = intBottom - drawerZonePx;
 
           // ─ Séparateur vertical
@@ -230,9 +219,6 @@ export default function CabinetElevationFront({ cabinet, name = 'Meuble' }) {
           });
 
           // ─ Tablettes
-          // FIX : en mode fallback (pas de shelfPositions), les tablettes sont
-          // limitées à la zone au-dessus des tiroirs (drawerZoneTop) pour éviter
-          // tout chevauchement — cohérent avec CabinetPlan2D.
           const shelfElems = m.shelfPositions.length > 0
             ? m.shelfPositions.map((yCm, si) => {
                 const syPx = cmToY(yCm);
@@ -246,8 +232,7 @@ export default function CabinetElevationFront({ cabinet, name = 'Meuble' }) {
               })
             : m.shelves > 0
               ? Array.from({ length: m.shelves }, (_, si) => {
-                  const availableH = m.drawers > 0 ? drawerZoneTop - (oy + TH_PX) : INNER_H;
-                  const syPx = (oy + TH_PX) + ((si + 1) / (m.shelves + 1)) * availableH;
+                  const syPx = Math.min(oy + ((si + 1) / (m.shelves + 1)) * INNER_H, drawerZoneTop - 3);
                   return (
                     <rect key={`shelf-${m.id}-${si}`}
                       x={mx + 4} y={syPx - 2}
@@ -265,12 +250,12 @@ export default function CabinetElevationFront({ cabinet, name = 'Meuble' }) {
                 const dhPx  = d.h * sy;
                 return (
                   <g key={`drawer-${m.id}-${di}`}>
-                    <rect x={mx + 6} y={dyTop} width={mw - 12} height={Math.max(dhPx, 12)}
+                      <rect x={mx + 6} y={dyTop} width={mw - 12} height={Math.max(dhPx, 12)}
                       fill="rgba(180,140,95,0.16)" stroke="#8b5e34" strokeWidth={1.3} rx={2}
-                    />
+                      />
                     <rect
                       x={mx + mw / 2 - 18} y={dyTop + Math.max(dhPx, 12) / 2 - 4}
-                      width={36} height={8} rx={4}
+                        width={36} height={8} rx={4}
                       fill="none" stroke="#5b4635" strokeWidth={1.8}
                     />
                   </g>
@@ -303,7 +288,6 @@ export default function CabinetElevationFront({ cabinet, name = 'Meuble' }) {
               <rect x={mx + mw * 0.38} y={oy + 12} width={mw * 0.56} height={INNER_H - 24} fill="rgba(147,197,253,0.24)" stroke="#3b82f6" strokeWidth={1} />
             </g>
           ) : null;
-
           const doorElems = m.slidingDoors === 0 && m.doors > 0
             ? Array.from({ length: Math.min(2, m.doors) }, (_, di) => {
                 const panelW = (mw - 12) / Math.min(2, m.doors);
