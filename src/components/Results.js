@@ -187,6 +187,7 @@ export default function Results({ t, results, project }) {
   const [tab, setTab] = useState('plan');
   const [fullPlan, setFullPlan] = useState(false);
   const [full3D, setFull3D] = useState(false);
+  const [presentation3D, setPresentation3D] = useState(false);
   const colorMap = {};
 
   // Tringles (rods) excluded from optimization
@@ -344,13 +345,21 @@ export default function Results({ t, results, project }) {
                   <span className="text-amber-400">🌟</span>
                   <span>Vue photoréaliste pour présentation client</span>
                   <button
+                    onClick={() => setPresentation3D(v => !v)}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold rounded-lg border transition-colors ${
+                      presentation3D ? 'bg-emerald-600/25 text-emerald-200 border-emerald-400/40' : 'bg-white/10 text-white border-white/20 hover:bg-white/20'
+                    }`}
+                  >
+                    {presentation3D ? 'Mode standard' : 'Mode présentation'}
+                  </button>
+                  <button
                     onClick={() => setFull3D(true)}
                     className="ml-auto flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold rounded-lg bg-white/10 text-white border border-white/20 hover:bg-white/20 transition-colors"
                   >
                     <Maximize2 className="w-3.5 h-3.5" /> Plein écran
                   </button>
                 </div>
-                <ProfessionalRealisticViewer cabinet={cabinet} name={project.name} />
+                <ProfessionalRealisticViewer cabinet={cabinet} name={project.name} presentationMode={presentation3D} />
               </>
             ) : (
               <div className="flex flex-col items-center justify-center py-16 gap-4 text-center">
@@ -393,7 +402,7 @@ export default function Results({ t, results, project }) {
               <Minimize2 className="w-4 h-4" /> Quitter plein écran
             </button>
           </div>
-          <ProfessionalRealisticViewer cabinet={cabinet} name={project.name} fullScreen />
+          <ProfessionalRealisticViewer cabinet={cabinet} name={project.name} fullScreen presentationMode={presentation3D} />
         </div>
       )}
     </div>
