@@ -405,6 +405,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
   const [imgSize,       setImgSize]       = useState({ w: 800, h: 600 });
   const [viewport,      setViewport]      = useState({ x: 0, y: 0, w: 800, h: 600 });
   const [isNavMode,     setIsNavMode]     = useState(() => (typeof window !== 'undefined' ? window.innerWidth < MOBILE_BREAKPOINT_PX : false));
+  const [isCompactMobile, setIsCompactMobile] = useState(() => (typeof window !== 'undefined' ? window.innerWidth < 640 : false));
   const [loading,       setLoading]       = useState(false);
   const [error,         setError]         = useState(null);
   const [generalNotes,  setGeneralNotes]  = useState(savedState?.generalNotes || '');
@@ -696,6 +697,12 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
   useEffect(() => {
     setViewport({ x: 0, y: 0, w: imgSize.w, h: imgSize.h });
   }, [imgSize.w, imgSize.h, baseView]);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onResize = () => setIsCompactMobile(window.innerWidth < 640);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   const FACADE_W = 1140;
   const FACADE_H = 700;
@@ -1115,7 +1122,14 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     (typeof screen === 'undefined' || screen.orientation?.type !== 'landscape-primary');
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/90 flex flex-col">
+    <div
+      className="fixed inset-0 z-50 bg-black/90 flex flex-col"
+      style={{
+        minHeight: '100dvh',
+        paddingTop: 'env(safe-area-inset-top)',
+        paddingBottom: 'env(safe-area-inset-bottom)',
+      }}
+    >
       {showRotateHint && (
         <div className="px-3 py-2 bg-amber-600/20 border-b border-amber-400/30 text-amber-200 text-xs text-center font-semibold">
           📱 Conseil iPhone : passe en paysage pour éditer plus confortablement.
@@ -1225,14 +1239,15 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
         )}
         {TOOLS.map(t => (
           <button key={t.id} onClick={()=>setTool(t.id)}
-            className={`flex items-center gap-2 px-3 py-2 rounded text-sm font-medium transition ${
+            className={`flex items-center gap-1.5 ${isCompactMobile ? 'px-2 py-2' : 'px-3 py-2'} rounded text-sm font-medium transition ${
               tool===t.id?'bg-slate-600 text-white ring-2 ring-offset-1 ring-offset-slate-800':'text-slate-400 hover:bg-slate-700'
             }`}
             style={tool===t.id?{borderColor:t.color,borderWidth:'2px'}:{}}>
-            {t.icon} {t.label}
+            <span>{t.icon}</span>
+            {!isCompactMobile && <span>{t.label}</span>}
           </button>
         ))}
-        <div className="ml-auto text-xs text-slate-400 self-center px-2 whitespace-nowrap">{hint}</div>
+        {!isCompactMobile && <div className="ml-auto text-xs text-slate-400 self-center px-2 whitespace-nowrap">{hint}</div>}
       </div>
 
       <div className="bg-slate-900 border-b border-slate-700 p-2 flex flex-wrap gap-2 items-center text-xs">
@@ -1413,6 +1428,32 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
           placeholder="📝 Notes pour Claude (ex: 2 tiroirs en bas du module 3, porte vitrée à gauche...)"
           className="w-full h-16 px-3 py-2 bg-slate-800 border border-slate-600 rounded text-sm text-slate-200 placeholder-slate-500 resize-none"/>
       </div>
+
+      {isCompactMobile && (
+        <div className="fixed bottom-4 right-3 z-[60] flex flex-col gap-2">
+          <button
+            onClick={() => setIsNavMode(v => !v)}
+            className={`w-11 h-11 rounded-full border shadow-xl text-lg ${isNavMode ? 'bg-emerald-600 text-white border-emerald-300/40' : 'bg-slate-800 text-slate-100 border-white/20'}`}
+            title="Mode déplacement"
+          >
+            🖐️
+          </button>
+          <button
+            onClick={resetViewport}
+            className="w-11 h-11 rounded-full border border-white/20 bg-slate-800 text-slate-100 shadow-xl text-lg"
+            title="Recentrer"
+          >
+            🎯
+          </button>
+          <button
+            onClick={() => { void triggerRemoteSave(); }}
+            className="w-11 h-11 rounded-full border border-green-300/30 bg-green-700 text-white shadow-xl text-lg"
+            title="Sauvegarder"
+          >
+            💾
+          </button>
+        </div>
+      )}
 
       {editingDimId && (() => {
         const dim = elements.find(e=>e.id===editingDimId);
