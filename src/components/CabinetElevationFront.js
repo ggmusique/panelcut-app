@@ -288,6 +288,35 @@ export default function CabinetElevationFront({ cabinet, name = 'Meuble' }) {
               <rect x={mx + mw * 0.38} y={oy + 12} width={mw * 0.56} height={INNER_H - 24} fill="rgba(147,197,253,0.24)" stroke="#3b82f6" strokeWidth={1} />
             </g>
           ) : null;
+          const doorElems = m.slidingDoors === 0 && m.doors > 0
+            ? Array.from({ length: Math.min(2, m.doors) }, (_, di) => {
+                const panelW = (mw - 12) / Math.min(2, m.doors);
+                const x = mx + 6 + di * panelW;
+                const handleX = di === 0 ? x + panelW - 10 : x + 10;
+                return (
+                  <g key={`door-${m.id}-${di}`}>
+                    <rect
+                      x={x}
+                      y={oy + 12}
+                      width={panelW}
+                      height={INNER_H - 24}
+                      fill="rgba(96,165,250,0.12)"
+                      stroke="#60a5fa"
+                      strokeWidth={1.2}
+                      rx={2}
+                    />
+                    <rect
+                      x={handleX - 1.2}
+                      y={oy + INNER_H / 2 - 10}
+                      width={2.4}
+                      height={20}
+                      fill="#64748b"
+                      rx={1}
+                    />
+                  </g>
+                );
+              })
+            : null;
 
           // ─ Numéro du module
           const numElem = (
@@ -318,6 +347,7 @@ export default function CabinetElevationFront({ cabinet, name = 'Meuble' }) {
               {drawerElems}
               {shelfElems}
               {slidingElems}
+              {doorElems}
               {numElem}
               {coteElem}
             </g>
