@@ -455,7 +455,15 @@ export function exportPDF(results, project, extras = {}) {
     doc.text(title, M, 14);
     const maxW = PW - 2 * M;
     const maxH = PH - 42;
-    doc.addImage(imageData, 'PNG', M, 28, maxW, maxH, undefined, 'FAST');
+    const props = doc.getImageProperties(imageData);
+    const imgW = props?.width || maxW;
+    const imgH = props?.height || maxH;
+    const scale = Math.min(maxW / imgW, maxH / imgH);
+    const drawW = imgW * scale;
+    const drawH = imgH * scale;
+    const drawX = M + (maxW - drawW) / 2;
+    const drawY = 28 + (maxH - drawH) / 2;
+    doc.addImage(imageData, 'PNG', drawX, drawY, drawW, drawH, undefined, 'FAST');
   };
 
   addVisualPage('Façade / Plan façade', extras.facadeImage);
