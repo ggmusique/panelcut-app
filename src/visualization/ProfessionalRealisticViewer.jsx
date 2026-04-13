@@ -818,7 +818,7 @@ function Scene({ cabinet, modules }) {
    MAIN EXPORT
    ═══════════════════════════════════════════════════════════════ */
 
-export default function ProfessionalRealisticViewer({ cabinet, name }) {
+export default function ProfessionalRealisticViewer({ cabinet, name, fullScreen = false }) {
   if (!cabinet || !cabinet.width || !cabinet.height) {
     return (
       <div className="w-full h-[700px] flex items-center justify-center bg-gray-100 rounded-2xl text-gray-400 text-base">
@@ -836,7 +836,11 @@ export default function ProfessionalRealisticViewer({ cabinet, name }) {
   const camDist = Math.max(Wm, Hm) * 1.6;
 
   return (
-    <div className="relative w-full rounded-2xl overflow-hidden shadow-2xl" style={{ height: 750 }} onWheel={e => e.stopPropagation()}>
+    <div
+      className={`relative w-full overflow-hidden shadow-2xl ${fullScreen ? 'rounded-none' : 'rounded-2xl'}`}
+      style={{ height: fullScreen ? '100dvh' : 750 }}
+      onWheel={e => e.stopPropagation()}
+    >
       <Canvas
         shadows
         camera={{
