@@ -437,7 +437,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
 
   useEffect(() => {
     setWidthInputs(facadeModules.map(m => String(m.width)));
-  }, [facadeModules.length]);
+  }, [facadeModules]);
   useEffect(() => {
     setSelectedModuleIdx((idx) => Math.max(0, Math.min(idx, Math.max(0, facadeModules.length - 1))));
     setModuleDetails((prev) => {
@@ -456,7 +456,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
         },
       }));
     });
-  }, [facadeModules.length]);
+  }, [facadeModules]);
 
   const commitWidth = (idx) => {
     const n = Math.max(1, toNum(widthInputs[idx], 1));
