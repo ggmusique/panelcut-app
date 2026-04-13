@@ -189,7 +189,6 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
       });
 
       const { processedImage, ocrNumbers } = await prepareImageForScan(originalBase64);
-      console.log(`🔢 OCR détecte ${ocrNumbers.length} cotes :`, ocrNumbers);
       processedImageRef.current = processedImage;
 
       const base64Data = processedImage.split(',')[1];

@@ -283,15 +283,6 @@ export default function App() {
       newScanResult.result?.cabinet ||
       project.cabinet;
     const cabinet = reconstructModulesFromFlat(rawCabinet);
-    console.log('[FIX1] modules transmis à project.cabinet:',
-      cabinet.modules?.map(m => ({
-        id: m.id,
-        width: m.width,
-        drawers: m.drawers,
-        rods: m.rods?.length,
-        shelves: Array.isArray(m.shelves) ? m.shelves.length : (m.shelves ?? null),
-      }))
-    );
     setProject(p => ({ ...p, pieces, cabinet, scanResult: newScanResult, sketchDraft: null }));
     setScreen(SCREENS.PIECES);
   };
@@ -350,9 +341,6 @@ export default function App() {
   const hasHeader = ![SCREENS.AUTH, SCREENS.SKETCH, SCREENS.LANDING, SCREENS.WIZARD, SCREENS.HISTORY].includes(screen);
   const hasSteps  = steps.length > 0;
   
-  // ← LOG CABINET (déjà présent)
-  console.log('🔍 Cabinet data:', project.cabinet);
-
   return (
     <div className="app min-h-screen bg-[#0f1620] text-slate-200 font-sans dark:bg-slate-950 dark:text-slate-100 transition-colors duration-300">
 

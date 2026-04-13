@@ -617,24 +617,6 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     globalSliding,
     sketchFingerprint,
   ]);
-  useEffect(() => {
-    if (!onDraftChangeRef.current) return;
-    const payload = {
-      fingerprint: sketchFingerprint,
-      state: {
-        elements,
-        cabinetDims,
-        facadeModules,
-        facadeItems,
-        moduleDetails,
-        generalNotes,
-        joints,
-        globalSliding,
-      },
-    };
-    onDraftChangeRef.current(payload);
-  }, [facadeItems, facadeModules, moduleDetails, globalSliding, joints,
-      cabinetDims, elements, generalNotes, sketchFingerprint]);
   const handleSave = saveToStorage;
   const remoteSaveSnapshot = useMemo(() => JSON.stringify({
     cabinetDims,
@@ -647,6 +629,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
   }), [cabinetDims, facadeModules, facadeItems, moduleDetails, generalNotes, joints, globalSliding]);
   const lastAutoSavedSnapshotRef = useRef('');
   const autoSavingRef = useRef(false);
+  const [autoSaveBackoffMs, setAutoSaveBackoffMs] = useState(REMOTE_AUTOSAVE_INTERVAL_MS);
   const triggerRemoteSave = useCallback(async () => {
     handleSave();
     if (!onSave || !currentCabinet || autoSavingRef.current) return;
@@ -654,6 +637,9 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     try {
       await onSave(currentCabinet);
       lastAutoSavedSnapshotRef.current = remoteSaveSnapshot;
+      setAutoSaveBackoffMs(REMOTE_AUTOSAVE_INTERVAL_MS);
+    } catch {
+      setAutoSaveBackoffMs((v) => Math.min(120000, Math.max(REMOTE_AUTOSAVE_INTERVAL_MS, v * 2)));
     } finally {
       autoSavingRef.current = false;
     }
@@ -661,12 +647,12 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
 
   useEffect(() => {
     if (!onSave) return;
-    const timer = window.setInterval(() => {
+    const timer = window.setTimeout(() => {
       if (remoteSaveSnapshot === lastAutoSavedSnapshotRef.current) return;
       void triggerRemoteSave();
-    }, REMOTE_AUTOSAVE_INTERVAL_MS);
-    return () => window.clearInterval(timer);
-  }, [onSave, remoteSaveSnapshot, triggerRemoteSave]);
+    }, autoSaveBackoffMs);
+    return () => window.clearTimeout(timer);
+  }, [onSave, remoteSaveSnapshot, triggerRemoteSave, autoSaveBackoffMs]);
 
   const didAutoSwitchRef = useRef(false);
   useEffect(() => {
