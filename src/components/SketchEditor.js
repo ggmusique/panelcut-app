@@ -339,8 +339,6 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
       ? cab.modules.map((m) => ({
           w: Number(m?.width ?? m?.w ?? 0),
           d: Number(m?.drawers ?? m?.nb_drawers ?? 0),
-          s: Array.isArray(m?.shelves) ? m.shelves.length : Number(m?.shelves ?? m?.nb_shelves ?? 0),
-          r: Array.isArray(m?.rods) ? m.rods.length : Number(Boolean(m?.rod ?? m?.rods ?? m?.tringle)),
         }))
       : [];
     return JSON.stringify({
@@ -348,7 +346,6 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
       h: Number(cab.height ?? 0),
       p: Number(cab.plinth ?? 0),
       m: mods,
-      pieces: Array.isArray(initialResult?.pieces) ? initialResult.pieces.length : 0,
     });
   }, [initialResult]);
 
@@ -365,11 +362,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
       const r = localStorage.getItem(LS_SKETCH_KEY);
       if (!r) return null;
       const parsed = JSON.parse(r);
-      const state = parsed?.state || parsed;
-      const savedFingerprint = parsed?.fingerprint || null;
-      if (savedFingerprint && savedFingerprint === sketchFingerprint) return state;
-      if (!savedFingerprint) return hasFreshScanResult ? null : state;
-      return hasFreshScanResult ? null : state;
+      return parsed?.state || parsed || null;
     } catch { return null; }
   })();
 
@@ -556,7 +549,38 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     if (onDraftChangeRef.current) onDraftChangeRef.current(payload);
   }, [elements, cabinetDims, facadeModules, facadeItems, moduleDetails, generalNotes, joints, globalSliding, sketchFingerprint]);
 
-  useEffect(() => { saveToStorage(); }, [saveToStorage]);
+  const facadeItemsRef = useRef(facadeItems);
+  useEffect(() => { facadeItemsRef.current = facadeItems; }, [facadeItems]);
+
+  useEffect(() => {
+    const payload = {
+      fingerprint: sketchFingerprint,
+      state: {
+        elements,
+        cabinetDims,
+        facadeModules,
+        facadeItems: facadeItemsRef.current,
+        moduleDetails,
+        generalNotes,
+        joints,
+        globalSliding,
+      },
+    };
+    try {
+      localStorage.setItem(LS_SKETCH_KEY, JSON.stringify(payload));
+      if (onDraftChangeRef.current) onDraftChangeRef.current(payload);
+    } catch {}
+  }, [
+    elements,
+    cabinetDims,
+    facadeModules,
+    facadeItems,
+    moduleDetails,
+    generalNotes,
+    joints,
+    globalSliding,
+    sketchFingerprint,
+  ]);
   useEffect(() => {
     if (!onDraftChangeRef.current) return;
     const payload = {
