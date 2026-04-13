@@ -91,6 +91,7 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
   // ── États pour le Scan ──
   const fileInputRef   = useRef(null);
   const processedImageRef = useRef(null);
+  const pendingScanModeRef = useRef('full');
   const [scanning,        setScanning]        = useState(false);
   const [correcting,      setCorrecting]      = useState(false);
   const [showCorrection,  setShowCorrection]  = useState(false);
@@ -168,12 +169,16 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
   };
 
   // ── Flux Scan ──
-  const triggerFilePicker = () => fileInputRef.current?.click();
+  const triggerFilePicker = (mode = 'full') => {
+    pendingScanModeRef.current = mode;
+    fileInputRef.current?.click();
+  };
 
   const handleFileSelect = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
     setScanning(true);
+    const scanMode = pendingScanModeRef.current || 'full';
 
     try {
       const originalBase64 = await new Promise((resolve, reject) => {
@@ -184,7 +189,7 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
       });
 
       const { processedImage, ocrNumbers } = await prepareImageForScan(originalBase64);
-      console.log(`🔢 OCR détecte ${ocrNumbers.length} cotes :`, ocrNumbers);
+      processedImageRef.current = processedImage;
 
       const base64Data = processedImage.split(',')[1];
 
@@ -195,6 +200,7 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
           image: base64Data,
           mediaType: 'image/jpeg',
           ocrNumbers,
+          scanMode,
         }),
       });
 
@@ -203,14 +209,16 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
         throw new Error(errData.error || `Erreur serveur (${response.status})`);
       }
       const scanResult = await response.json();
+      setLastScanResult(scanResult);
 
-      if (onGoScan) onGoScan(scanResult, processedImage);
+      if (onGoScan) onGoScan(scanResult, processedImage, scanMode);
 
     } catch (err) {
       console.error('💥 Échec complet du scan:', err);
       alert(`❌ Échec du scan : ${err.message}`);
     } finally {
       setScanning(false);
+      pendingScanModeRef.current = 'full';
       event.target.value = null;
     }
   };
@@ -244,7 +252,7 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
       setLastScanResult(correctedResult);
       setShowCorrection(false);
       setCorrectionText('');
-      if (onGoScan) onGoScan(correctedResult, processedImageRef.current);
+      if (onGoScan) onGoScan(correctedResult, processedImageRef.current, 'full');
     } catch (err) {
       console.error('💥 Échec de la rectification:', err);
       alert(`❌ Rectification échouée : ${err.message}`);
@@ -450,8 +458,11 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
                   🛠️ Rectifier le plan
                 </button>
               )}
-              <button onClick={triggerFilePicker} disabled={scanning || correcting} className="flex-1 sm:flex-none px-5 py-2.5 text-sm font-bold bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl transition-all shadow-lg shadow-cyan-600/20 active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-50">
-                {scanning ? '⏳ Analyse...' : '📷 Scanner un plan'}
+              <button onClick={() => triggerFilePicker('dimensions_only')} disabled={scanning || correcting} className="flex-1 sm:flex-none px-5 py-2.5 text-sm font-bold bg-teal-600 hover:bg-teal-500 text-white rounded-xl transition-all shadow-lg shadow-teal-600/20 active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-50">
+                {scanning ? '⏳ Analyse...' : '📏 Scanner cotes uniquement'}
+              </button>
+              <button onClick={() => triggerFilePicker('full')} disabled={scanning || correcting} className="flex-1 sm:flex-none px-5 py-2.5 text-sm font-bold bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl transition-all shadow-lg shadow-cyan-600/20 active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-50">
+                {scanning ? '⏳ Analyse...' : '📷 Scanner plan + cotes'}
               </button>
               <button onClick={onGoManual} disabled={!isFormValid} className={`flex-1 sm:flex-none px-5 py-2.5 text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${isFormValid ? 'bg-orange-600 hover:bg-orange-500 text-white shadow-lg shadow-orange-600/20 active:scale-[0.98]' : 'bg-slate-700 text-slate-500 cursor-not-allowed opacity-50'}`}>
                 ✏️ {t?.btn_manual || 'Saisie manuelle'} →
