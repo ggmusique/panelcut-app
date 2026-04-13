@@ -1,4 +1,5 @@
 import { useRef, useState, useCallback, useEffect, useMemo } from 'react';
+import { Disc } from 'lucide-react';
 import CabinetElevationFront from './CabinetElevationFront';
 import { captureFacadeToImage } from '../utils/captureFacadeToImage';
 
@@ -17,11 +18,13 @@ const LS_SKETCH_KEY               = 'pc_sketch_editor';
 const FACADE_CAPTURE_WIDTH        = 980;
 const FACADE_CAPTURE_INITIAL_DELAY_MS = 150;
 const FACADE_CAPTURE_DEBOUNCE_MS  = 400;
+const REMOTE_AUTOSAVE_INTERVAL_MS = 30000;
 const WOOD_FILL            = '#f5ede0';
 const WOOD_STROKE          = '#8b6914';
 const DIM_COLOR            = '#dc2626';
 const DOUBLE_COLOR         = '#d97706';
 const MARGIN               = { l: 65, r: 52, t: 55, b: 65 };
+const MOBILE_BREAKPOINT_PX = 768;
 
 const uid   = () => Math.random().toString(36).slice(2, 9);
 const toNum = (v, d = 0) => { const n = Number(v); return Number.isFinite(n) ? n : d; };
@@ -98,6 +101,7 @@ function computeMRects(facadeModules, joints, thPx, drawW, drawH, mL, mT, plPx) 
 function FacadeRealisteSVG({
   svgW, svgH, cabW, cabH, plinth, thick,
   facadeModules, facadeItems, joints,
+  cabinetModules = [],
   globalSliding,
   onFacadePointerDown,
   onItemPointerDown,
@@ -179,14 +183,40 @@ function FacadeRealisteSVG({
       })}
 
       {mRects.map(({ x, w, m, i, intTop, intBottom, intH: iH }) => {
-        const nbD     = m.drawers || 0;
-        const drawerH = Math.min(iH * 0.15, 46);
-        const drawPx  = nbD * drawerH;
-      const nbDoors = m.doors || 0;
-      const nbSliding = m.slidingDoors || 0;
+        const moduleData = cabinetModules[i] || m;
+        const interiorCm = Math.max(1, cabH - plinth);
+        const cmToPx = iH / interiorCm;
+        const nbDoors = moduleData.doors || 0;
+        const nbSliding = moduleData.slidingDoors || 0;
 
-        const tiroirs = Array.from({ length: nbD }, (_, di) => {
-          const dy = intBottom - drawPx + di * drawerH;
+        const shelfHeightsCm = Array.isArray(moduleData?.shelves)
+          ? moduleData.shelves
+              .map((s) => (typeof s === 'object' && s !== null ? toNum(s.y, NaN) : toNum(s, NaN)))
+              .filter((v) => Number.isFinite(v))
+              .sort((a, b) => a - b)
+          : [];
+
+        const sourceDrawerItems = Array.isArray(moduleData?.drawerItems) && moduleData.drawerItems.length > 0
+          ? moduleData.drawerItems
+          : [];
+
+        const resolvedDrawerItems = sourceDrawerItems.length > 0
+          ? sourceDrawerItems
+          : Array.from({ length: m.drawers || 0 }, (_, di) => ({ y: di * 18, height: 18 }));
+
+        const safeDrawerItems = [];
+        for (const dr of resolvedDrawerItems) {
+          const drawerBottomCm = Math.max(0, toNum(dr.y, 0));
+          const drawerHeightCm = Math.max(5, toNum(dr.height ?? dr.h, 18));
+          const drawerTopCm = drawerBottomCm + drawerHeightCm;
+          const hitShelf = shelfHeightsCm.some((shelfCm) => shelfCm > drawerBottomCm && shelfCm < drawerTopCm);
+          if (hitShelf) break;
+          safeDrawerItems.push({ y: drawerBottomCm, height: drawerHeightCm });
+        }
+
+        const tiroirs = safeDrawerItems.map((dr, di) => {
+          const drawerH = Math.max(10, dr.height * cmToPx);
+          const dy = intBottom - (dr.y + dr.height) * cmToPx;
           return (
             <g key={`dr-${i}-${di}`}
               onClick={e => { e.stopPropagation(); if (isErase) onModuleErase(i, 'drawer'); }}
@@ -231,7 +261,8 @@ function FacadeRealisteSVG({
           </g>
         ) : null;
 
-        const numY = intTop + Math.max(30, (iH - drawPx) * 0.45);
+        const usedDrawerHeightPx = safeDrawerItems.reduce((acc, dr) => acc + Math.max(10, dr.height * cmToPx), 0);
+        const numY = intTop + Math.max(30, (iH - usedDrawerHeightPx) * 0.45);
         const hitZone = (isPlace || isAdd) ? (
           <rect key={`hit-${i}`} x={x} y={intTop} width={w} height={iH}
             fill="transparent" style={{ cursor: 'cell' }}
@@ -372,6 +403,8 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
   const [draggingId,    setDraggingId]    = useState(null);
   const [resizingId,    setResizingId]    = useState(null);
   const [imgSize,       setImgSize]       = useState({ w: 800, h: 600 });
+  const [viewport,      setViewport]      = useState({ x: 0, y: 0, w: 800, h: 600 });
+  const [isNavMode,     setIsNavMode]     = useState(() => (typeof window !== 'undefined' ? window.innerWidth < MOBILE_BREAKPOINT_PX : false));
   const [loading,       setLoading]       = useState(false);
   const [error,         setError]         = useState(null);
   const [generalNotes,  setGeneralNotes]  = useState(savedState?.generalNotes || '');
@@ -399,6 +432,8 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     count: 2,
     heightCm: Math.max(80, toNum(initialCab.height, 240) - toNum(initialCab.plinth, 0)),
   });
+  const panRef = useRef({ active: false, startX: 0, startY: 0, vX: 0, vY: 0 });
+  const pinchRef = useRef({ active: false, dist: 0, centerX: 0, centerY: 0, base: { x: 0, y: 0, w: 0, h: 0 } });
 
   const [widthInputs, setWidthInputs] = useState(
     () => (savedState?.facadeModules || normalizeModulesFromResult(initialResult, toNum(initialCab.width, 200)))
@@ -407,7 +442,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
 
   useEffect(() => {
     setWidthInputs(facadeModules.map(m => String(m.width)));
-  }, [facadeModules.length]);
+  }, [facadeModules]);
   useEffect(() => {
     setSelectedModuleIdx((idx) => Math.max(0, Math.min(idx, Math.max(0, facadeModules.length - 1))));
     setModuleDetails((prev) => {
@@ -426,7 +461,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
         },
       }));
     });
-  }, [facadeModules.length]);
+  }, [facadeModules]);
 
   const commitWidth = (idx) => {
     const n = Math.max(1, toNum(widthInputs[idx], 1));
@@ -600,6 +635,37 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
   }, [facadeItems, facadeModules, moduleDetails, globalSliding, joints,
       cabinetDims, elements, generalNotes, sketchFingerprint]);
   const handleSave = saveToStorage;
+  const remoteSaveSnapshot = useMemo(() => JSON.stringify({
+    cabinetDims,
+    facadeModules,
+    facadeItems,
+    moduleDetails,
+    generalNotes,
+    joints,
+    globalSliding,
+  }), [cabinetDims, facadeModules, facadeItems, moduleDetails, generalNotes, joints, globalSliding]);
+  const lastAutoSavedSnapshotRef = useRef('');
+  const autoSavingRef = useRef(false);
+  const triggerRemoteSave = useCallback(async () => {
+    handleSave();
+    if (!onSave || !currentCabinet || autoSavingRef.current) return;
+    autoSavingRef.current = true;
+    try {
+      await onSave(currentCabinet);
+      lastAutoSavedSnapshotRef.current = remoteSaveSnapshot;
+    } finally {
+      autoSavingRef.current = false;
+    }
+  }, [handleSave, onSave, currentCabinet, remoteSaveSnapshot]);
+
+  useEffect(() => {
+    if (!onSave) return;
+    const timer = window.setInterval(() => {
+      if (remoteSaveSnapshot === lastAutoSavedSnapshotRef.current) return;
+      void triggerRemoteSave();
+    }, REMOTE_AUTOSAVE_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [onSave, remoteSaveSnapshot, triggerRemoteSave]);
 
   const didAutoSwitchRef = useRef(false);
   useEffect(() => {
@@ -627,6 +693,9 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     };
     img.src = imgSrc;
   }, [imgSrc, baseView]);
+  useEffect(() => {
+    setViewport({ x: 0, y: 0, w: imgSize.w, h: imgSize.h });
+  }, [imgSize.w, imgSize.h, baseView]);
 
   const FACADE_W = 1140;
   const FACADE_H = 700;
@@ -643,14 +712,28 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     const svg = svgRef.current;
     if (!svg) return { x: 0, y: 0 };
     const rect   = svg.getBoundingClientRect();
-    const scaleX = imgSize.w / rect.width;
-    const scaleY = imgSize.h / rect.height;
+    const scaleX = viewport.w / rect.width;
+    const scaleY = viewport.h / rect.height;
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
     return {
-      x: Math.max(0, Math.min(imgSize.w, (clientX - rect.left) * scaleX)),
-      y: Math.max(0, Math.min(imgSize.h, (clientY - rect.top)  * scaleY)),
+      x: Math.max(0, Math.min(imgSize.w, viewport.x + (clientX - rect.left) * scaleX)),
+      y: Math.max(0, Math.min(imgSize.h, viewport.y + (clientY - rect.top)  * scaleY)),
     };
+  }, [imgSize, viewport]);
+
+  const clampViewport = useCallback((next) => {
+    const minW = imgSize.w * 0.35;
+    const minH = imgSize.h * 0.35;
+    const w = Math.max(minW, Math.min(imgSize.w, next.w));
+    const h = Math.max(minH, Math.min(imgSize.h, next.h));
+    const x = Math.max(0, Math.min(imgSize.w - w, next.x));
+    const y = Math.max(0, Math.min(imgSize.h - h, next.y));
+    return { x, y, w, h };
+  }, [imgSize]);
+
+  const resetViewport = useCallback(() => {
+    setViewport({ x: 0, y: 0, w: imgSize.w, h: imgSize.h });
   }, [imgSize]);
 
   const handleFacadePointerDown = useCallback((e, modIdx) => {
@@ -739,6 +822,48 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
   }, []);
 
   const handlePointerMove = useCallback((e) => {
+    if (pinchRef.current.active && e.touches && e.touches.length === 2) {
+      const svg = svgRef.current;
+      if (!svg) return;
+      const rect = svg.getBoundingClientRect();
+      const [t1, t2] = e.touches;
+      const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+      if (dist <= 0) return;
+      const ratio = pinchRef.current.dist / dist;
+      const base = pinchRef.current.base;
+      const nextW = base.w * ratio;
+      const nextH = base.h * ratio;
+      const cxRatio = (pinchRef.current.centerX - rect.left) / Math.max(1, rect.width);
+      const cyRatio = (pinchRef.current.centerY - rect.top) / Math.max(1, rect.height);
+      const worldCX = base.x + cxRatio * base.w;
+      const worldCY = base.y + cyRatio * base.h;
+      setViewport(prev => clampViewport({
+        x: worldCX - cxRatio * nextW,
+        y: worldCY - cyRatio * nextH,
+        w: nextW,
+        h: nextH,
+      }));
+      return;
+    }
+    if (panRef.current.active) {
+      const svg = svgRef.current;
+      if (!svg) return;
+      const rect = svg.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0]?.clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0]?.clientY : e.clientY;
+      if (typeof clientX !== 'number' || typeof clientY !== 'number') return;
+      const dxPx = clientX - panRef.current.startX;
+      const dyPx = clientY - panRef.current.startY;
+      const dxWorld = dxPx * (viewport.w / Math.max(1, rect.width));
+      const dyWorld = dyPx * (viewport.h / Math.max(1, rect.height));
+      setViewport(clampViewport({
+        x: panRef.current.vX - dxWorld,
+        y: panRef.current.vY - dyWorld,
+        w: viewport.w,
+        h: viewport.h,
+      }));
+      return;
+    }
     if (facadeDrag.current.active) {
       const { y } = getSVGCoords(e);
       const { itemId, intTop, intH } = facadeDrag.current;
@@ -761,9 +886,11 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
         return { ...el, x: drag.current.elStartX + (x - drag.current.startX), y: drag.current.elStartY + (y - drag.current.startY) };
       }));
     }
-  }, [resizingId, draggingId, getSVGCoords]);
+  }, [resizingId, draggingId, getSVGCoords, clampViewport, viewport]);
 
   const handlePointerUp = useCallback(() => {
+    panRef.current.active = false;
+    pinchRef.current.active = false;
     if (facadeDrag.current.active) {
       facadeDrag.current.active = false;
       setFacadeItems(prev => {
@@ -798,6 +925,24 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
       moduleDetails, generalNotes, joints, globalSliding]);
 
   const handlePointerDown = useCallback((e) => {
+    if (e.touches && e.touches.length === 2) {
+      const [t1, t2] = e.touches;
+      pinchRef.current = {
+        active: true,
+        dist: Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY),
+        centerX: (t1.clientX + t2.clientX) / 2,
+        centerY: (t1.clientY + t2.clientY) / 2,
+        base: { ...viewport },
+      };
+      return;
+    }
+    if (isNavMode) {
+      const clientX = e.touches ? e.touches[0]?.clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0]?.clientY : e.clientY;
+      if (typeof clientX !== 'number' || typeof clientY !== 'number') return;
+      panRef.current = { active: true, startX: clientX, startY: clientY, vX: viewport.x, vY: viewport.y };
+      return;
+    }
     if (baseView === 'facade' && ['shelf','rod','drawer','door','sliding','erase'].includes(tool)) return;
     if (tool === 'erase') return;
     e.preventDefault();
@@ -810,7 +955,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
       const text = prompt('Texte de la note :');
       if (text) setElements(prev => [...prev, { id: uid(), type: 'note', x, y, text }]);
     }
-  }, [tool, getSVGCoords, baseView]);
+  }, [tool, getSVGCoords, baseView, isNavMode, viewport]);
 
   const eraseElement = (id) => setElements(prev => prev.filter(el => el.id !== id));
 
@@ -962,8 +1107,20 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
     : '💡 Dim/Note : tracez sur la façade'
     : '💡 Cliquez pour créer · glissez pour déplacer';
 
+  const isIPhone = typeof navigator !== 'undefined' && /iPhone/i.test(navigator.userAgent || '');
+  const showRotateHint =
+    isIPhone &&
+    typeof window !== 'undefined' &&
+    window.innerHeight > window.innerWidth &&
+    (typeof screen === 'undefined' || screen.orientation?.type !== 'landscape-primary');
+
   return (
     <div className="fixed inset-0 z-50 bg-black/90 flex flex-col">
+      {showRotateHint && (
+        <div className="px-3 py-2 bg-amber-600/20 border-b border-amber-400/30 text-amber-200 text-xs text-center font-semibold">
+          📱 Conseil iPhone : passe en paysage pour éditer plus confortablement.
+        </div>
+      )}
 
       <svg
         ref={facadeSvgRef}
@@ -979,6 +1136,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
           cabW={cabinetDims.width} cabH={cabinetDims.height}
           plinth={cabinetDims.plinth} thick={thickness}
           facadeModules={facadeModules}
+          cabinetModules={currentCabinet?.modules || []}
           facadeItems={facadeItems}
           joints={joints}
           globalSliding={globalSliding}
@@ -1008,8 +1166,13 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
         <div className="flex gap-2">
           {error && <span className="text-red-400 text-sm self-center mr-2">{error}</span>}
           <button onClick={onCancel} className="px-3 py-1 bg-slate-700 text-white rounded">Annuler</button>
-          <button onClick={async () => { handleSave(); if (onSave) await onSave(currentCabinet); }} className="px-4 py-1 rounded font-bold text-white bg-green-600 hover:bg-green-500">
-            💾 Enregistrer
+          <button
+            onClick={() => { void triggerRemoteSave(); }}
+            className="p-1.5 rounded-lg text-slate-300 hover:text-green-400 hover:bg-white/10 transition-colors"
+            title="Enregistrer"
+            aria-label="Enregistrer"
+          >
+            <Disc className="w-4 h-4" />
           </button>
           <button onClick={handleRelancer} disabled={loading}
             className={`px-4 py-1 rounded font-bold text-white ${loading?'bg-orange-800':'bg-orange-600 hover:bg-orange-500'}`}>
@@ -1047,6 +1210,14 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
           <button onClick={()=>setBaseView('facade')}
             className={`px-3 py-1 rounded text-xs font-bold ${baseView==='facade'?'bg-blue-600 text-white':'bg-slate-700 text-slate-300'}`}>
             Plan façade
+          </button>
+          <button onClick={() => setIsNavMode(v => !v)}
+            className={`px-3 py-1 rounded text-xs font-bold ${isNavMode ? 'bg-emerald-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
+            🖐️ Déplacer
+          </button>
+          <button onClick={resetViewport}
+            className="px-3 py-1 rounded text-xs font-bold bg-slate-700 text-slate-200">
+            🎯 Recentrer
           </button>
         </div>
         {dimensionsFromWizard && (
@@ -1205,6 +1376,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
 
       <div className="flex-1 overflow-auto bg-slate-950 flex justify-center p-4">
         <svg ref={svgRef} width={imgSize.w} height={imgSize.h}
+          viewBox={`${viewport.x} ${viewport.y} ${viewport.w} ${viewport.h}`}
           className="shadow-2xl"
           style={{ background: baseView === 'facade' ? '#f8fafc' : '#1e293b' }}
           onMouseDown={handlePointerDown} onMouseMove={handlePointerMove}
@@ -1220,6 +1392,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
               cabW={cabinetDims.width} cabH={cabinetDims.height}
               plinth={cabinetDims.plinth} thick={thickness}
               facadeModules={facadeModules}
+              cabinetModules={currentCabinet?.modules || []}
               facadeItems={facadeItems}
               joints={joints}
               globalSliding={globalSliding}
