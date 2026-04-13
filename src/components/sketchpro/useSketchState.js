@@ -180,24 +180,16 @@ export default function useSketchState({ image, initialResult, draft, onDraftCha
     moduleDetails: [],
   });
 
-  const initKeyRef = useRef('');
+  const initializedRef = useRef(false);
 
   useEffect(() => {
-    const key = JSON.stringify({
-      iw: initialResult?.cabinet?.width,
-      ih: initialResult?.cabinet?.height,
-      im: initialResult?.cabinet?.modules?.length,
-      dw: draft?.state?.cabinetDims?.width,
-      dm: draft?.state?.facadeModules?.length,
-    });
-    if (initKeyRef.current === key) return;
-    initKeyRef.current = key;
-
+    if (initializedRef.current) return;
+    initializedRef.current = true;
     const normalized = buildInitialDraftState(initialResult, draft);
     setDraftState(normalized);
     setSelectedModuleId(normalized.facadeModules[0]?.id || null);
     setExtraNotes(draft?.state?.extraNotes || '');
-  }, [initialResult, draft]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const cabinetDims = draftState.cabinetDims;
   const setCabinetDims = useCallback((updater) => {

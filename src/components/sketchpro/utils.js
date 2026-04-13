@@ -19,66 +19,264 @@ const toNum = (v, fallback = 0) => {
 };
 
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+const hasValue = (v) => v !== undefined && v !== null && v !== '';
+
+function normalizeModuleWidth(m, fallback = 0) {
+  return Math.max(1, toNum(m?.width ?? m?.w ?? m?.largeur, fallback));
+}
+
+function normalizeShelves(rawModule, cabinetHeightCm) {
+  const rawShelves = rawModule?.shelves;
+  if (Array.isArray(rawShelves) && rawShelves.length) {
+    return rawShelves.map((s) => ({
+      id: uid(),
+      y: toNum(typeof s === 'object' ? s?.y : s, 0),
+    }));
+  }
+
+  const shelfCount = Math.max(0, parseInt(rawShelves ?? rawModule?.nb_shelves ?? 0, 10) || 0);
+  if (shelfCount <= 0) return [];
+
+  return Array.from({ length: shelfCount }, (_, i) => ({
+    id: uid(),
+    y: ((i + 1) * cabinetHeightCm) / (shelfCount + 1),
+  }));
+}
+
+function normalizeRods(rawModule) {
+  const rods = [];
+
+  if (Array.isArray(rawModule?.rods) && rawModule.rods.length) {
+    rawModule.rods.forEach((r) => {
+      const y = hasValue(r?.y) ? toNum(r.y, null) : null;
+      rods.push({ id: uid(), y: Number.isFinite(y) ? y : null });
+    });
+    return rods;
+  }
+
+  const legacyRod = rawModule?.rod ?? rawModule?.tringle;
+  if (legacyRod === true) {
+    rods.push({ id: uid(), y: null });
+    return rods;
+  }
+
+  if (legacyRod && typeof legacyRod === 'object') {
+    const y = hasValue(legacyRod.y) ? toNum(legacyRod.y, null) : null;
+    rods.push({ id: uid(), y: Number.isFinite(y) ? y : null });
+  }
+
+  return rods;
+}
+
+function normalizeDrawers(rawModule) {
+  const drawerItems = Array.isArray(rawModule?.drawerItems) ? rawModule.drawerItems : null;
+  if (drawerItems && drawerItems.length) {
+    return drawerItems.map((d) => ({
+      id: uid(),
+      y: hasValue(d?.y) ? toNum(d.y, 0) : null,
+      height: Math.max(1, toNum(d?.height ?? d?.h, 18)),
+    }));
+  }
+
+  if (Array.isArray(rawModule?.drawers) && rawModule.drawers.length && typeof rawModule.drawers[0] === 'object') {
+    return rawModule.drawers.map((d) => ({
+      id: uid(),
+      y: hasValue(d?.y) ? toNum(d.y, 0) : null,
+      height: Math.max(1, toNum(d?.height ?? d?.h, 18)),
+    }));
+  }
+
+  const drawerCount = Math.max(0, parseInt(rawModule?.drawers ?? rawModule?.nb_drawers ?? 0, 10) || 0);
+  return Array.from({ length: drawerCount }, () => ({ id: uid(), y: null, height: 18 }));
+}
+
+function normalizeDoorArray(count) {
+  return Array.from({ length: Math.max(0, count) }, () => ({ id: uid(), kind: count === 1 ? 'single' : 'double' }));
+}
+
+function buildFallbackModules(cabinet, cabinetDims) {
+  const nb = Math.max(1, parseInt(cabinet?.nb_dividers ?? 3, 10) + 1);
+  const width = toNum(cabinetDims.width, 0);
+  const equalWidth = nb > 0 ? Math.max(1, width / nb) : 40;
+
+  const totalDrawers = Math.max(0, parseInt(cabinet?.nb_drawers ?? 0, 10) || 0);
+  const totalShelves = Math.max(0, parseInt(cabinet?.nb_shelves ?? 0, 10) || 0);
+  const rodEnabled = Boolean(cabinet?.rod ?? cabinet?.tringle ?? false);
+
+  const facadeModules = Array.from({ length: nb }, (_, i) => ({
+    id: String(i + 1),
+    x: 0,
+    width: equalWidth,
+    type: 'standard',
+  }));
+
+  const drawersPerOuter = Math.floor(totalDrawers / 2);
+  const shelvesPerInner = Math.max(0, Math.round(totalShelves / Math.max(1, nb - 2)));
+
+  const moduleDetails = facadeModules.map((m, idx) => {
+    const isOuter = idx === 0 || idx === nb - 1;
+    const isInner = !isOuter;
+
+    return {
+      moduleId: m.id,
+      shelves: isInner
+        ? Array.from({ length: shelvesPerInner }, (_, sIdx) => ({
+            id: uid(),
+            y: ((sIdx + 1) * toNum(cabinetDims.height, 220)) / (shelvesPerInner + 1),
+          }))
+        : [],
+      drawers: isOuter
+        ? Array.from({ length: drawersPerOuter }, () => ({ id: uid(), y: null, height: 18 }))
+        : [],
+      rods: isInner && rodEnabled ? [{ id: uid(), y: null }] : [],
+      doors: [],
+      slidingDoors: [],
+    };
+  });
+
+  return { facadeModules, moduleDetails };
+}
 
 export function normalizeFromInitialResult(initialResult, draft) {
   const cab = initialResult?.cabinet || {};
   const draftState = draft?.state || {};
 
-  const width = toNum(draftState?.cabinetDims?.width, toNum(cab.width, 240));
-  const height = toNum(draftState?.cabinetDims?.height, toNum(cab.height, 220));
-  const depth = toNum(draftState?.cabinetDims?.depth, toNum(cab.depth, 60));
-  const thickness = toNum(draftState?.cabinetDims?.thickness, toNum(cab.thickness ?? cab.panel_thickness, 1.8));
+  const draftDims = draftState?.cabinetDims || {};
+  const cabinetDims = {
+    width: hasValue(draftDims.width) ? draftDims.width : (hasValue(cab.width) ? cab.width : ''),
+    height: hasValue(draftDims.height) ? draftDims.height : (hasValue(cab.height) ? cab.height : ''),
+    depth: hasValue(draftDims.depth) ? draftDims.depth : (hasValue(cab.depth ?? cab.prof) ? (cab.depth ?? cab.prof) : 60),
+    thickness: hasValue(draftDims.thickness) ? draftDims.thickness : (hasValue(cab.thickness ?? cab.panel_thickness) ? (cab.thickness ?? cab.panel_thickness) : 1.8),
+    plinth: hasValue(draftDims.plinth) ? draftDims.plinth : (hasValue(cab.plinth ?? cab.plinthe) ? (cab.plinth ?? cab.plinthe) : 0),
+  };
 
-  const sourceModules = Array.isArray(draftState.facadeModules) && draftState.facadeModules.length
-    ? draftState.facadeModules
-    : (Array.isArray(cab.modules) && cab.modules.length
-      ? cab.modules.map((m, i) => ({ id: String(i + 1), width: toNum(m.width, 50), type: 'standard' }))
-      : Array.from({ length: Math.max(1, toNum(cab.nb_dividers, 3) + 1) }, (_, i) => ({ id: String(i + 1), width: 50, type: 'standard' })));
+  const rawModules = Array.isArray(cab.modules) ? cab.modules : [];
+  const useDraftModules = Array.isArray(draftState.facadeModules) && draftState.facadeModules.length > 0;
+  const useDraftDetails = Array.isArray(draftState.moduleDetails) && draftState.moduleDetails.length > 0;
 
-  const totalWidth = sourceModules.reduce((acc, m) => acc + Math.max(1, toNum(m.width, 1)), 0);
-  let cursor = 0;
-  const facadeModules = sourceModules.map((m, idx) => {
-    const normalizedWidth = Math.max(1, toNum(m.width, totalWidth / sourceModules.length));
-    const x = (cursor / totalWidth) * 100;
-    cursor += normalizedWidth;
-    return {
-      id: String(m.id ?? idx + 1),
-      x,
-      width: normalizedWidth,
+  let facadeModules = [];
+  let moduleDetails = [];
+
+  if (useDraftModules) {
+    facadeModules = draftState.facadeModules.map((m, i) => ({
+      id: String(m.id ?? i + 1),
+      x: toNum(m.x, 0),
+      width: Math.max(1, toNum(m.width, 1)),
+      type: m.type || 'standard',
+    }));
+  } else if (rawModules.length > 0) {
+    facadeModules = rawModules.map((m, i) => ({
+      id: String(i + 1),
+      x: 0,
+      width: normalizeModuleWidth(m, 1),
       type: 'standard',
-    };
+    }));
+  } else {
+    const fallback = buildFallbackModules(cab, cabinetDims);
+    facadeModules = fallback.facadeModules;
+    moduleDetails = fallback.moduleDetails;
+  }
+
+  const totalW = facadeModules.reduce((acc, m) => acc + Math.max(1, toNum(m.width, 1)), 0);
+  let cursor = 0;
+  facadeModules = facadeModules.map((m, idx) => {
+    const w = Math.max(1, toNum(m.width, 1));
+    const next = { ...m, id: String(idx + 1), x: (cursor / totalW) * 100, width: w };
+    cursor += w;
+    return next;
   });
 
-  const moduleDetails = Array.isArray(draftState.moduleDetails) && draftState.moduleDetails.length
-    ? draftState.moduleDetails.map((d) => ({
-        moduleId: String(d.moduleId),
+  if (useDraftDetails) {
+    const draftMap = new Map(draftState.moduleDetails.map((d) => [String(d.moduleId), d]));
+    moduleDetails = facadeModules.map((m) => {
+      const d = draftMap.get(String(m.id));
+      if (!d) return { moduleId: m.id, shelves: [], drawers: [], rods: [], doors: [], slidingDoors: [] };
+      return {
+        moduleId: String(m.id),
         shelves: Array.isArray(d.shelves) ? d.shelves : [],
         drawers: Array.isArray(d.drawers) ? d.drawers : [],
         rods: Array.isArray(d.rods) ? d.rods : [],
         doors: Array.isArray(d.doors) ? d.doors : [],
         slidingDoors: Array.isArray(d.slidingDoors) ? d.slidingDoors : [],
-      }))
-    : facadeModules.map((m, idx) => {
-        const src = Array.isArray(cab.modules) ? cab.modules[idx] : null;
-        const shelves = Array.isArray(src?.shelves) ? src.shelves.map((s) => ({ id: uid(), y: toNum(s?.y, 50) })) : [];
-        const drawers = Array.isArray(src?.drawerItems)
-          ? src.drawerItems.map((d) => ({ id: uid(), y: toNum(d?.y, 25), height: toNum(d?.height ?? d?.h, 18) }))
-          : [];
-        const rods = Array.isArray(src?.rods) ? src.rods.map((r) => ({ id: uid(), y: toNum(r?.y, 60) })) : [];
-        const doors = Array.from({ length: Math.max(0, toNum(src?.doors, 0)) }, () => ({ id: uid(), kind: 'single' }));
-        const slidingDoors = Array.from({ length: Math.max(0, toNum(src?.slidingDoors, 0)) }, () => ({ id: uid(), kind: 'single' }));
-        return { moduleId: m.id, shelves, drawers, rods, doors, slidingDoors };
-      });
+      };
+    });
+  } else if (moduleDetails.length === 0) {
+    moduleDetails = facadeModules.map((fm, idx) => {
+      const m = rawModules[idx] || {};
+      const shelves = normalizeShelves(m, toNum(cabinetDims.height, 220));
+      const drawers = normalizeDrawers(m);
+      const rods = normalizeRods(m);
+      const doorsCount = Math.max(0, parseInt(m.doors ?? m.nb_doors ?? 0, 10) || 0);
+      const slidingCount = Math.max(0, parseInt(m.slidingDoors ?? m.nb_sliding_doors ?? 0, 10) || 0);
 
-  const facadeItems = Array.isArray(draftState.facadeItems)
-    ? draftState.facadeItems
-    : [];
+      return {
+        moduleId: fm.id,
+        shelves,
+        drawers,
+        rods,
+        doors: normalizeDoorArray(doorsCount),
+        slidingDoors: normalizeDoorArray(slidingCount),
+      };
+    });
+  }
 
   return {
-    cabinetDims: { width, height, depth, thickness },
+    cabinetDims,
     facadeModules,
-    facadeItems,
+    facadeItems: Array.isArray(draftState.facadeItems) ? draftState.facadeItems : [],
     moduleDetails,
+  };
+}
+
+export function buildFacadeLayout(facadeModules, cabinetDims, svgWidth, svgHeight, padding = 60) {
+  const W = Math.max(1, toNum(cabinetDims?.width, 1));
+  const H = Math.max(1, toNum(cabinetDims?.height, 1));
+  const PL = Math.max(0, toNum(cabinetDims?.plinth ?? 0, 0));
+  const TH = Math.max(0.1, toNum(cabinetDims?.thickness ?? 1.8, 1.8));
+
+  const ox = padding;
+  const oy = padding;
+  const innerW = Math.max(10, svgWidth - padding * 2);
+  const innerH = Math.max(10, svgHeight - padding * 2);
+
+  const contentH = Math.max(1, H - PL);
+  const sx = innerW / W;
+  const sy = innerH / H;
+  const thicknessPx = TH * sx;
+  const plinthPx = PL * sy;
+
+  const cmToY = (yCmFromBottom) => oy + (contentH - toNum(yCmFromBottom, 0)) * (contentH > 0 ? (innerH - plinthPx) / contentH : 0);
+  const cmToX = (xCm) => ox + toNum(xCm, 0) * sx;
+
+  const totalModuleW = facadeModules.reduce((acc, m) => acc + Math.max(1, toNum(m.width, 1)), 0) || 1;
+  let curX = ox;
+  const moduleRects = facadeModules.map((m) => {
+    const wPx = (Math.max(1, toNum(m.width, 1)) / totalModuleW) * innerW;
+    const rect = {
+      id: String(m.id),
+      x: curX,
+      y: oy,
+      width: wPx,
+      height: innerH - plinthPx,
+      bottom: oy + innerH - plinthPx,
+      top: oy,
+    };
+    curX += wPx;
+    return rect;
+  });
+
+  return {
+    ox,
+    oy,
+    innerW,
+    innerH,
+    thicknessPx,
+    plinthPx,
+    moduleRects,
+    sx,
+    sy,
+    cmToY,
+    cmToX,
   };
 }
 
@@ -101,10 +299,10 @@ export function buildCabinetFromDraft(draftState) {
 
   const resultModules = modules.map((m, idx) => {
     const detail = details.find((d) => String(d.moduleId) === String(m.id)) || {};
-    const shelves = Array.isArray(detail.shelves) ? detail.shelves.map((s) => ({ y: toNum(s.y, 50) })) : [];
-    const shelfPositions = shelves.map((s) => s.y);
+    const shelves = Array.isArray(detail.shelves) ? detail.shelves.map((s) => ({ y: hasValue(s.y) ? toNum(s.y, 0) : null })) : [];
+    const shelfPositions = shelves.map((s) => s.y).filter((v) => Number.isFinite(v));
     const drawerItems = Array.isArray(detail.drawers)
-      ? detail.drawers.map((d) => ({ y: toNum(d.y, 30), height: toNum(d.height, 18) }))
+      ? detail.drawers.map((d) => ({ y: hasValue(d.y) ? toNum(d.y, 0) : null, height: toNum(d.height, 18) }))
       : [];
     return {
       id: idx + 1,
@@ -113,17 +311,17 @@ export function buildCabinetFromDraft(draftState) {
       shelfPositions,
       drawers: drawerItems.length,
       drawerItems,
-      rods: Array.isArray(detail.rods) ? detail.rods.map((r) => ({ y: toNum(r.y, 60) })) : [],
+      rods: Array.isArray(detail.rods) ? detail.rods.map((r) => ({ y: hasValue(r.y) ? toNum(r.y, 0) : null })) : [],
       doors: Array.isArray(detail.doors) ? detail.doors.length : 0,
       slidingDoors: Array.isArray(detail.slidingDoors) ? detail.slidingDoors.length : 0,
     };
   });
 
   return {
-    width: toNum(dims.width, 0),
-    height: toNum(dims.height, 0),
-    depth: toNum(dims.depth, 60),
-    thickness: toNum(dims.thickness, 1.8),
+    width: hasValue(dims.width) ? toNum(dims.width, 0) : 0,
+    height: hasValue(dims.height) ? toNum(dims.height, 0) : 0,
+    depth: hasValue(dims.depth) ? toNum(dims.depth, 60) : 60,
+    thickness: hasValue(dims.thickness) ? toNum(dims.thickness, 1.8) : 1.8,
     modules: resultModules,
   };
 }
