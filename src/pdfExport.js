@@ -66,7 +66,7 @@ function getLargestWasteRect(panel, panelWmm, panelHmm) {
   return best;
 }
 
-export function exportPDF(results, project) {
+export function exportPDF(results, project, extras = {}) {
   const { panels, summary } = results;
   const panelW = project.panel.w;
   const panelH = project.panel.h;
@@ -443,6 +443,23 @@ export function exportPDF(results, project) {
       cy2 += 1;
     }
   }
+
+  const addVisualPage = (title, imageData) => {
+    if (!imageData) return;
+    doc.addPage();
+    doc.setFillColor(...DARK);
+    doc.rect(0, 0, PW, 24, 'F');
+    doc.setTextColor(...ACCENT);
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text(title, M, 14);
+    const maxW = PW - 2 * M;
+    const maxH = PH - 42;
+    doc.addImage(imageData, 'PNG', M, 28, maxW, maxH, undefined, 'FAST');
+  };
+
+  addVisualPage('Façade / Plan façade', extras.facadeImage);
+  addVisualPage('Vue 3D client', extras.view3dImage);
 
   // Pied de page dernière page
   const lastPageY = PH - 8;
