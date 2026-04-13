@@ -593,15 +593,24 @@ function CabinetModule3D({ mod, x, cabinetH, cabinetD, plinthH, thickness, mats,
       )}
 
       {/* Doors */}
-      {!hideFrontDoors && mod.slidingDoors === 0 && mod.doors > 0 && mod.drawers === 0 && !mod.rod && mod.shelves === 0 && (
+      {!hideFrontDoors && mod.slidingDoors === 0 && mod.doors > 0 && (
         <group>
-          <mesh position={[0, PL + bodyH / 2, D / 2 - 0.003]} material={mats.door} castShadow receiveShadow>
-            <boxGeometry args={[W - 0.005, bodyH - 0.005, 0.018]} />
-          </mesh>
-          {/* Door handle (vertical small bar) */}
-          <mesh position={[W * 0.3, PL + bodyH / 2, D / 2 + 0.018]} rotation={[0, 0, 0]} material={mats.handle} castShadow>
-            <capsuleGeometry args={[0.004, 0.05, 4, 8]} />
-          </mesh>
+          {Array.from({ length: Math.min(2, Math.max(1, mod.doors || 1)) }, (_, idx) => {
+            const count = Math.min(2, Math.max(1, mod.doors || 1));
+            const doorW = (W - 0.01) / count;
+            const centerX = -W / 2 + doorW / 2 + idx * doorW;
+            const handleX = idx === 0 ? centerX + doorW * 0.38 : centerX - doorW * 0.38;
+            return (
+              <group key={`door-${idx}`}>
+                <mesh position={[centerX, PL + bodyH / 2, D / 2 - 0.003]} material={mats.door} castShadow receiveShadow>
+                  <boxGeometry args={[doorW, bodyH - 0.005, 0.018]} />
+                </mesh>
+                <mesh position={[handleX, PL + bodyH / 2, D / 2 + 0.018]} material={mats.handle} castShadow>
+                  <capsuleGeometry args={[0.004, 0.05, 4, 8]} />
+                </mesh>
+              </group>
+            );
+          })}
         </group>
       )}
     </group>
