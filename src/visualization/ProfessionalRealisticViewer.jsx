@@ -818,6 +818,12 @@ function Scene({ cabinet, modules }) {
    MAIN EXPORT
    ═══════════════════════════════════════════════════════════════ */
 
+function getCameraPreset(preset, camDist, Hm) {
+  if (preset === 'face') return [0, Hm * 0.45, camDist * 1.2];
+  if (preset === 'left') return [-camDist * 0.9, Hm * 0.45, camDist * 0.55];
+  return [camDist * 0.35, Hm * 0.5, camDist * 1.1];
+}
+
 export default function ProfessionalRealisticViewer({ cabinet, name, fullScreen = false, presentationMode = false }) {
   if (!cabinet || !cabinet.width || !cabinet.height) {
     return (
@@ -847,7 +853,7 @@ export default function ProfessionalRealisticViewer({ cabinet, name, fullScreen 
         key={`${viewPreset}`}
         shadows
         camera={{
-          position: cameraPos,
+          position: getCameraPreset('angle', camDist, Hm),
           fov: 40,
           near: 0.01,
           far: 100,
