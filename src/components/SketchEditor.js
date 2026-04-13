@@ -1,4 +1,5 @@
 import { useRef, useState, useCallback, useEffect, useMemo } from 'react';
+import { Disc } from 'lucide-react';
 import CabinetElevationFront from './CabinetElevationFront';
 import { captureFacadeToImage } from '../utils/captureFacadeToImage';
 
@@ -17,6 +18,7 @@ const LS_SKETCH_KEY               = 'pc_sketch_editor';
 const FACADE_CAPTURE_WIDTH        = 980;
 const FACADE_CAPTURE_INITIAL_DELAY_MS = 150;
 const FACADE_CAPTURE_DEBOUNCE_MS  = 400;
+const REMOTE_AUTOSAVE_INTERVAL_MS = 30000;
 const WOOD_FILL            = '#f5ede0';
 const WOOD_STROKE          = '#8b6914';
 const DIM_COLOR            = '#dc2626';
@@ -600,6 +602,37 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
   }, [facadeItems, facadeModules, moduleDetails, globalSliding, joints,
       cabinetDims, elements, generalNotes, sketchFingerprint]);
   const handleSave = saveToStorage;
+  const remoteSaveSnapshot = useMemo(() => JSON.stringify({
+    cabinetDims,
+    facadeModules,
+    facadeItems,
+    moduleDetails,
+    generalNotes,
+    joints,
+    globalSliding,
+  }), [cabinetDims, facadeModules, facadeItems, moduleDetails, generalNotes, joints, globalSliding]);
+  const lastAutoSavedSnapshotRef = useRef('');
+  const autoSavingRef = useRef(false);
+  const triggerRemoteSave = useCallback(async () => {
+    handleSave();
+    if (!onSave || !currentCabinet || autoSavingRef.current) return;
+    autoSavingRef.current = true;
+    try {
+      await onSave(currentCabinet);
+      lastAutoSavedSnapshotRef.current = remoteSaveSnapshot;
+    } finally {
+      autoSavingRef.current = false;
+    }
+  }, [handleSave, onSave, currentCabinet, remoteSaveSnapshot]);
+
+  useEffect(() => {
+    if (!onSave) return;
+    const timer = window.setInterval(() => {
+      if (remoteSaveSnapshot === lastAutoSavedSnapshotRef.current) return;
+      void triggerRemoteSave();
+    }, REMOTE_AUTOSAVE_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [onSave, remoteSaveSnapshot, triggerRemoteSave]);
 
   const didAutoSwitchRef = useRef(false);
   useEffect(() => {
@@ -1008,8 +1041,13 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
         <div className="flex gap-2">
           {error && <span className="text-red-400 text-sm self-center mr-2">{error}</span>}
           <button onClick={onCancel} className="px-3 py-1 bg-slate-700 text-white rounded">Annuler</button>
-          <button onClick={async () => { handleSave(); if (onSave) await onSave(currentCabinet); }} className="px-4 py-1 rounded font-bold text-white bg-green-600 hover:bg-green-500">
-            💾 Enregistrer
+          <button
+            onClick={() => { void triggerRemoteSave(); }}
+            className="p-1.5 rounded-lg text-slate-300 hover:text-green-400 hover:bg-white/10 transition-colors"
+            title="Enregistrer"
+            aria-label="Enregistrer"
+          >
+            <Disc className="w-4 h-4" />
           </button>
           <button onClick={handleRelancer} disabled={loading}
             className={`px-4 py-1 rounded font-bold text-white ${loading?'bg-orange-800':'bg-orange-600 hover:bg-orange-500'}`}>
