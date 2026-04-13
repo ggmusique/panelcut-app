@@ -100,6 +100,7 @@ function computeMRects(facadeModules, joints, thPx, drawW, drawH, mL, mT, plPx) 
 function FacadeRealisteSVG({
   svgW, svgH, cabW, cabH, plinth, thick,
   facadeModules, facadeItems, joints,
+  cabinetModules = [],
   globalSliding,
   onFacadePointerDown,
   onItemPointerDown,
@@ -181,14 +182,40 @@ function FacadeRealisteSVG({
       })}
 
       {mRects.map(({ x, w, m, i, intTop, intBottom, intH: iH }) => {
-        const nbD     = m.drawers || 0;
-        const drawerH = Math.min(iH * 0.15, 46);
-        const drawPx  = nbD * drawerH;
-      const nbDoors = m.doors || 0;
-      const nbSliding = m.slidingDoors || 0;
+        const moduleData = cabinetModules[i] || m;
+        const interiorCm = Math.max(1, cabH - plinth);
+        const cmToPx = iH / interiorCm;
+        const nbDoors = moduleData.doors || 0;
+        const nbSliding = moduleData.slidingDoors || 0;
 
-        const tiroirs = Array.from({ length: nbD }, (_, di) => {
-          const dy = intBottom - drawPx + di * drawerH;
+        const shelfHeightsCm = Array.isArray(moduleData?.shelves)
+          ? moduleData.shelves
+              .map((s) => (typeof s === 'object' && s !== null ? toNum(s.y, NaN) : toNum(s, NaN)))
+              .filter((v) => Number.isFinite(v))
+              .sort((a, b) => a - b)
+          : [];
+
+        const sourceDrawerItems = Array.isArray(moduleData?.drawerItems) && moduleData.drawerItems.length > 0
+          ? moduleData.drawerItems
+          : [];
+
+        const resolvedDrawerItems = sourceDrawerItems.length > 0
+          ? sourceDrawerItems
+          : Array.from({ length: m.drawers || 0 }, (_, di) => ({ y: di * 18, height: 18 }));
+
+        const safeDrawerItems = [];
+        for (const dr of resolvedDrawerItems) {
+          const drawerBottomCm = Math.max(0, toNum(dr.y, 0));
+          const drawerHeightCm = Math.max(5, toNum(dr.height ?? dr.h, 18));
+          const drawerTopCm = drawerBottomCm + drawerHeightCm;
+          const hitShelf = shelfHeightsCm.some((shelfCm) => shelfCm > drawerBottomCm && shelfCm < drawerTopCm);
+          if (hitShelf) break;
+          safeDrawerItems.push({ y: drawerBottomCm, height: drawerHeightCm });
+        }
+
+        const tiroirs = safeDrawerItems.map((dr, di) => {
+          const drawerH = Math.max(10, dr.height * cmToPx);
+          const dy = intBottom - (dr.y + dr.height) * cmToPx;
           return (
             <g key={`dr-${i}-${di}`}
               onClick={e => { e.stopPropagation(); if (isErase) onModuleErase(i, 'drawer'); }}
@@ -233,7 +260,8 @@ function FacadeRealisteSVG({
           </g>
         ) : null;
 
-        const numY = intTop + Math.max(30, (iH - drawPx) * 0.45);
+        const usedDrawerHeightPx = safeDrawerItems.reduce((acc, dr) => acc + Math.max(10, dr.height * cmToPx), 0);
+        const numY = intTop + Math.max(30, (iH - usedDrawerHeightPx) * 0.45);
         const hitZone = (isPlace || isAdd) ? (
           <rect key={`hit-${i}`} x={x} y={intTop} width={w} height={iH}
             fill="transparent" style={{ cursor: 'cell' }}
@@ -409,7 +437,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
 
   useEffect(() => {
     setWidthInputs(facadeModules.map(m => String(m.width)));
-  }, [facadeModules.length]);
+  }, [facadeModules]);
   useEffect(() => {
     setSelectedModuleIdx((idx) => Math.max(0, Math.min(idx, Math.max(0, facadeModules.length - 1))));
     setModuleDetails((prev) => {
@@ -428,7 +456,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
         },
       }));
     });
-  }, [facadeModules.length]);
+  }, [facadeModules]);
 
   const commitWidth = (idx) => {
     const n = Math.max(1, toNum(widthInputs[idx], 1));
@@ -1012,6 +1040,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
           cabW={cabinetDims.width} cabH={cabinetDims.height}
           plinth={cabinetDims.plinth} thick={thickness}
           facadeModules={facadeModules}
+          cabinetModules={currentCabinet?.modules || []}
           facadeItems={facadeItems}
           joints={joints}
           globalSliding={globalSliding}
@@ -1258,6 +1287,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
               cabW={cabinetDims.width} cabH={cabinetDims.height}
               plinth={cabinetDims.plinth} thick={thickness}
               facadeModules={facadeModules}
+              cabinetModules={currentCabinet?.modules || []}
               facadeItems={facadeItems}
               joints={joints}
               globalSliding={globalSliding}
