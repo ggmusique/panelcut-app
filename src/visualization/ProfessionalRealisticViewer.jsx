@@ -1,4 +1,4 @@
-import React, { useMemo, Suspense } from 'react';
+import React, { useMemo, Suspense, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Environment, ContactShadows } from '@react-three/drei';
 import { EffectComposer, N8AO, Bloom, Vignette } from '@react-three/postprocessing';
@@ -840,6 +840,8 @@ export default function ProfessionalRealisticViewer({ cabinet, name, fullScreen 
   const Hm = H / 100;
   const Wm = W / 100;
   const camDist = Math.max(Wm, Hm) * 1.6;
+  const [viewPreset, setViewPreset] = useState('angle');
+  const cameraPos = useMemo(() => getCameraPreset(viewPreset, camDist, Hm), [viewPreset, camDist, Hm]);
 
   return (
     <div
@@ -848,6 +850,7 @@ export default function ProfessionalRealisticViewer({ cabinet, name, fullScreen 
       onWheel={e => e.stopPropagation()}
     >
       <Canvas
+        key={`${viewPreset}`}
         shadows
         camera={{
           position: getCameraPreset('angle', camDist, Hm),
