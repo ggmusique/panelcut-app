@@ -997,6 +997,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
       const facadeSvg = facadeSvgRef.current;
       if (!facadeSvg) throw new Error('SVG façade hors-écran introuvable');
       const clone = facadeSvg.cloneNode(true);
+      clone.querySelectorAll('image').forEach(el => el.remove());
       clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
       clone.setAttribute('width',  FACADE_W);
       clone.setAttribute('height', FACADE_H);
@@ -1004,8 +1005,8 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
       const b64svg  = btoa(unescape(encodeURIComponent(svgStr)));
       const dataUrl = 'data:image/svg+xml;base64,' + b64svg;
       const canvas = document.createElement('canvas');
-      canvas.width  = FACADE_W * 2;
-      canvas.height = FACADE_H * 2;
+      canvas.width  = FACADE_W;
+      canvas.height = FACADE_H;
       const ctx2d = canvas.getContext('2d');
       await new Promise((resolve, reject) => {
         const img = new window.Image();
@@ -1018,18 +1019,18 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
         img.onerror = reject;
         img.src = dataUrl;
       });
-      const base64 = canvas.toDataURL('image/png').split(',')[1];
+      const base64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
       const SERVER = 'https://panelcut-server.vercel.app';
       let res = await fetch(`${SERVER}/api/refine`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: base64, mediaType: 'image/png', userNotes: buildContextPrompt(), prompt: buildContextPrompt() }),
+        body: JSON.stringify({ image: base64, mediaType: 'image/jpeg', userNotes: buildContextPrompt(), prompt: buildContextPrompt() }),
       });
       if (res.status === 404 || res.status === 405) {
         res = await fetch(`${SERVER}/api/scan`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ image: base64, mediaType: 'image/png' }),
+          body: JSON.stringify({ image: base64, mediaType: 'image/jpeg' }),
         });
       }
       if (!res.ok) throw new Error(`Erreur serveur (${res.status})`);
