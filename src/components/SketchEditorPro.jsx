@@ -10,6 +10,7 @@ import RefineBar from './sketchpro/RefineBar';
 
 export default function SketchEditorPro({ image, initialResult, apiKey, draft, onDraftChange, onComplete, onCancel, onSave }) {
   const [jsonOpen, setJsonOpen] = useState(false);
+  const [viewMode, setViewMode] = useState('split');
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
   const [mobileInspectorOpen, setMobileInspectorOpen] = useState(false);
 
@@ -17,7 +18,7 @@ export default function SketchEditorPro({ image, initialResult, apiKey, draft, o
 
   const projectName = useMemo(() => {
     const c = state.cabinetPreview || {};
-    return `Meuble ${c.width || '?'}×${c.height || '?'} cm`;
+    return `Meuble ${c.width || '?'}\u00d7${c.height || '?'} cm`;
   }, [state.cabinetPreview]);
 
   const inspector = (
@@ -37,7 +38,7 @@ export default function SketchEditorPro({ image, initialResult, apiKey, draft, o
               ['width', 'Largeur'],
               ['height', 'Hauteur'],
               ['depth', 'Profondeur'],
-              ['thickness', 'Épaisseur'],
+              ['thickness', '\u00c9paisseur'],
             ].map(([k, label]) => (
               <label key={k} className="text-slate-300">{label}
                 <input value={state.draftState.cabinetDims[k]} onChange={(e) => state.setCabinetField(k, e.target.value)} className="mt-1 w-full px-2 py-1 rounded bg-slate-950 border border-slate-700" />
@@ -84,7 +85,7 @@ export default function SketchEditorPro({ image, initialResult, apiKey, draft, o
         </section>
 
         <details className="rounded-2xl bg-slate-900/80 border border-slate-700 p-3">
-          <summary className="cursor-pointer text-sm text-slate-100">Prévisualisation JSON</summary>
+          <summary className="cursor-pointer text-sm text-slate-100">Pr\u00e9visualisation JSON</summary>
           <pre className="text-[10px] text-slate-300 mt-2 overflow-auto max-h-56">{JSON.stringify(state.jsonPreview, null, 2)}</pre>
         </details>
       </div>
@@ -107,10 +108,28 @@ export default function SketchEditorPro({ image, initialResult, apiKey, draft, o
       <main className="flex-1 min-w-0 flex flex-col">
         <header className="h-14 border-b border-slate-800 px-4 flex items-center justify-between bg-slate-900/40 backdrop-blur">
           <div>
-            <h2 className="text-sm font-semibold">SketchEditor Pro · {projectName}</h2>
-            <p className="text-[11px] text-slate-400">Brouillon synchronisé · API key {apiKey ? 'ok' : 'vide'}</p>
+            <h2 className="text-sm font-semibold">SketchEditor Pro \u00b7 {projectName}</h2>
+            <p className="text-[11px] text-slate-400">Brouillon synchronis\u00e9 \u00b7 API key {apiKey ? 'ok' : 'vide'}</p>
           </div>
-          <span className="text-xs px-2 py-1 rounded-lg border border-orange-500/30 text-orange-300 bg-orange-500/10">Façade métier</span>
+          <div className="flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-900/60 p-1 text-xs">
+            {[
+              { id: 'scan',   label: '\ud83d\udcf7 Scan' },
+              { id: 'split',  label: '\u2b1c Split' },
+              { id: 'facade', label: '\ud83d\udcd0 Fa\u00e7ade' },
+            ].map(({ id, label }) => (
+              <button
+                key={id}
+                onClick={() => setViewMode(id)}
+                className={`px-2 py-1 rounded-md transition-colors ${
+                  viewMode === id
+                    ? 'bg-orange-500/20 text-orange-300 border border-orange-500/30'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </header>
 
         <div className="p-3 border-b border-slate-800">
@@ -128,6 +147,7 @@ export default function SketchEditorPro({ image, initialResult, apiKey, draft, o
         <div className="flex-1 min-h-0 flex">
           <section className="flex-1 p-3 min-w-0">
             <SketchCanvasPro
+              viewMode={viewMode}
               image={image}
               tool={state.tool}
               zoom={state.zoom}
