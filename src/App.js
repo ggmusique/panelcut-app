@@ -6,7 +6,7 @@ import { supabase, saveProject, loadProject, signOut } from './supabase';
 import PiecesList from './components/PiecesList';
 import Results from './components/Results';
 import AuthScreen from './components/AuthScreen';
-import SketchEditor from './components/SketchEditor';
+import SketchEditorPro from './components/SketchEditorPro';
 import LandingScreen    from './components/LandingScreen';
 import NewProjectWizard from './components/NewProjectWizard';
 import HistoryScreen    from './components/HistoryScreen';
@@ -29,6 +29,7 @@ const SCREENS = {
 
 const DEFAULT_PROJECT = {
   name: '', client: '', company: '', devisNum: '',
+  scanMode: 'full',
   panel: { w: 244, h: 122, thickness: 1.8, label: 'MDF 18mm' },
   kerf: 3, tolerance: 10, pricePerPanel: 39.8,
   pieces: [], furniture: [], supabaseId: null, cabinet: null,
@@ -190,7 +191,7 @@ export default function App() {
     else setScreen(SCREENS.PIECES);
   };
 
-  const handleScanComplete = (scanResult, scanImageBase64) => {
+  const handleScanComplete = (scanResult, scanImageBase64, scanMode = 'full') => {
     localStorage.removeItem(LS_SKETCH);
     const pieces = (scanResult.pieces || []).map(p => {
       const name  = String(p.name || 'Pièce').trim();
@@ -208,14 +209,15 @@ export default function App() {
 
     setProject(prev => ({
       ...prev,
+      scanMode,
       pieces,
       cabinet,
-      scanImage:  scanImageBase64 || null,
-      scanResult: scanResult,
+      scanImage:  scanMode === 'full' ? (scanImageBase64 || null) : null,
+      scanResult: scanMode === 'full' ? scanResult : null,
       sketchDraft: null,
     }));
     setResults(null);
-    setScreen(SCREENS.SKETCH);
+    setScreen(scanMode === 'full' ? SCREENS.SKETCH : SCREENS.PIECES);
   };
 
   function reconstructModulesFromFlat(cabinet) {
@@ -281,15 +283,6 @@ export default function App() {
       newScanResult.result?.cabinet ||
       project.cabinet;
     const cabinet = reconstructModulesFromFlat(rawCabinet);
-    console.log('[FIX1] modules transmis à project.cabinet:',
-      cabinet.modules?.map(m => ({
-        id: m.id,
-        width: m.width,
-        drawers: m.drawers,
-        rods: m.rods?.length,
-        shelves: Array.isArray(m.shelves) ? m.shelves.length : (m.shelves ?? null),
-      }))
-    );
     setProject(p => ({ ...p, pieces, cabinet, scanResult: newScanResult, sketchDraft: null }));
     setScreen(SCREENS.PIECES);
   };
@@ -332,7 +325,10 @@ export default function App() {
 
   const showBack = [SCREENS.PIECES, SCREENS.RESULTS, SCREENS.FACADE, SCREENS.FACADE_REALISTIC].includes(screen);
   const showSave = user && [SCREENS.PIECES, SCREENS.RESULTS].includes(screen);
-  const canAnnotate = screen === SCREENS.PIECES && !!(project.scanImage || project.scanResult || project.sketchDraft);
+  const canAnnotate =
+    screen === SCREENS.PIECES &&
+    (project.scanMode || 'full') === 'full' &&
+    !!(project.scanImage || project.scanResult || project.sketchDraft);
 
   let headerTitle = 'PanelCut Pro', headerSubtitle = '', steps = [];
   if (screen === SCREENS.PIECES)  { headerTitle = project.name || 'Nouveau projet'; steps = [{ label: 'Panneau', active: true }, { label: 'Pièces', active: true }, { label: 'Résultats', active: false }]; }
@@ -345,9 +341,6 @@ export default function App() {
   const hasHeader = ![SCREENS.AUTH, SCREENS.SKETCH, SCREENS.LANDING, SCREENS.WIZARD, SCREENS.HISTORY].includes(screen);
   const hasSteps  = steps.length > 0;
   
-  // ← LOG CABINET (déjà présent)
-  console.log('🔍 Cabinet data:', project.cabinet);
-
   return (
     <div className="app min-h-screen bg-[#0f1620] text-slate-200 font-sans dark:bg-slate-950 dark:text-slate-100 transition-colors duration-300">
 
@@ -358,7 +351,7 @@ export default function App() {
       {screen === SCREENS.HISTORY  && <HistoryScreen user={user} onNew={() => startNew(devisNum)} onLoad={handleLoadProject} onScanComplete={handleScanComplete} onBack={() => setScreen(SCREENS.LANDING)} />}
 
       {screen === SCREENS.SKETCH && (
-        <SketchEditor
+        <SketchEditorPro
           image={project.scanImage}
           initialResult={project.scanResult}
           apiKey={apiKey}
