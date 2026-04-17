@@ -189,7 +189,7 @@ export default function useSketchState({ image, initialResult, draft, onDraftCha
     setDraftState(normalized);
     setSelectedModuleId(normalized.facadeModules[0]?.id || null);
     setExtraNotes(draft?.state?.extraNotes || '');
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []); // init once on mount
 
   const cabinetDims = draftState.cabinetDims;
   const setCabinetDims = useCallback((updater) => {
