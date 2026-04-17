@@ -123,7 +123,14 @@ export default async function handler(req, res) {
       });
     }
 
-    const apiData = await response.json();
+    let apiData;
+    try {
+      const rawBody = await response.text();
+      apiData = JSON.parse(rawBody);
+    } catch (parseBodyErr) {
+      console.error('REFINE: could not parse Anthropic response body:', parseBodyErr.message);
+      return res.status(502).json({ error: 'api_parse_error', detail: 'Unexpected response from Claude API' });
+    }
     console.log('REFINE API OK, stop_reason:', apiData.stop_reason);
 
     const rawText = apiData?.content?.[0]?.text || '';

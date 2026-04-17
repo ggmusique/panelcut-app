@@ -1025,11 +1025,12 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
         piecesCount: currentCabinet?.modules?.length,
         hasCabinet: !!currentCabinet
       });
+      const contextPrompt = buildContextPrompt();
       const SERVER = 'https://panelcut-server.vercel.app';
       let res = await fetch(`${SERVER}/api/refine`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: base64, mediaType: 'image/jpeg', userNotes: buildContextPrompt(), prompt: buildContextPrompt() }),
+        body: JSON.stringify({ image: base64, mediaType: 'image/jpeg', prompt: contextPrompt }),
       });
       if (res.status === 404 || res.status === 405) {
         res = await fetch(`${SERVER}/api/scan`, {
@@ -1038,7 +1039,14 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
           body: JSON.stringify({ image: base64, mediaType: 'image/jpeg' }),
         });
       }
-      if (!res.ok) throw new Error(`Erreur serveur (${res.status})`);
+      if (!res.ok) {
+        let errData = {};
+        try { errData = await res.json(); } catch (e) { console.warn('RELANCER: réponse erreur non-JSON du serveur'); }
+        const detail = errData.detail || errData.error || errData.message;
+        throw new Error(detail
+          ? `Erreur serveur (${res.status}) : ${detail}`
+          : `Erreur serveur (${res.status})`);
+      }
       const data = await res.json();
       const parsed = data.result || data;
 
