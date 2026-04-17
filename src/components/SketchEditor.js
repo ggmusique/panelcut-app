@@ -1020,6 +1020,11 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
         img.src = dataUrl;
       });
       const base64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
+      console.log('🚀 RELANCER DATA:', {
+        hasImage: !!base64,
+        piecesCount: currentCabinet?.modules?.length,
+        hasCabinet: !!currentCabinet
+      });
       const SERVER = 'https://panelcut-server.vercel.app';
       let res = await fetch(`${SERVER}/api/refine`, {
         method: 'POST',
@@ -1054,7 +1059,7 @@ export default function SketchEditor({ image, scanImage, initialResult, apiKey, 
 
       if (onComplete) onComplete(enrichedResult);
     } catch (err) {
-      console.error('handleRelancer error:', err);
+      console.error('💥 RELANCER FULL ERROR:', err.response?.data || err.message);
       setError(err.message);
     } finally {
       setLoading(false);

@@ -3,7 +3,7 @@ const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 const TIMEOUT_MS = 20000;
 
 const SYSTEM_PROMPT = `Tu es un expert en analyse de croquis d'armoires et de meubles.
-À partir de l'image fournie (croquis annoté avec corrections), retourne UNIQUEMENT un objet JSON valide.
+À partir de l'image fournie, retourne UNIQUEMENT un objet JSON valide.
 Format attendu :
 {
   "cabinet": {
@@ -29,41 +29,41 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'method_not_allowed' });
   }
 
+  console.log('🔥 /scan BODY:', {
+    hasImage: !!req.body?.image,
+    imageLength: req.body?.image?.length,
+    hasPieces: !!req.body?.pieces,
+    hasCabinet: !!req.body?.cabinet
+  });
+
   try {
     // 1. INPUT VALIDATION
     if (!req.body) {
-      console.error('REFINE: missing body');
+      console.error('SCAN: missing body');
       return res.status(400).json({ error: 'invalid_input', detail: 'missing body' });
     }
 
-    const { image, mediaType, prompt, context, pieces, userNotes } = req.body;
-
-    // 2. DEBUG LOGS
-    console.log('🛠️ REFINE BODY:', JSON.stringify(req.body).slice(0, 300));
+    const { image, mediaType } = req.body;
 
     if (!image || typeof image !== 'string') {
-      console.error('REFINE: missing or invalid image field');
+      console.error('SCAN: missing or invalid image field');
       return res.status(400).json({ error: 'invalid_input', detail: 'image field required' });
-    }
-
-    if (pieces !== undefined && !Array.isArray(pieces)) {
-      console.error('REFINE: pieces is not an array');
-      return res.status(400).json({ error: 'invalid_input', detail: 'pieces must be an array' });
     }
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
-      console.error('REFINE: ANTHROPIC_API_KEY not set');
+      console.error('SCAN: ANTHROPIC_API_KEY not set');
       return res.status(500).json({ error: 'server_misconfiguration', detail: 'API key missing' });
     }
 
-    // 3. Build user message
+    // 2. Build user message
     const resolvedMediaType = mediaType || 'image/jpeg';
-    const userPromptText = prompt || userNotes || 'Analyse ce croquis et retourne le JSON des pièces.';
 
-    const contextNote = context
-      ? `\n\nContexte initial (scan précédent) :\n${JSON.stringify(context).slice(0, 1000)}`
-      : '';
+    console.log('📡 CALL CLAUDE:', {
+      hasImage: !!image,
+      imageSizeKB: image ? Math.round(image.length / 1024) : 0,
+      mediaType: resolvedMediaType
+    });
 
     const messages = [
       {
@@ -79,15 +79,15 @@ export default async function handler(req, res) {
           },
           {
             type: 'text',
-            text: userPromptText + contextNote,
+            text: 'Analyse ce croquis et retourne le JSON des pièces.',
           },
         ],
       },
     ];
 
-    console.log('REFINE MODEL:', MODEL);
+    console.log('SCAN MODEL:', MODEL);
 
-    // 4. TIMEOUT via AbortController
+    // 3. TIMEOUT via AbortController
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
@@ -112,30 +112,29 @@ export default async function handler(req, res) {
       clearTimeout(timeoutId);
     }
 
-    // 5. API ERROR HANDLING
+    // 4. API ERROR HANDLING
     if (!response.ok) {
       const raw = await response.text();
-      console.error('REFINE API ERROR:', raw);
+      console.error('💥 ANTHROPIC RAW ERROR:', raw);
+
       return res.status(502).json({
         error: 'api_error',
-        status: response.status,
-        detail: raw.slice(0, 500),
+        detail: raw
       });
     }
 
     const apiData = await response.json();
-    console.log('REFINE API OK, stop_reason:', apiData.stop_reason);
+    console.log('SCAN API OK, stop_reason:', apiData.stop_reason);
 
     const rawText = apiData?.content?.[0]?.text || '';
     if (!rawText) {
-      console.error('REFINE: empty content from API', JSON.stringify(apiData).slice(0, 300));
+      console.error('SCAN: empty content from API', JSON.stringify(apiData).slice(0, 300));
       return res.status(502).json({ error: 'empty_response', detail: 'Claude returned no content' });
     }
 
-    // 6. Parse JSON from Claude response (strip markdown fences if any)
+    // 5. Parse JSON from Claude response (strip markdown fences if any)
     let parsed;
     try {
-      // Try raw text first, then strip markdown code fences, then find first '{' block
       let jsonStr = rawText.trim();
       const fenceMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
       if (fenceMatch) {
@@ -146,7 +145,7 @@ export default async function handler(req, res) {
       }
       parsed = JSON.parse(jsonStr);
     } catch (parseErr) {
-      console.error('REFINE: JSON parse error:', parseErr.message, '| raw:', rawText.slice(0, 300));
+      console.error('SCAN: JSON parse error:', parseErr.message, '| raw:', rawText.slice(0, 300));
       return res.status(502).json({
         error: 'parse_error',
         detail: 'Claude response could not be parsed as JSON',
@@ -158,10 +157,10 @@ export default async function handler(req, res) {
 
   } catch (err) {
     if (err.name === 'AbortError') {
-      console.error('REFINE: request timed out after', TIMEOUT_MS, 'ms');
+      console.error('SCAN: request timed out after', TIMEOUT_MS, 'ms');
       return res.status(504).json({ error: 'timeout', detail: 'Claude API timed out' });
     }
-    console.error('REFINE UNEXPECTED ERROR:', err.message, err.stack);
+    console.error('SCAN UNEXPECTED ERROR:', err.message, err.stack);
     return res.status(500).json({ error: 'server_error', detail: err.message });
   }
 }
