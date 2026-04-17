@@ -16,6 +16,18 @@ const toNum = (v, fallback = 0) => {
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
+// Retourne toujours un tableau, même si v est un entier ou null
+const toArr = (v) => (Array.isArray(v) ? v : []);
+
+// Distribue N éléments uniformément entre 0 et cabinetH (en cm)
+const distributeN = (n, cabinetH) => {
+  const count = Math.max(0, Math.round(toNum(n, 0)));
+  if (!count) return [];
+  return Array.from({ length: count }, (_, i) =>
+    Math.round(((i + 1) / (count + 1)) * cabinetH)
+  );
+};
+
 export function normalizeYToCm(yPx, totalHeightPx, cabinetHeightCm) {
   const px = toNum(yPx, 0);
   const hPx = Math.max(1, toNum(totalHeightPx, 700));
@@ -25,44 +37,78 @@ export function normalizeYToCm(yPx, totalHeightPx, cabinetHeightCm) {
 
 function normalizeModuleDetailsFromInitial(modules, cabinetHeightCm) {
   const safeModules = Array.isArray(modules) ? modules : [];
+  const H = Math.max(1, toNum(cabinetHeightCm, 220));
+
+  // Détecter si les positions brutes sont en pixels ou en cm
   const rawYs = [];
   safeModules.forEach((m) => {
-    (m?.shelves || []).forEach((s) => rawYs.push(toNum(typeof s === 'object' ? s?.y : s, 0)));
-    (m?.rods || []).forEach((r) => rawYs.push(toNum(typeof r === 'object' ? r?.y : r, 0)));
-    (m?.drawerItems || []).forEach((d) => rawYs.push(toNum(d?.y, 0), toNum(d?.height, 0)));
-    if (Array.isArray(m?.drawers)) m.drawers.forEach((d) => rawYs.push(toNum(d?.y, 0), toNum(d?.height, 0)));
+    toArr(m?.shelves).forEach((s) => rawYs.push(toNum(typeof s === 'object' ? s?.y : s, 0)));
+    toArr(m?.rods).forEach((r) => rawYs.push(toNum(typeof r === 'object' ? r?.y : r, 0)));
+    toArr(m?.drawerItems).forEach((d) => rawYs.push(toNum(d?.y, 0), toNum(d?.height, 0)));
+    toArr(m?.drawers).forEach((d) => typeof d === 'object' && rawYs.push(toNum(d?.y, 0), toNum(d?.height, 0)));
   });
 
   const maxRaw = rawYs.length ? Math.max(...rawYs) : 0;
-  const usePx = maxRaw > Math.max(300, cabinetHeightCm * 1.5);
+  const usePx = maxRaw > Math.max(300, H * 1.5);
   const totalHeightPx = usePx ? maxRaw : 700;
 
   return safeModules.map((m, idx) => {
     const normalizeY = (v) => {
       const raw = toNum(v, 0);
-      return usePx ? normalizeYToCm(raw, totalHeightPx, cabinetHeightCm) : raw;
+      return usePx ? normalizeYToCm(raw, totalHeightPx, H) : raw;
     };
 
-    const shelves = Array.isArray(m?.shelves)
-      ? m.shelves.map((s) => ({ id: uid(), y: normalizeY(typeof s === 'object' ? s?.y : s) }))
-      : [];
+    // Tablettes : tableau d'objets OU entier (nb_shelves)
+    let shelves;
+    if (Array.isArray(m?.shelves)) {
+      shelves = m.shelves.map((s) => ({ id: uid(), y: normalizeY(typeof s === 'object' ? s?.y : s) }));
+    } else {
+      const nb = toNum(m?.shelves ?? m?.nb_shelves, 0);
+      shelves = distributeN(nb, H).map((y) => ({ id: uid(), y }));
+    }
 
-    const rods = Array.isArray(m?.rods)
-      ? m.rods.map((r) => ({ id: uid(), y: normalizeY(typeof r === 'object' ? r?.y : r) }))
-      : [];
+    // Tringles : tableau d'objets OU booléen/entier legacy
+    let rods;
+    if (Array.isArray(m?.rods)) {
+      rods = m.rods.map((r) => ({ id: uid(), y: normalizeY(typeof r === 'object' ? r?.y : r) }));
+    } else if (m?.rods || m?.tringle || m?.rod) {
+      rods = [{ id: uid(), y: Math.round(H * 0.88) }];
+    } else {
+      rods = [];
+    }
 
-    const drawerItems = Array.isArray(m?.drawerItems)
-      ? m.drawerItems
-      : (Array.isArray(m?.drawers) ? m.drawers : []);
+    // Tiroirs : drawerItems[] précis OU drawers[] objets OU entier
+    let drawers;
+    if (Array.isArray(m?.drawerItems) && m.drawerItems.length) {
+      drawers = m.drawerItems.map((d) => ({
+        id: uid(),
+        y: normalizeY(d?.y),
+        height: usePx ? normalizeYToCm(d?.height, totalHeightPx, H) : toNum(d?.height, 18),
+      }));
+    } else if (Array.isArray(m?.drawers) && m.drawers.length && typeof m.drawers[0] === 'object') {
+      drawers = m.drawers.map((d) => ({
+        id: uid(),
+        y: normalizeY(d?.y),
+        height: usePx ? normalizeYToCm(d?.height, totalHeightPx, H) : toNum(d?.height, 18),
+      }));
+    } else {
+      const nb = toNum(m?.drawers ?? m?.nb_drawers, 0);
+      drawers = Array.from({ length: nb }, (_, i) => ({
+        id: uid(),
+        y: Math.round((i / Math.max(1, nb)) * H * 0.4),
+        height: 18,
+      }));
+    }
 
-    const drawers = drawerItems.map((d) => ({
-      id: uid(),
-      y: normalizeY(d?.y),
-      height: usePx ? normalizeYToCm(d?.height, totalHeightPx, cabinetHeightCm) : toNum(d?.height, 18),
-    }));
+    // Portes battantes
+    const doorCount = Array.isArray(m?.doors)
+      ? m.doors.length
+      : Math.max(0, toNum(m?.doors ?? m?.nb_doors, 0));
 
-    const doorCount = Math.max(0, toNum(m?.doors, Array.isArray(m?.doors) ? m.doors.length : 0));
-    const slidingDoorCount = Math.max(0, toNum(m?.slidingDoors, Array.isArray(m?.slidingDoors) ? m.slidingDoors.length : 0));
+    // Portes coulissantes
+    const slidingCount = Array.isArray(m?.slidingDoors)
+      ? m.slidingDoors.length
+      : Math.max(0, toNum(m?.slidingDoors ?? m?.nb_sliding_doors, 0));
 
     return {
       moduleId: String(idx + 1),
@@ -70,7 +116,7 @@ function normalizeModuleDetailsFromInitial(modules, cabinetHeightCm) {
       drawers,
       rods,
       doors: Array.from({ length: doorCount }, () => ({ id: uid(), kind: 'single' })),
-      slidingDoors: Array.from({ length: slidingDoorCount }, () => ({ id: uid(), kind: 'single' })),
+      slidingDoors: Array.from({ length: slidingCount }, () => ({ id: uid(), kind: 'single' })),
     };
   });
 }
@@ -92,7 +138,7 @@ function buildInitialDraftState(initialResult, draft) {
     : sourceModules.map((m, i) => ({
         id: String(i + 1),
         x: 0,
-        width: Math.max(1, toNum(m?.width, 40)),
+        width: Math.max(1, toNum(m?.width ?? m?.w ?? m?.largeur, 40)),
         type: 'standard',
       }));
 
@@ -138,9 +184,9 @@ export function buildCabinetFromDraft(draftState) {
 
   const outputModules = modules.map((m, idx) => {
     const d = details.find((it) => String(it.moduleId) === String(m.id)) || {};
-    const shelves = (d.shelves || []).map((s) => ({ y: toNum(s.y, 0) }));
-    const drawers = (d.drawers || []).map((dr) => ({ y: toNum(dr.y, 0), height: toNum(dr.height, 18) }));
-    const rods = (d.rods || []).map((r) => ({ y: toNum(r.y, 0) }));
+    const shelves = toArr(d.shelves).map((s) => ({ y: toNum(s.y, 0) }));
+    const drawers = toArr(d.drawers).map((dr) => ({ y: toNum(dr.y, 0), height: toNum(dr.height, 18) }));
+    const rods = toArr(d.rods).map((r) => ({ y: toNum(r.y, 0) }));
     return {
       id: idx + 1,
       width: toNum(m.width, 1),
@@ -149,8 +195,8 @@ export function buildCabinetFromDraft(draftState) {
       drawers: drawers.length,
       drawerItems: drawers,
       rods,
-      doors: Array.isArray(d.doors) ? d.doors.length : 0,
-      slidingDoors: Array.isArray(d.slidingDoors) ? d.slidingDoors.length : 0,
+      doors: toArr(d.doors).length,
+      slidingDoors: toArr(d.slidingDoors).length,
     };
   });
 
@@ -189,7 +235,7 @@ export default function useSketchState({ image, initialResult, draft, onDraftCha
     setDraftState(normalized);
     setSelectedModuleId(normalized.facadeModules[0]?.id || null);
     setExtraNotes(draft?.state?.extraNotes || '');
-  }, []); // init once on mount — intentionally empty deps
+  }, []); // init once on mount
 
   const cabinetDims = draftState.cabinetDims;
   const setCabinetDims = useCallback((updater) => {
@@ -285,11 +331,11 @@ export default function useSketchState({ image, initialResult, draft, onDraftCha
       ...prev,
       moduleDetails: prev.moduleDetails.map((d) => {
         if (String(d.moduleId) !== String(moduleId)) return d;
-        if (type === 'shelf') return { ...d, shelves: [...d.shelves, item] };
-        if (type === 'drawer') return { ...d, drawers: [...d.drawers, item] };
-        if (type === 'rod') return { ...d, rods: [...d.rods, item] };
-        if (type === 'door') return { ...d, doors: [...d.doors, item] };
-        if (type === 'sliding_door') return { ...d, slidingDoors: [...d.slidingDoors, item] };
+        if (type === 'shelf') return { ...d, shelves: [...toArr(d.shelves), item] };
+        if (type === 'drawer') return { ...d, drawers: [...toArr(d.drawers), item] };
+        if (type === 'rod') return { ...d, rods: [...toArr(d.rods), item] };
+        if (type === 'door') return { ...d, doors: [...toArr(d.doors), item] };
+        if (type === 'sliding_door') return { ...d, slidingDoors: [...toArr(d.slidingDoors), item] };
         return d;
       }),
     }));
@@ -303,7 +349,7 @@ export default function useSketchState({ image, initialResult, draft, onDraftCha
         if (String(d.moduleId) !== String(moduleId)) return d;
         return {
           ...d,
-          [collection]: (d[collection] || []).map((it) => (it.id === itemId ? { ...it, ...patch } : it)),
+          [collection]: toArr(d[collection]).map((it) => (it.id === itemId ? { ...it, ...patch } : it)),
         };
       }),
     }));
@@ -316,7 +362,7 @@ export default function useSketchState({ image, initialResult, draft, onDraftCha
         if (String(d.moduleId) !== String(moduleId)) return d;
         return {
           ...d,
-          [collection]: (d[collection] || []).filter((it) => it.id !== itemId),
+          [collection]: toArr(d[collection]).filter((it) => it.id !== itemId),
         };
       }),
     }));
