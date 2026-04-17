@@ -189,7 +189,7 @@ export default function useSketchState({ image, initialResult, draft, onDraftCha
     setDraftState(normalized);
     setSelectedModuleId(normalized.facadeModules[0]?.id || null);
     setExtraNotes(draft?.state?.extraNotes || '');
-  }, []); // init once on mount
+  }, []); // init once on mount — intentionally empty deps
 
   const cabinetDims = draftState.cabinetDims;
   const setCabinetDims = useCallback((updater) => {
@@ -329,7 +329,7 @@ export default function useSketchState({ image, initialResult, draft, onDraftCha
   }, [onSave, cabinetPreview]);
 
   const sendToClaude = useCallback(async () => {
-    if (alerts.critical.length > 0 || isSending) return;
+    if (!isReady || isSending) return;
     setSendError('');
     setIsSending(true);
     try {
@@ -369,7 +369,7 @@ export default function useSketchState({ image, initialResult, draft, onDraftCha
     } finally {
       setIsSending(false);
     }
-  }, [alerts.critical.length, isSending, image, initialResult, draftState, extraNotes, onComplete]);
+  }, [isReady, isSending, image, initialResult, draftState, extraNotes, onComplete]);
 
   return {
     tool,
