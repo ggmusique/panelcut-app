@@ -18,7 +18,7 @@ export default function SketchEditorPro({ image, initialResult, apiKey, draft, o
 
   const projectName = useMemo(() => {
     const c = state.cabinetPreview || {};
-    return `Meuble ${c.width || '?'}\u00d7${c.height || '?'} cm`;
+    return `Meuble ${c.width || '?'}×${c.height || '?'} cm`;
   }, [state.cabinetPreview]);
 
   const inspector = (
@@ -35,17 +35,27 @@ export default function SketchEditorPro({ image, initialResult, apiKey, draft, o
           <h3 className="text-sm font-semibold text-slate-100 mb-2">Cabinet</h3>
           <div className="grid grid-cols-2 gap-2 text-xs">
             {[
-              ['width', 'Largeur'],
-              ['height', 'Hauteur'],
-              ['depth', 'Profondeur'],
-              ['thickness', '\u00c9paisseur'],
+              ['width', 'Largeur (cm)'],
+              ['height', 'Hauteur (cm)'],
+              ['depth', 'Profondeur (cm)'],
+              ['thickness', 'Épaisseur (cm)'],
             ].map(([k, label]) => (
               <label key={k} className="text-slate-300">{label}
-                <input value={state.draftState.cabinetDims[k]} onChange={(e) => state.setCabinetField(k, e.target.value)} className="mt-1 w-full px-2 py-1 rounded bg-slate-950 border border-slate-700" />
+                <input
+                  type="number" step="0.5" min="0"
+                  value={state.draftState.cabinetDims[k]}
+                  onChange={(e) => state.setCabinetField(k, parseFloat(e.target.value) || 0)}
+                  className="mt-1 w-full px-2 py-1 rounded bg-slate-950 border border-slate-700"
+                />
               </label>
             ))}
             <label className="text-slate-300 col-span-2">Nb modules
-              <input value={state.draftState.facadeModules.length} onChange={(e) => state.setCabinetField('modulesCount', e.target.value)} className="mt-1 w-full px-2 py-1 rounded bg-slate-950 border border-slate-700" />
+              <input
+                type="number" step="1" min="1"
+                value={state.draftState.facadeModules.length}
+                onChange={(e) => state.setCabinetField('modulesCount', e.target.value)}
+                className="mt-1 w-full px-2 py-1 rounded bg-slate-950 border border-slate-700"
+              />
             </label>
           </div>
         </section>
@@ -85,7 +95,7 @@ export default function SketchEditorPro({ image, initialResult, apiKey, draft, o
         </section>
 
         <details className="rounded-2xl bg-slate-900/80 border border-slate-700 p-3">
-          <summary className="cursor-pointer text-sm text-slate-100">Pr\u00e9visualisation JSON</summary>
+          <summary className="cursor-pointer text-sm text-slate-100">Prévisualisation JSON</summary>
           <pre className="text-[10px] text-slate-300 mt-2 overflow-auto max-h-56">{JSON.stringify(state.jsonPreview, null, 2)}</pre>
         </details>
       </div>
@@ -108,14 +118,14 @@ export default function SketchEditorPro({ image, initialResult, apiKey, draft, o
       <main className="flex-1 min-w-0 flex flex-col">
         <header className="h-14 border-b border-slate-800 px-4 flex items-center justify-between bg-slate-900/40 backdrop-blur">
           <div>
-            <h2 className="text-sm font-semibold">SketchEditor Pro \u00b7 {projectName}</h2>
-            <p className="text-[11px] text-slate-400">Brouillon synchronis\u00e9 \u00b7 API key {apiKey ? 'ok' : 'vide'}</p>
+            <h2 className="text-sm font-semibold">SketchEditor Pro · {projectName}</h2>
+            <p className="text-[11px] text-slate-400">Brouillon synchronisé · API key {apiKey ? 'ok' : 'vide'}</p>
           </div>
           <div className="flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-900/60 p-1 text-xs">
             {[
-              { id: 'scan',   label: '\ud83d\udcf7 Scan' },
-              { id: 'split',  label: '\u2b1c Split' },
-              { id: 'facade', label: '\ud83d\udcd0 Fa\u00e7ade' },
+              { id: 'scan',   label: '📷 Scan' },
+              { id: 'split',  label: '⬜ Split' },
+              { id: 'facade', label: '📐 Façade' },
             ].map(({ id, label }) => (
               <button
                 key={id}
@@ -163,6 +173,7 @@ export default function SketchEditorPro({ image, initialResult, apiKey, draft, o
               updateFacadeAnnotation={state.updateFacadeAnnotation}
               addModuleObject={state.addModuleObject}
               removeFacadeAnnotation={state.removeFacadeAnnotation}
+              removeModuleObject={state.removeModuleObject}
             />
           </section>
           {!isMobile && inspector}
