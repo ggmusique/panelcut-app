@@ -35,9 +35,9 @@ export default function SketchEditorPro({ image, initialResult, apiKey, draft, o
           <h3 className="text-sm font-semibold text-slate-100 mb-2">Cabinet</h3>
           <div className="grid grid-cols-2 gap-2 text-xs">
             {[
-              ['width', 'Largeur (cm)'],
-              ['height', 'Hauteur (cm)'],
-              ['depth', 'Profondeur (cm)'],
+              ['width',     'Largeur (cm)'],
+              ['height',    'Hauteur (cm)'],
+              ['depth',     'Profondeur (cm)'],
               ['thickness', 'Épaisseur (cm)'],
             ].map(([k, label]) => (
               <label key={k} className="text-slate-300">{label}
@@ -50,8 +50,7 @@ export default function SketchEditorPro({ image, initialResult, apiKey, draft, o
               </label>
             ))}
             <label className="text-slate-300 col-span-2">Nb modules
-              <input
-                type="number" step="1" min="1"
+              <input type="number" step="1" min="1"
                 value={state.draftState.facadeModules.length}
                 onChange={(e) => state.setCabinetField('modulesCount', e.target.value)}
                 className="mt-1 w-full px-2 py-1 rounded bg-slate-950 border border-slate-700"
@@ -127,15 +126,10 @@ export default function SketchEditorPro({ image, initialResult, apiKey, draft, o
               { id: 'split',  label: '⬜ Split' },
               { id: 'facade', label: '📐 Façade' },
             ].map(({ id, label }) => (
-              <button
-                key={id}
-                onClick={() => setViewMode(id)}
+              <button key={id} onClick={() => setViewMode(id)}
                 className={`px-2 py-1 rounded-md transition-colors ${
-                  viewMode === id
-                    ? 'bg-orange-500/20 text-orange-300 border border-orange-500/30'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
+                  viewMode === id ? 'bg-orange-500/20 text-orange-300 border border-orange-500/30' : 'text-slate-400 hover:text-slate-200'
+                }`}>
                 {label}
               </button>
             ))}
@@ -174,6 +168,7 @@ export default function SketchEditorPro({ image, initialResult, apiKey, draft, o
               addModuleObject={state.addModuleObject}
               removeFacadeAnnotation={state.removeFacadeAnnotation}
               removeModuleObject={state.removeModuleObject}
+              updateModuleObject={state.updateModuleObject}
             />
           </section>
           {!isMobile && inspector}
@@ -191,7 +186,6 @@ export default function SketchEditorPro({ image, initialResult, apiKey, draft, o
           mobile
         />
       )}
-
       {isMobile && inspector}
 
       <JsonPreviewModal open={jsonOpen} onClose={() => setJsonOpen(false)} payload={state.jsonPreview} />

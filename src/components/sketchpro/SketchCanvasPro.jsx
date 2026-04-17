@@ -1,6 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
 import FacadeSvgView from './FacadeSvgView';
-import { TOOL_IDS, toPercentY } from './utils';
 
 export default function SketchCanvasPro({
   viewMode = 'split',
@@ -20,21 +19,15 @@ export default function SketchCanvasPro({
   addModuleObject,
   removeFacadeAnnotation,
   removeModuleObject,
+  updateModuleObject,
 }) {
   const wrapRef = useRef(null);
   const [mouse, setMouse] = useState({ x: 0, y: 0 });
 
-  const handleMouseMove = (e) => {
-    setMouse({ x: Math.round(e.clientX), y: Math.round(e.clientY) });
+  // onMoveObject : déplace un objet en live pendant le drag
+  const handleMoveObject = (moduleId, collection, itemId, newYcm) => {
+    updateModuleObject(moduleId, collection, itemId, { y: Math.round(newYcm * 10) / 10 });
   };
-
-  const svgSize = useMemo(() => ({ w: 1100, h: 700 }), []);
-
-  const cursor = tool === TOOL_IDS.SELECT ? 'grab'
-    : tool === TOOL_IDS.DIM || tool === TOOL_IDS.ARROW ? 'crosshair'
-    : tool === TOOL_IDS.NOTE ? 'text'
-    : tool === TOOL_IDS.ERASE ? 'not-allowed'
-    : 'cell';
 
   return (
     <div className="rounded-2xl border border-slate-800 bg-slate-950/50 overflow-hidden h-full flex flex-col" ref={wrapRef}>
@@ -56,13 +49,13 @@ export default function SketchCanvasPro({
           </div>
         )}
 
-        {/* Vue Façade SVG — FacadeSvgView gère TOUTE l'interaction */}
+        {/* Vue Façade SVG */}
         {(viewMode === 'facade' || viewMode === 'split') && (
           <div
             className={`relative overflow-auto bg-slate-950/30 ${
               viewMode === 'split' ? 'w-1/2' : 'w-full'
             }`}
-            onMouseMove={handleMouseMove}
+            onMouseMove={(e) => setMouse({ x: Math.round(e.clientX), y: Math.round(e.clientY) })}
             onDoubleClick={() => {
               if (!selectedAnnotationId) return;
               const ann = draftState.facadeItems?.find((a) => a.id === selectedAnnotationId);
@@ -86,6 +79,7 @@ export default function SketchCanvasPro({
               onAddObject={addModuleObject}
               onAddAnnotation={addFacadeAnnotation}
               onRemoveObject={removeModuleObject}
+              onMoveObject={handleMoveObject}
             />
           </div>
         )}
