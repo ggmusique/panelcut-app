@@ -24,13 +24,11 @@ Format attendu :
 Ne retourne aucun texte en dehors du JSON.`;
 
 export default async function handler(req, res) {
-  // Only allow POST
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'method_not_allowed' });
   }
 
   try {
-    // 1. INPUT VALIDATION
     if (!req.body) {
       console.error('REFINE: missing body');
       return res.status(400).json({ error: 'invalid_input', detail: 'missing body' });
@@ -38,7 +36,6 @@ export default async function handler(req, res) {
 
     const { image, mediaType, prompt, context, pieces, userNotes } = req.body;
 
-    // 2. DEBUG LOGS
     console.log('🛠️ REFINE BODY:', JSON.stringify(req.body).slice(0, 300));
 
     if (!image || typeof image !== 'string') {
@@ -57,7 +54,12 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'server_misconfiguration', detail: 'API key missing' });
     }
 
-    // 3. Build user message
+    // ✅ FIX IMAGE BASE64
+    const cleanImage = image.replace(/^data:image\/\w+;base64,/, '');
+
+    console.log('IMAGE LENGTH:', image.length);
+    console.log('CLEAN IMAGE LENGTH:', cleanImage.length);
+
     const resolvedMediaType = mediaType || 'image/jpeg';
     const userPromptText = prompt || userNotes || 'Analyse ce croquis et retourne le JSON des pièces.';
 
@@ -74,7 +76,7 @@ export default async function handler(req, res) {
             source: {
               type: 'base64',
               media_type: resolvedMediaType,
-              data: image,
+              data: cleanImage, // ✅ FIX ICI
             },
           },
           {
@@ -87,7 +89,6 @@ export default async function handler(req, res) {
 
     console.log('REFINE MODEL:', MODEL);
 
-    // 4. TIMEOUT via AbortController
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
@@ -102,7 +103,7 @@ export default async function handler(req, res) {
         },
         body: JSON.stringify({
           model: MODEL,
-          max_tokens: 2048,
+          max_tokens: 1024, // ✅ réduit (seul changement ici)
           system: SYSTEM_PROMPT,
           messages,
         }),
@@ -112,7 +113,6 @@ export default async function handler(req, res) {
       clearTimeout(timeoutId);
     }
 
-    // 5. API ERROR HANDLING
     if (!response.ok) {
       const raw = await response.text();
       console.error('REFINE API ERROR:', raw);
@@ -132,10 +132,8 @@ export default async function handler(req, res) {
       return res.status(502).json({ error: 'empty_response', detail: 'Claude returned no content' });
     }
 
-    // 6. Parse JSON from Claude response (strip markdown fences if any)
     let parsed;
     try {
-      // Try raw text first, then strip markdown code fences, then find first '{' block
       let jsonStr = rawText.trim();
       const fenceMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
       if (fenceMatch) {
