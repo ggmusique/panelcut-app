@@ -1,99 +1,9 @@
 import React from 'react';
+import { normalizeCabinetModules } from '../utils/normalizeCabinetModules';
 
 function toNum(v, d = 0) {
   const n = Number(v);
   return Number.isFinite(n) ? n : d;
-}
-
-/**
- * Normalise les modules depuis cabinet.modules[]
- * Supporte rods[] (tableau de tringles multiples) et rod (legacy booléen/objet)
- */
-function normalizeModules(cabinet) {
-  const raw = Array.isArray(cabinet?.modules) ? cabinet.modules : [];
-  const detailed = raw.filter(m => typeof m === 'object' && m !== null);
-
-  if (detailed.length > 0) {
-    return detailed.map((m, i) => {
-      const w = Math.max(0, toNum(m.width ?? m.w ?? m.largeur, 0));
-
-      // --- Tringles : rods[] nouveau format OU rod legacy ---
-      let rods = [];
-      if (Array.isArray(m.rods) && m.rods.length > 0) {
-        rods = m.rods
-          .map(r => (typeof r === 'object' && r !== null ? toNum(r.y, null) : null))
-          .filter(y => y !== null && y >= 0);
-      } else if (m.rod) {
-        if (typeof m.rod === 'object' && m.rod.y != null) {
-          rods = [toNum(m.rod.y, 0)];
-        } else if (m.rod === true || m.tringle === true || m.hanging === true) {
-          rods = [null]; // position auto
-        }
-      }
-
-      // --- Tablettes ---
-      const rawShelves = m.shelves ?? m.nb_shelves ?? 0;
-      let shelfPositions = [];
-      if (Array.isArray(rawShelves)) {
-        shelfPositions = rawShelves
-          .map(s => (typeof s === 'object' && s !== null ? toNum(s.y, null) : toNum(s, null)))
-          .filter(y => y !== null && y >= 0);
-      }
-      const nbShelves = shelfPositions.length > 0 ? shelfPositions.length : Math.max(0, parseInt(rawShelves, 10) || 0);
-
-      // --- Tiroirs ---
-      const rawDrawers = m.drawers ?? m.nb_drawers ?? 0;
-      const rawDrawerItems = Array.isArray(m.drawerItems) ? m.drawerItems : [];
-      let drawerItems = [];
-      if (rawDrawerItems.length > 0) {
-        drawerItems = rawDrawerItems
-          .filter(d => typeof d === 'object' && d !== null)
-          .map(d => ({ y: toNum(d.y, null), h: toNum(d.height ?? d.h ?? 20, 20) }))
-          .filter(d => d.y !== null && d.y >= 0);
-      } else if (Array.isArray(rawDrawers)) {
-        drawerItems = rawDrawers
-          .filter(d => typeof d === 'object' && d !== null)
-          .map(d => ({ y: toNum(d.y, null), h: toNum(d.height ?? d.h ?? 20, 20) }))
-          .filter(d => d.y !== null && d.y >= 0);
-      }
-      const nbDrawers = drawerItems.length > 0 ? drawerItems.length : Math.max(0, parseInt(rawDrawers, 10) || 0);
-
-      return {
-        id: m.id ?? i + 1,
-        width: w,
-        rods,
-        shelves: nbShelves,
-        shelfPositions,
-        drawers: nbDrawers,
-        drawerItems,
-        doors: Math.max(0, parseInt(m.doors ?? m.nb_doors ?? 0, 10)),
-        slidingDoors: Math.max(0, parseInt(m.slidingDoors ?? m.nb_sliding_doors ?? 0, 10)),
-      };
-    }).filter(m => m.width > 0);
-  }
-
-  // Fallback : modules génériques avec distribution heuristique
-  const W = Math.max(0, toNum(cabinet?.width, 0));
-  const nb = Math.max(1, parseInt(cabinet?.nb_dividers ?? 4, 10) + 1);
-  const mw = W > 0 ? W / nb : 0;
-  const totalDrawers = parseInt(cabinet?.nb_drawers ?? 0, 10);
-  const drawersPerOuter = nb >= 2 ? Math.floor(totalDrawers / 2) : totalDrawers;
-  const hasRod = Boolean(cabinet?.rod ?? cabinet?.tringle ?? false);
-  const innerCount = Math.max(1, nb - 2);
-  return Array.from({ length: nb }, (_, i) => {
-    const isOuter = i === 0 || i === nb - 1;
-    return {
-      id: i + 1,
-      width: mw,
-      rods: (!isOuter && hasRod) ? [null] : [],
-      shelves: isOuter ? 0 : Math.max(0, Math.round(parseInt(cabinet?.nb_shelves ?? 0, 10) / innerCount)),
-      shelfPositions: [],
-      drawers: isOuter ? drawersPerOuter : 0,
-      drawerItems: [],
-      doors: 0,
-      slidingDoors: 0,
-    };
-  });
 }
 
 export default function CabinetElevationFront({ cabinet, name = 'Meuble' }) {
@@ -101,7 +11,7 @@ export default function CabinetElevationFront({ cabinet, name = 'Meuble' }) {
     return <div className="text-center py-8 text-slate-500">Dimensions indisponibles.</div>;
   }
 
-  const modules = normalizeModules(cabinet);
+  const modules = normalizeCabinetModules(cabinet);
   const W  = toNum(cabinet.width, 0);
   const H  = toNum(cabinet.height, 0);
   const PL = Math.max(0, toNum(cabinet.plinth, 0));
@@ -211,8 +121,9 @@ export default function CabinetElevationFront({ cabinet, name = 'Meuble' }) {
           );
 
           // ─ Tringles (une ou plusieurs)
-          const rodElems = m.rods.map((yCm, ri) => {
-            const ryPx = yCm !== null ? cmToY(yCm) : autoRodY + ri * (INNER_H * 0.3);
+          const rodPositions = m.rodYs.length > 0 ? m.rodYs : m.rod ? [null] : [];
+          const rodElems = rodPositions.map((yCm, ri) => {
+            const ryPx = yCm !== null ? cmToY(yCm) : autoRodY;
             return (
               <g key={`rod-${m.id}-${ri}`}>
                 <line x1={mx + 8} y1={ryPx} x2={mx + mw - 8} y2={ryPx} stroke="#374151" strokeWidth={4} strokeLinecap="round" />

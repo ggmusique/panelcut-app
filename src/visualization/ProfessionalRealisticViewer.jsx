@@ -3,6 +3,7 @@ import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Environment, ContactShadows } from '@react-three/drei';
 import { EffectComposer, N8AO, Bloom, Vignette } from '@react-three/postprocessing';
 import * as THREE from 'three';
+import { normalizeCabinetModules } from '../utils/normalizeCabinetModules';
 
 /* ═══════════════════════════════════════════════════════════════
    PROCEDURAL TEXTURE GENERATORS
@@ -141,98 +142,6 @@ function createBumpCanvas(src) {
   }
   ctx.putImageData(img, 0, 0);
   return c;
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   NORMALIZE MODULES
-   ═══════════════════════════════════════════════════════════════ */
-
-function normalizeModules(cabinet) {
-  const cabinetHeight = Math.max(0, Number(cabinet?.height) || 0);
-  const plinthHeight = Math.max(0, Number(cabinet?.plinth) || 0);
-  const interiorH = Math.max(1, cabinetHeight - plinthHeight);
-
-  const getCount = (value, fallback = 0) => {
-    if (Array.isArray(value)) return value.length;
-    const n = parseInt(value, 10);
-    return Number.isFinite(n) ? Math.max(0, n) : fallback;
-  };
-
-  const normalizeYList = (value) => {
-    if (!Array.isArray(value)) return [];
-    return value
-      .map((v) => {
-        if (typeof v === 'number') return v;
-        if (v && typeof v === 'object') return Number(v.y);
-        return NaN;
-      })
-      .filter((n) => Number.isFinite(n))
-      .map((n) => Math.max(0, Math.min(interiorH, n)))
-      .sort((a, b) => b - a);
-  };
-
-  const hasRod = (moduleData) => {
-    if (Array.isArray(moduleData?.rods)) return moduleData.rods.length > 0;
-    if (Array.isArray(moduleData?.rod)) return moduleData.rod.length > 0;
-    return Boolean(
-      moduleData?.rod ??
-      moduleData?.rods ??
-      moduleData?.tringle ??
-      moduleData?.hanging ??
-      moduleData?.penderie
-    );
-  };
-
-  const raw = Array.isArray(cabinet?.modules) ? cabinet.modules : [];
-  const detailed = raw.filter(m => typeof m === 'object' && m !== null);
-  if (detailed.length > 0) {
-    return detailed.map((m, i) => {
-      const shelfYs = normalizeYList(m.shelves);
-      const rodYs = normalizeYList(m.rods);
-      const drawerItems = Array.isArray(m?.drawerItems)
-        ? m.drawerItems
-            .map((d) => ({
-              y: Number(d?.y),
-              h: Number(d?.height ?? d?.h),
-            }))
-            .filter((d) => Number.isFinite(d.y) && Number.isFinite(d.h) && d.h > 0)
-        : [];
-      const drawerParts = {
-        front: m?.drawerParts?.front !== false,
-        back: m?.drawerParts?.back !== false,
-        left: m?.drawerParts?.left !== false,
-        right: m?.drawerParts?.right !== false,
-        bottom: m?.drawerParts?.bottom !== false,
-      };
-      return {
-        id:      i + 1,
-        width:   Math.max(0, Number(m.width ?? m.w ?? m.largeur) || 0),
-        shelves: shelfYs.length > 0 ? shelfYs.length : getCount(m.shelves, getCount(m.nb_shelves, 0)),
-        shelfYs,
-        drawers: drawerItems.length > 0 ? drawerItems.length : getCount(m.drawers, getCount(m.drawerItems, getCount(m.nb_drawers, 0))),
-        drawerItems,
-        doors:   getCount(m.doors, getCount(m.nb_doors, 0)),
-        slidingDoors: Math.max(0, parseInt(m?.slidingDoors ?? m?.nb_sliding_doors ?? 0, 10) || 0),
-        rod:     rodYs.length > 0 || hasRod(m),
-        rodYs,
-        hasBack: m?.hasBack !== false,
-        drawerParts,
-      };
-    }).filter(m => m.width > 0);
-  }
-  const W  = Math.max(0, Number(cabinet?.width) || 0);
-  const nb = Math.max(1, parseInt(cabinet?.nb_dividers ?? 4, 10) + 1);
-  const mw = W > 0 ? W / nb : 0;
-  return Array.from({ length: nb }, (_, i) => ({
-    id: i + 1, width: mw,
-    shelves: Math.max(0, parseInt(cabinet?.nb_shelves ?? 0, 10) || 0),
-    drawers: Math.max(0, parseInt(cabinet?.nb_drawers ?? 0, 10) || 0),
-    drawerItems: [],
-    doors: 1, rod: false,
-    slidingDoors: 0,
-    hasBack: true,
-    drawerParts: { front: true, back: true, left: true, right: true, bottom: true },
-  }));
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -426,8 +335,8 @@ function CabinetModule3D({ mod, x, cabinetH, cabinetD, plinthH, thickness, mats,
   const bodyH = H - PL;
 
   const shelves = useMemo(() => {
-    if (Array.isArray(mod.shelfYs) && mod.shelfYs.length > 0) {
-      return mod.shelfYs
+    if (Array.isArray(mod.shelfPositions) && mod.shelfPositions.length > 0) {
+      return mod.shelfPositions
         .map((yCm) => PL + yCm / 100)
         .sort((a, b) => b - a);
     }
@@ -435,7 +344,7 @@ function CabinetModule3D({ mod, x, cabinetH, cabinetD, plinthH, thickness, mats,
     return Array.from({ length: mod.shelves }, (_, i) =>
       PL + ((i + 1) / (mod.shelves + 1)) * bodyH
     );
-  }, [mod.shelves, mod.shelfYs, mod.drawers, PL, TH, bodyH]);
+  }, [mod.shelves, mod.shelfPositions, mod.drawers, PL, TH, bodyH]);
 
   const drawers = useMemo(() => {
     if (Array.isArray(mod.drawerItems) && mod.drawerItems.length > 0) {
@@ -833,7 +742,7 @@ export default function ProfessionalRealisticViewer({ cabinet, name, fullScreen 
     );
   }
 
-  const modules = useMemo(() => normalizeModules(cabinet), [cabinet]);
+  const modules = useMemo(() => normalizeCabinetModules(cabinet), [cabinet]);
   const W  = Number(cabinet.width)  || 0;
   const H  = Number(cabinet.height) || 0;
   const D  = Number(cabinet.depth)  || 60;
