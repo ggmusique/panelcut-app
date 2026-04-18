@@ -201,6 +201,13 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
           mediaType: 'image/jpeg',
           ocrNumbers,
           scanMode,
+          prompt: getVisionPrompt(panelThickness),
+          panel: {
+            w: panelW,
+            h: panelH,
+            thickness: panelThickness,
+            label: panelLabel,
+          },
         }),
       });
 
@@ -209,9 +216,20 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
         throw new Error(errData.error || `Erreur serveur (${response.status})`);
       }
       const scanResult = await response.json();
-      setLastScanResult(scanResult);
+      const hydratedResult = {
+        ...scanResult,
+        cabinet: {
+          ...(scanResult?.cabinet || {}),
+          thickness: panelThickness,
+          panelThickness,
+          edgeType,
+          panelW,
+          panelH,
+        },
+      };
+      setLastScanResult(hydratedResult);
 
-      if (onGoScan) onGoScan(scanResult, processedImage, scanMode);
+      if (onGoScan) onGoScan(hydratedResult, processedImage, scanMode);
 
     } catch (err) {
       console.error('💥 Échec complet du scan:', err);
@@ -249,6 +267,10 @@ export default function NewProjectWizard({ t, project, onChange, onGoScan, onGoM
         cabinet:   { ...(scanResult?.cabinet || {}), thickness: panelThickness },
         thickness: panelThickness,
       };
+      correctedResult.cabinet.panelThickness = panelThickness;
+      correctedResult.cabinet.edgeType = edgeType;
+      correctedResult.cabinet.panelW = panelW;
+      correctedResult.cabinet.panelH = panelH;
       setLastScanResult(correctedResult);
       setShowCorrection(false);
       setCorrectionText('');

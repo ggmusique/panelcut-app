@@ -3,8 +3,12 @@ import { Disc } from 'lucide-react';
 import FacadeSVG from './configurator/FacadeSVG';
 import ModuleCard from './configurator/ModuleCard';
 import CabinetPiecesList from './configurator/PiecesList';
-import { normalizeResultToCabinetState, convertCabinetStateToPieces } from '../utils/cabinetCalculator';
-import { computeAllPieces } from '../utils/cabinetCalculator';
+import {
+  normalizeResultToCabinetState,
+  convertCabinetStateToPieces,
+  computeAllPieces,
+  validateCabinetFabrication,
+} from '../utils/cabinetCalculator';
 import { captureFacadeToImage } from '../utils/captureFacadeToImage';
 
 const LS_KEY = 'pc_cabinet_configurator';
@@ -68,6 +72,10 @@ export default function CabinetConfigurator({
   onComplete,
   onCancel,
   onSave,
+  panelThickness = 1.8,
+  panelW = 244,
+  panelH = 122,
+  edgeType = 'none',
 }) {
   const facadeRef     = useRef(null);
   const onDraftRef    = useRef(onDraftChange);
@@ -77,7 +85,14 @@ export default function CabinetConfigurator({
   const [cabinet, setCabinetRaw] = useState(() => {
     // 1. Try to restore draft if fingerprint matches
     if (draft?.state && Object.keys(draft.state).length > 0) {
-      return draft.state;
+      return {
+        ...draft.state,
+        thickness: Number(panelThickness) || Number(draft.state.thickness) || 1.8,
+        panelThickness: Number(panelThickness) || Number(draft.state.panelThickness) || 1.8,
+        panelW: Number(panelW) || Number(draft.state.panelW) || 244,
+        panelH: Number(panelH) || Number(draft.state.panelH) || 122,
+        edgeType: edgeType || draft.state.edgeType || 'none',
+      };
     }
     const cached = lsGet(LS_KEY, null);
     if (cached?.state) {
@@ -85,14 +100,35 @@ export default function CabinetConfigurator({
         ? normalizeResultToCabinetState(initialResult)
         : null;
       if (fromResult && cached.fingerprint === fingerprint(fromResult)) {
-        return cached.state;
+        return {
+          ...cached.state,
+          thickness: Number(panelThickness) || Number(cached.state.thickness) || 1.8,
+          panelThickness: Number(panelThickness) || Number(cached.state.panelThickness) || 1.8,
+          panelW: Number(panelW) || Number(cached.state.panelW) || 244,
+          panelH: Number(panelH) || Number(cached.state.panelH) || 122,
+          edgeType: edgeType || cached.state.edgeType || 'none',
+        };
       }
     }
     // 2. Normalize from scan result
     if (initialResult) {
-      return normalizeResultToCabinetState(initialResult);
+      return {
+        ...normalizeResultToCabinetState(initialResult),
+        thickness: Number(panelThickness) || 1.8,
+        panelThickness: Number(panelThickness) || 1.8,
+        panelW: Number(panelW) || 244,
+        panelH: Number(panelH) || 122,
+        edgeType: edgeType || 'none',
+      };
     }
-    return { ...DEFAULT_STATE };
+    return {
+      ...DEFAULT_STATE,
+      thickness: Number(panelThickness) || 1.8,
+      panelThickness: Number(panelThickness) || 1.8,
+      panelW: Number(panelW) || 244,
+      panelH: Number(panelH) || 122,
+      edgeType: edgeType || 'none',
+    };
   });
 
   const [activeTab, setActiveTab] = useState('facade'); // 'facade' | 'pieces'
@@ -116,8 +152,27 @@ export default function CabinetConfigurator({
     if (prevResultRef.current === initialResult) return;
     prevResultRef.current = initialResult;
     if (!initialResult) return;
-    setCabinet(normalizeResultToCabinetState(initialResult));
-  }, [initialResult, setCabinet]);
+    const normalized = normalizeResultToCabinetState(initialResult);
+    setCabinet({
+      ...normalized,
+      thickness: Number(panelThickness) || Number(normalized.thickness) || 1.8,
+      panelThickness: Number(panelThickness) || Number(normalized.panelThickness) || 1.8,
+      panelW: Number(panelW) || 244,
+      panelH: Number(panelH) || 122,
+      edgeType: edgeType || normalized.edgeType || 'none',
+    });
+  }, [initialResult, setCabinet, panelThickness, panelW, panelH, edgeType]);
+
+  useEffect(() => {
+    setCabinet(prev => ({
+      ...prev,
+      thickness: Number(panelThickness) || prev.thickness || 1.8,
+      panelThickness: Number(panelThickness) || prev.panelThickness || 1.8,
+      panelW: Number(panelW) || prev.panelW || 244,
+      panelH: Number(panelH) || prev.panelH || 122,
+      edgeType: edgeType || prev.edgeType || 'none',
+    }));
+  }, [panelThickness, panelW, panelH, edgeType, setCabinet]);
 
   // ── Autosave to Supabase ────────────────────────────────────────────────
   const cabinetSnapshot = JSON.stringify(cabinet);
@@ -138,6 +193,9 @@ export default function CabinetConfigurator({
   // ── Computed summary ────────────────────────────────────────────────────
   const summary = useMemo(() => totalWidthSummary(cabinet), [cabinet]);
   const allPieces = useMemo(() => computeAllPieces(cabinet), [cabinet]);
+  const fabricationIssues = useMemo(() => validateCabinetFabrication(cabinet, allPieces), [cabinet, allPieces]);
+  const errorIssues = fabricationIssues.filter(i => i.level === 'error');
+  const warningIssues = fabricationIssues.filter(i => i.level === 'warning');
   const woodCount = allPieces.filter(p => !p.isRod).length;
   const panelArea = 244 * 122;
   const usedArea  = allPieces.filter(p => !p.isRod).reduce((s, p) => s + p.length * p.height * p.qty, 0);
@@ -229,16 +287,25 @@ export default function CabinetConfigurator({
         ...parsed,
         cabinet: {
           ...(parsed.cabinet || {}),
+          thickness: Number(panelThickness) || cabinet.thickness || 1.8,
+          edgeType: edgeType || cabinet.edgeType || 'none',
           modules: cabinet.modules, // keep user-edited modules
         },
       });
-      setCabinet(newState);
+      setCabinet({
+        ...newState,
+        thickness: Number(panelThickness) || Number(newState.thickness) || 1.8,
+        panelThickness: Number(panelThickness) || Number(newState.panelThickness) || 1.8,
+        panelW: Number(panelW) || 244,
+        panelH: Number(panelH) || 122,
+        edgeType: edgeType || newState.edgeType || 'none',
+      });
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  }, [buildContextPrompt, cabinet, setCabinet]);
+  }, [buildContextPrompt, cabinet, setCabinet, panelThickness, panelW, panelH, edgeType]);
 
   // ── Utiliser tel quel ───────────────────────────────────────────────────
   const handleComplete = useCallback(() => {
@@ -353,13 +420,23 @@ export default function CabinetConfigurator({
                     {summary.total.toFixed(1)} cm
                   </span>
                 </div>
-                {Math.abs(summary.total - cabinet.totalWidth) > 0.5 && (
-                  <p className="text-red-400 text-[10px]">
-                    ⚠️ Écart de {Math.abs(summary.total - cabinet.totalWidth).toFixed(1)} cm vs largeur totale déclarée
-                  </p>
-                )}
-              </div>
-            </section>
+              {Math.abs(summary.total - cabinet.totalWidth) > 0.5 && (
+                <p className="text-red-400 text-[10px]">
+                  ⚠️ Écart de {Math.abs(summary.total - cabinet.totalWidth).toFixed(1)} cm vs largeur totale déclarée
+                </p>
+              )}
+              {(errorIssues.length > 0 || warningIssues.length > 0) && (
+                <div className="mt-2 border-t border-white/10 pt-2 text-[10px] space-y-1">
+                  {errorIssues.length > 0 && (
+                    <p className="text-red-400">❌ Fabrication bloquée: {errorIssues.length} erreur(s)</p>
+                  )}
+                  {warningIssues.length > 0 && (
+                    <p className="text-amber-400">⚠️ Atelier: {warningIssues.length} avertissement(s)</p>
+                  )}
+                </div>
+              )}
+            </div>
+          </section>
 
             {/* Modules */}
             <section>
