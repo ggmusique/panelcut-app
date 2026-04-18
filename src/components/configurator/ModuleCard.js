@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import DrawerDetail from './DrawerDetail';
+import NumInput from './NumInput';
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 
@@ -47,17 +48,15 @@ export default function ModuleCard({ module, index, onChange, onDelete, globalDe
           {index + 1}
         </span>
         <span className="flex-1 text-sm font-bold text-slate-200">Module {index + 1}</span>
-        <label className="flex items-center gap-1 text-xs text-slate-400" onClick={e => e.stopPropagation()}>
-          L
-          <input
-            type="number"
-            min="5"
+        <div onClick={e => e.stopPropagation()}>
+          <NumInput
             value={netW}
-            onChange={e => update({ width: Math.max(5, Number(e.target.value) || 60) })}
-            className="w-16 ml-1 px-1.5 py-0.5 bg-slate-800 border border-white/20 rounded text-slate-200"
+            onChange={v => update({ width: v })}
+            min={5}
+            label="L"
+            inputClassName="w-16"
           />
-          cm
-        </label>
+        </div>
         {isBiais && (
           <span className="text-[10px] text-amber-400 border border-amber-400/30 rounded px-1.5 py-0.5">BIAIS</span>
         )}
@@ -86,26 +85,20 @@ export default function ModuleCard({ module, index, onChange, onDelete, globalDe
           {/* Biais local */}
           <div className="flex flex-wrap gap-2 items-center text-xs text-slate-400">
             <span className="font-bold text-amber-400">Hauteurs module</span>
-            <label className="flex items-center gap-1">
-              G
-              <input
-                type="number" min="10"
-                value={hl}
-                onChange={e => update({ heightLeft: Math.max(10, Number(e.target.value) || hl) })}
-                className="w-16 ml-1 px-1.5 py-0.5 bg-slate-800 border border-white/20 rounded text-slate-200"
-              />
-              cm
-            </label>
-            <label className="flex items-center gap-1">
-              D
-              <input
-                type="number" min="10"
-                value={hr}
-                onChange={e => update({ heightRight: Math.max(10, Number(e.target.value) || hr) })}
-                className="w-16 ml-1 px-1.5 py-0.5 bg-slate-800 border border-white/20 rounded text-slate-200"
-              />
-              cm
-            </label>
+            <NumInput
+              label="G"
+              value={hl}
+              onChange={v => update({ heightLeft: v })}
+              min={10}
+              inputClassName="w-16"
+            />
+            <NumInput
+              label="D"
+              value={hr}
+              onChange={v => update({ heightRight: v })}
+              min={10}
+              inputClassName="w-16"
+            />
             {isBiais && (
               <span className="text-amber-400 text-[10px]">⚠️ Module en biais</span>
             )}
@@ -159,19 +152,16 @@ export default function ModuleCard({ module, index, onChange, onDelete, globalDe
             {shelves.map((sh, si) => (
               <div key={sh.id || si} className="flex items-center gap-2 text-xs">
                 <span className="text-slate-400">Étagère {si + 1}</span>
-                <label className="flex items-center gap-1 text-slate-300">
-                  Pos.
-                  <input
-                    type="number" min="0"
-                    value={sh.yFromBottom ?? 45}
-                    onChange={e => {
-                      const next = shelves.map((s, idx) => idx === si ? { ...s, yFromBottom: Math.max(0, Number(e.target.value) || 0) } : s);
-                      updateContent({ shelves: next });
-                    }}
-                    className="w-14 ml-1 px-1.5 py-0.5 bg-slate-800 border border-white/20 rounded text-slate-200"
-                  />
-                  cm
-                </label>
+                <NumInput
+                  label="Pos."
+                  value={sh.yFromBottom ?? 45}
+                  onChange={v => {
+                    const next = shelves.map((s, idx) => idx === si ? { ...s, yFromBottom: v } : s);
+                    updateContent({ shelves: next });
+                  }}
+                  min={0}
+                  inputClassName="w-14"
+                />
                 <button
                   onClick={() => updateContent({ shelves: shelves.filter((_, idx) => idx !== si) })}
                   className="text-red-400 hover:text-red-300 ml-auto"
@@ -194,32 +184,27 @@ export default function ModuleCard({ module, index, onChange, onDelete, globalDe
             {rods.map((rod, ri) => (
               <div key={rod.id || ri} className="flex flex-wrap items-center gap-2 text-xs">
                 <span className="text-slate-400">Tringle {ri + 1}</span>
-                <label className="flex items-center gap-1 text-slate-300">
-                  Pos.
-                  <input
-                    type="number" min="0"
-                    value={rod.yFromBottom ?? 160}
-                    onChange={e => {
-                      const next = rods.map((r, idx) => idx === ri ? { ...r, yFromBottom: Math.max(0, Number(e.target.value) || 0) } : r);
-                      updateContent({ rods: next });
-                    }}
-                    className="w-14 ml-1 px-1.5 py-0.5 bg-slate-800 border border-white/20 rounded text-slate-200"
-                  />
-                  cm
-                </label>
-                <label className="flex items-center gap-1 text-slate-300">
-                  Ø
-                  <input
-                    type="number" min="1" step="0.5"
-                    value={rod.diameter ?? 2.5}
-                    onChange={e => {
-                      const next = rods.map((r, idx) => idx === ri ? { ...r, diameter: Math.max(1, Number(e.target.value) || 2.5) } : r);
-                      updateContent({ rods: next });
-                    }}
-                    className="w-12 ml-1 px-1.5 py-0.5 bg-slate-800 border border-white/20 rounded text-slate-200"
-                  />
-                  cm
-                </label>
+                <NumInput
+                  label="Pos."
+                  value={rod.yFromBottom ?? 160}
+                  onChange={v => {
+                    const next = rods.map((r, idx) => idx === ri ? { ...r, yFromBottom: v } : r);
+                    updateContent({ rods: next });
+                  }}
+                  min={0}
+                  inputClassName="w-14"
+                />
+                <NumInput
+                  label="Ø"
+                  value={rod.diameter ?? 2.5}
+                  onChange={v => {
+                    const next = rods.map((r, idx) => idx === ri ? { ...r, diameter: v } : r);
+                    updateContent({ rods: next });
+                  }}
+                  min={1}
+                  step={0.5}
+                  inputClassName="w-12"
+                />
                 <span className="text-[10px] text-pink-300">Longueur: {netW.toFixed(1)} cm</span>
                 <button
                   onClick={() => updateContent({ rods: rods.filter((_, idx) => idx !== ri) })}

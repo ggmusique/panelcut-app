@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import NumInput from './NumInput';
 
 const PIECE_LABELS = {
   face:          'Face (façade visible)',
@@ -44,28 +44,20 @@ export default function DrawerDetail({ drawer, onChange, onDelete, moduleNetWidt
     <div className="border border-white/10 rounded-lg bg-white/5 p-3 space-y-2">
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-xs font-bold text-orange-400">Tiroir</span>
-        <label className="flex items-center gap-1 text-xs text-slate-300">
-          H
-          <input
-            type="number"
-            min="5"
-            value={drawerH}
-            onChange={e => onChange({ ...drawer, height: Math.max(5, Number(e.target.value) || 18) })}
-            className="w-14 ml-1 px-1.5 py-0.5 bg-slate-800 border border-white/20 rounded text-slate-200 text-xs"
-          />
-          cm
-        </label>
-        <label className="flex items-center gap-1 text-xs text-slate-300">
-          Pos.
-          <input
-            type="number"
-            min="0"
-            value={yFromBottom}
-            onChange={e => onChange({ ...drawer, yFromBottom: Math.max(0, Number(e.target.value) || 0) })}
-            className="w-14 ml-1 px-1.5 py-0.5 bg-slate-800 border border-white/20 rounded text-slate-200 text-xs"
-          />
-          cm
-        </label>
+        <NumInput
+          label="H"
+          value={drawerH}
+          onChange={v => onChange({ ...drawer, height: v })}
+          min={5}
+          inputClassName="w-14"
+        />
+        <NumInput
+          label="Pos."
+          value={yFromBottom}
+          onChange={v => onChange({ ...drawer, yFromBottom: v })}
+          min={0}
+          inputClassName="w-14"
+        />
         <button
           onClick={onDelete}
           className="ml-auto text-red-400 hover:text-red-300 text-xs px-2 py-0.5 rounded hover:bg-red-500/10 transition-colors"
