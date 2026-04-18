@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Disc } from 'lucide-react';
 import FacadeSVG from './configurator/FacadeSVG';
+import FacadeToolbar from './configurator/FacadeToolbar';
 import ModuleCard from './configurator/ModuleCard';
 import CabinetPiecesList from './configurator/PiecesList';
 import {
@@ -132,11 +133,9 @@ export default function CabinetConfigurator({
   });
 
   const [activeTab, setActiveTab] = useState('facade'); // 'facade' | 'pieces'
+  const [activeTool, setActiveTool] = useState('select');
   const [loading,   setLoading]   = useState(false);
   const [error,     setError]     = useState(null);
-  const [quickModuleIdx, setQuickModuleIdx] = useState(0);
-  const [quickTool, setQuickTool] = useState('drawer'); // drawer|shelf|rod|erase|move
-  const [selectedItem, setSelectedItem] = useState(null); // { type, moduleIdx, itemIdx }
 
   // ── Cabinet updater + draft save ───────────────────────────────────────
   const setCabinet = useCallback((updater) => {
@@ -231,146 +230,6 @@ export default function CabinetConfigurator({
       modules: prev.modules.filter((_, i) => i !== idx),
     }));
   };
-
-  useEffect(() => {
-    setQuickModuleIdx(prev => {
-      const maxIdx = Math.max(0, (cabinet.modules || []).length - 1);
-      return Math.min(prev, maxIdx);
-    });
-  }, [cabinet.modules]);
-
-  const quickAdd = useCallback((kind, yFromBottom = null) => {
-    setCabinet(prev => {
-      const mods = [...(prev.modules || [])];
-      if (!mods[quickModuleIdx]) return prev;
-      const mod = mods[quickModuleIdx];
-      const content = mod.content || {};
-      const drawers = content.drawers || [];
-      const shelves = content.shelves || [];
-      const rods = content.rods || [];
-      const doors = content.doors || [];
-      if (kind === 'drawer') {
-        drawers.push({
-          id: uid(),
-          height: 18,
-          yFromBottom: Math.max(0, yFromBottom ?? 0),
-          slideType: 'side',
-          slideClearance: 1.3,
-          backClearance: 2,
-          pieces: { face: true, avanCaisse: true, arriereCaisse: true, flancGauche: true, flancDroit: true, fond: true },
-        });
-      } else if (kind === 'shelf') {
-        shelves.push({ id: uid(), yFromBottom: Math.max(0, yFromBottom ?? 45) });
-      } else if (kind === 'rod') {
-        rods.push({ id: uid(), yFromBottom: Math.max(0, yFromBottom ?? 160), diameter: 2.5 });
-      } else if (kind === 'door') {
-        doors.push({ id: uid(), type: 'swing', count: 1 });
-      }
-      mods[quickModuleIdx] = { ...mod, content: { ...content, drawers, shelves, rods, doors } };
-      return { ...prev, modules: mods };
-    });
-  }, [quickModuleIdx, setCabinet]);
-
-  const quickErase = useCallback(() => {
-    setCabinet(prev => {
-      const mods = [...(prev.modules || [])];
-      if (!mods[quickModuleIdx]) return prev;
-      const mod = mods[quickModuleIdx];
-      const content = mod.content || {};
-      const drawers = [...(content.drawers || [])];
-      const shelves = [...(content.shelves || [])];
-      const rods = [...(content.rods || [])];
-      const doors = [...(content.doors || [])];
-      if (drawers.length > 0) drawers.pop();
-      else if (shelves.length > 0) shelves.pop();
-      else if (rods.length > 0) rods.pop();
-      else if (doors.length > 0) doors.pop();
-      else return prev;
-      mods[quickModuleIdx] = { ...mod, content: { ...content, drawers, shelves, rods, doors } };
-      return { ...prev, modules: mods };
-    });
-  }, [quickModuleIdx, setCabinet]);
-
-  const updateItemPosition = useCallback((payload, yFromBottom) => {
-    if (!payload) return;
-    const { type, moduleIdx, itemIdx } = payload;
-    setCabinet(prev => {
-      const mods = [...(prev.modules || [])];
-      const mod = mods[moduleIdx];
-      if (!mod) return prev;
-      const content = mod.content || {};
-      const y = Math.max(0, yFromBottom || 0);
-      if (type === 'drawer') {
-        const drawers = [...(content.drawers || [])];
-        if (!drawers[itemIdx]) return prev;
-        drawers[itemIdx] = { ...drawers[itemIdx], yFromBottom: y };
-        mods[moduleIdx] = { ...mod, content: { ...content, drawers } };
-      } else if (type === 'shelf') {
-        const shelves = [...(content.shelves || [])];
-        if (!shelves[itemIdx]) return prev;
-        shelves[itemIdx] = { ...shelves[itemIdx], yFromBottom: y };
-        mods[moduleIdx] = { ...mod, content: { ...content, shelves } };
-      } else if (type === 'rod') {
-        const rods = [...(content.rods || [])];
-        if (!rods[itemIdx]) return prev;
-        rods[itemIdx] = { ...rods[itemIdx], yFromBottom: y };
-        mods[moduleIdx] = { ...mod, content: { ...content, rods } };
-      } else {
-        return prev;
-      }
-      return { ...prev, modules: mods };
-    });
-  }, [setCabinet]);
-
-  const deleteItem = useCallback((payload) => {
-    if (!payload) return;
-    const { type, moduleIdx, itemIdx } = payload;
-    setCabinet(prev => {
-      const mods = [...(prev.modules || [])];
-      const mod = mods[moduleIdx];
-      if (!mod) return prev;
-      const content = mod.content || {};
-      if (type === 'drawer') {
-        const drawers = (content.drawers || []).filter((_, idx) => idx !== itemIdx);
-        mods[moduleIdx] = { ...mod, content: { ...content, drawers } };
-      } else if (type === 'shelf') {
-        const shelves = (content.shelves || []).filter((_, idx) => idx !== itemIdx);
-        mods[moduleIdx] = { ...mod, content: { ...content, shelves } };
-      } else if (type === 'rod') {
-        const rods = (content.rods || []).filter((_, idx) => idx !== itemIdx);
-        mods[moduleIdx] = { ...mod, content: { ...content, rods } };
-      } else {
-        return prev;
-      }
-      return { ...prev, modules: mods };
-    });
-  }, [setCabinet]);
-
-  const handleFacadeModuleClick = useCallback((moduleIdx, yFromBottom) => {
-    setQuickModuleIdx(moduleIdx);
-    if (selectedItem && selectedItem.moduleIdx === moduleIdx && quickTool === 'move') {
-      updateItemPosition(selectedItem, yFromBottom);
-      setSelectedItem(null);
-      return;
-    }
-    if (quickTool === 'drawer' || quickTool === 'shelf' || quickTool === 'rod') {
-      setQuickModuleIdx(moduleIdx);
-      quickAdd(quickTool, yFromBottom);
-    }
-  }, [quickTool, quickAdd, selectedItem, updateItemPosition]);
-
-  const handleFacadeItemClick = useCallback((payload) => {
-    setQuickModuleIdx(payload.moduleIdx);
-    if (quickTool === 'erase') {
-      deleteItem(payload);
-      if (selectedItem && selectedItem.moduleIdx === payload.moduleIdx && selectedItem.itemIdx === payload.itemIdx && selectedItem.type === payload.type) {
-        setSelectedItem(null);
-      }
-      return;
-    }
-    setSelectedItem(payload);
-    setQuickTool('move');
-  }, [quickTool, deleteItem, selectedItem]);
 
   // ── Claude Vision: Relancer ─────────────────────────────────────────────
   const buildContextPrompt = useCallback(() => {
@@ -583,31 +442,6 @@ export default function CabinetConfigurator({
 
             {/* Modules */}
             <section>
-              <div className="mb-2 p-2 rounded-lg border border-white/10 bg-slate-900/30">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-[10px] uppercase tracking-wide text-slate-400 font-bold">Barre rapide</span>
-                  <select
-                    value={quickModuleIdx}
-                    onChange={e => setQuickModuleIdx(Math.max(0, Number(e.target.value) || 0))}
-                    className="ml-auto text-xs px-1.5 py-1 bg-slate-800 border border-white/20 rounded text-slate-200"
-                  >
-                    {(cabinet.modules || []).map((_, i) => (
-                      <option key={i} value={i}>Module {i + 1}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="grid grid-cols-3 gap-1">
-                  <button onClick={() => setQuickTool('drawer')} className={`text-[11px] px-2 py-1 rounded border ${quickTool === 'drawer' ? 'bg-blue-500/35 border-blue-400 text-blue-100' : 'bg-blue-500/20 border-blue-500/30 text-blue-300'}`}>🗄️ Tiroir</button>
-                  <button onClick={() => setQuickTool('shelf')} className={`text-[11px] px-2 py-1 rounded border ${quickTool === 'shelf' ? 'bg-green-500/35 border-green-400 text-green-100' : 'bg-green-500/20 border-green-500/30 text-green-300'}`}>📦 Tablette</button>
-                  <button onClick={() => setQuickTool('rod')} className={`text-[11px] px-2 py-1 rounded border ${quickTool === 'rod' ? 'bg-pink-500/35 border-pink-400 text-pink-100' : 'bg-pink-500/20 border-pink-500/30 text-pink-300'}`}>👔 Tringle</button>
-                  <button onClick={() => { setActiveTab('facade'); setQuickTool('move'); }} className={`text-[11px] px-2 py-1 rounded border ${quickTool === 'move' ? 'bg-cyan-500/35 border-cyan-400 text-cyan-100' : 'bg-cyan-500/20 border-cyan-500/30 text-cyan-300'}`}>📏 Déplacer</button>
-                  <button onClick={() => quickAdd('door')} className="text-[11px] px-2 py-1 rounded bg-sky-500/20 border border-sky-500/30 text-sky-300">🚪 Porte</button>
-                  <button onClick={() => setQuickTool('erase')} className={`text-[11px] px-2 py-1 rounded border ${quickTool === 'erase' ? 'bg-red-500/35 border-red-400 text-red-100' : 'bg-red-500/20 border-red-500/30 text-red-300'}`}>🧹 Gomme</button>
-                </div>
-                <p className="mt-1 text-[10px] text-slate-400">
-                  En vue façade: clique dans le module pour placer. Clique un élément pour le sélectionner, puis clique ailleurs pour le déplacer.
-                </p>
-              </div>
               <div className="flex items-center gap-2 mb-2">
                 <h3 className="text-xs font-bold text-orange-400 uppercase tracking-wide">Modules</h3>
                 <span className="text-[10px] text-slate-500">({(cabinet.modules || []).length})</span>
@@ -667,14 +501,17 @@ export default function CabinetConfigurator({
           {/* Tab content */}
           <div className="flex-1 overflow-auto p-4">
             {activeTab === 'facade' && (
-              <div ref={facadeRef} className="w-full">
-                <FacadeSVG
-                  cabinet={cabinet}
-                  activeTool={quickTool}
-                  selectedItem={selectedItem}
-                  onModuleClick={handleFacadeModuleClick}
-                  onItemClick={handleFacadeItemClick}
-                />
+              <div className="w-full flex flex-col border border-white/10 rounded-xl overflow-hidden bg-[#0f1620]">
+                <FacadeToolbar activeTool={activeTool} onToolChange={setActiveTool} />
+                <div ref={facadeRef} className="w-full flex-1 overflow-auto">
+                  <FacadeSVG
+                    cabinet={cabinet}
+                    activeTool={activeTool}
+                    annotations={cabinet.annotations || []}
+                    onModuleChange={(idx, updated) => updateModule(idx, updated)}
+                    onAnnotationsChange={(annotations) => setCabinet(prev => ({ ...prev, annotations }))}
+                  />
+                </div>
               </div>
             )}
             {activeTab === 'pieces' && (
