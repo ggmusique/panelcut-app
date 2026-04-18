@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { loadProjects, loadProject, deleteProject, saveProject } from '../supabase';
+import { useAuth } from '../contexts/AuthContext';
 import {
   Plus, Trash2, Copy, FolderOpen, User, Calendar, FileText,
   Layers, Search, X, CheckCircle, Ruler,
@@ -7,7 +8,8 @@ import {
 import ImageUpload    from './ImageUpload';
 import ScanWithEditor from './ScanWithEditor';
 
-export default function HistoryScreen({ user, onNew, onLoad, onScanComplete, onBack }) {
+export default function HistoryScreen({ onNew, onLoad, onScanComplete, onBack }) {
+  const { user } = useAuth();
   const [projects,   setProjects]   = useState([]);
   const [loading,    setLoading]    = useState(true);
   const [deleting,   setDeleting]   = useState(null);
