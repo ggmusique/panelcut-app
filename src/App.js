@@ -8,7 +8,7 @@ import Results from './components/Results';
 import AuthScreen from './components/AuthScreen';
 import SketchEditor from './components/SketchEditor';
 import LandingScreen    from './components/LandingScreen';
-import NewProjectWizard from './components/NewProjectWizard';
+import ProjectForm      from './components/ProjectForm';
 import HistoryScreen    from './components/HistoryScreen';
 import CabinetElevationFront from './components/CabinetElevationFront';
 import RealisticFacadeViewer from './visualization/RealisticFacadeViewer';
@@ -342,7 +342,7 @@ export default function App() {
 
       {screen === SCREENS.LANDING  && <LandingScreen onNew={() => startNew(devisNum)} onHistory={() => setScreen(user ? SCREENS.HISTORY : SCREENS.AUTH)} onAuth={() => setScreen(SCREENS.AUTH)} user={user} />}
 
-      {screen === SCREENS.WIZARD   && <NewProjectWizard t={tr} project={project} onChange={setProject} onGoScan={handleScanComplete} onGoManual={() => setScreen(SCREENS.PIECES)} onCancel={() => setScreen(SCREENS.LANDING)} />}
+      {screen === SCREENS.WIZARD   && <ProjectForm showScanActions t={tr} project={project} onChange={setProject} onGoScan={handleScanComplete} onGoManual={() => setScreen(SCREENS.PIECES)} onCancel={() => setScreen(SCREENS.LANDING)} />}
 
       {screen === SCREENS.HISTORY  && <HistoryScreen user={user} onNew={() => startNew(devisNum)} onLoad={handleLoadProject} onScanComplete={handleScanComplete} onBack={() => setScreen(SCREENS.LANDING)} />}
 
