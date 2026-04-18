@@ -172,7 +172,7 @@ formSubtitle: 'Define your panel parameters',
 
 import { createContext, useContext, useState } from 'react';
 
-const LangContext = createContext({ lang: 'fr', toggleLang: () => {} });
+const LangContext = createContext(null);
 
 export function LangProvider({ children }) {
   const [lang, setLang] = useState(() => localStorage.getItem('pc_lang') || 'fr');
@@ -184,5 +184,11 @@ export function LangProvider({ children }) {
   return <LangContext.Provider value={{ lang, toggleLang }}>{children}</LangContext.Provider>;
 }
 
-export const useLang = () => useContext(LangContext).lang;
-export const useToggleLang = () => useContext(LangContext).toggleLang;
+function useLangContext() {
+  const ctx = useContext(LangContext);
+  if (!ctx) throw new Error('useLang / useToggleLang must be used within <LangProvider>');
+  return ctx;
+}
+
+export const useLang = () => useLangContext().lang;
+export const useToggleLang = () => useLangContext().toggleLang;
