@@ -6,7 +6,7 @@ import { supabase, saveProject, loadProject, signOut } from './supabase';
 import PiecesList from './components/PiecesList';
 import Results from './components/Results';
 import AuthScreen from './components/AuthScreen';
-import SketchEditor from './components/SketchEditor';
+import CabinetConfigurator from './components/CabinetConfigurator';
 import LandingScreen    from './components/LandingScreen';
 import NewProjectWizard from './components/NewProjectWizard';
 import HistoryScreen    from './components/HistoryScreen';
@@ -351,7 +351,7 @@ export default function App() {
       {screen === SCREENS.HISTORY  && <HistoryScreen user={user} onNew={() => startNew(devisNum)} onLoad={handleLoadProject} onScanComplete={handleScanComplete} onBack={() => setScreen(SCREENS.LANDING)} />}
 
       {screen === SCREENS.SKETCH && (
-        <SketchEditor
+        <CabinetConfigurator
           image={project.scanImage}
           initialResult={project.scanResult}
           apiKey={apiKey}
