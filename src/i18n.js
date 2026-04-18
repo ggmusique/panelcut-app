@@ -170,4 +170,19 @@ formSubtitle: 'Define your panel parameters',
   }
 };
 
-export const useLang = () => 'fr';
+import { createContext, useContext, useState } from 'react';
+
+const LangContext = createContext({ lang: 'fr', toggleLang: () => {} });
+
+export function LangProvider({ children }) {
+  const [lang, setLang] = useState(() => localStorage.getItem('pc_lang') || 'fr');
+  const toggleLang = () => setLang(l => {
+    const next = l === 'fr' ? 'en' : 'fr';
+    localStorage.setItem('pc_lang', next);
+    return next;
+  });
+  return <LangContext.Provider value={{ lang, toggleLang }}>{children}</LangContext.Provider>;
+}
+
+export const useLang = () => useContext(LangContext).lang;
+export const useToggleLang = () => useContext(LangContext).toggleLang;
