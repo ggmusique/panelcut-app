@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { optimise } from './engine';
-import { I18N, useLang } from './i18n';
+import { I18N, useLang, useToggleLang } from './i18n';
 import { isRodPiece } from './utils/isRodPiece';
 import { saveProject, loadProject } from './supabase';
 import { useAuth } from './contexts/AuthContext';
@@ -59,7 +59,7 @@ function lsClear() {
 
 export default function App() {
   const lang = useLang();
-  const [langOverride, setLangOverride] = useState(lang);
+  const toggleLang = useToggleLang();
   
   const [isDark, setIsDark] = useState(() => {
     const stored = localStorage.getItem('pc_darkmode');
@@ -67,7 +67,7 @@ export default function App() {
     return window.matchMedia('(prefers-color-scheme: dark)').matches;
   });
   
-  const tr = I18N[langOverride] || I18N['fr'];
+  const tr = I18N[lang] || I18N['fr'];
 
   const [screen,  setScreenRaw]  = useState(() => {
     const stored = lsGet(LS_SCREEN, SCREENS.LANDING);
@@ -301,7 +301,6 @@ export default function App() {
     setSaving(false); setSaveMsg('OK'); setTimeout(() => setSaveMsg(''), 2000);
   };
 
-  const toggleLang = () => setLangOverride(l => l === 'fr' ? 'en' : 'fr');
   const [devisNum] = useState(() => 'DV-' + new Date().getFullYear() + '-' + String(Math.floor(Math.random() * 9000) + 1000));
 
   const showBack = [SCREENS.PIECES, SCREENS.RESULTS, SCREENS.FACADE, SCREENS.FACADE_REALISTIC].includes(screen);
@@ -449,7 +448,7 @@ export default function App() {
                   </button>
                 )}
                 <button onClick={toggleLang} className="px-2 py-1 text-slate-400 hover:text-white border border-white/10 hover:border-white/30 rounded-lg text-[11px] font-bold transition-colors">
-                  {langOverride === 'fr' ? 'EN' : 'FR'}
+                  {lang === 'fr' ? 'EN' : 'FR'}
                 </button>
                 {user && (
                   <button onClick={handleSignOut} className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-white/10 transition-colors">
