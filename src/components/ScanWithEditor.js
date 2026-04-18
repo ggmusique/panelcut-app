@@ -6,7 +6,6 @@
  *
  * Props :
  *  onComplete(scanResult) — appelé quand le résultat final est prêt
- *  apiKey                 — clé Anthropic
  */
 import { useState } from 'react';
 import SketchEditor     from './SketchEditor';
@@ -19,7 +18,7 @@ const STEP = {
   DONE:   'done',    // résultat final OK
 };
 
-export default function ScanWithEditor({ initialScanResult, scanImage, apiKey, onComplete, onBackToScan }) {
+export default function ScanWithEditor({ initialScanResult, scanImage, onComplete, onBackToScan }) {
   const [step,            setStep]            = useState(
     initialScanResult ? STEP.EDITOR : STEP.SCAN
   );
@@ -93,7 +92,6 @@ export default function ScanWithEditor({ initialScanResult, scanImage, apiKey, o
           annotatedImage={annotatedPNG}
           annotations={annotations}
           initialResult={scanResult}
-          apiKey={apiKey}
           onComplete={handleRefinementDone}
           onCancel={() => setStep(STEP.EDITOR)}
         />

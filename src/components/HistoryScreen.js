@@ -19,8 +19,6 @@ export default function HistoryScreen({ user, onNew, onLoad, onScanComplete, onB
   const [scanResult, setScanResult] = useState(null);
   const [lastResult, setLastResult] = useState(null);
 
-  const [apiKey] = useState(process.env.REACT_APP_ANTHROPIC_KEY || '');
-
   useEffect(() => {
     if (user) fetchProjects();
     else setLoading(false);
@@ -109,7 +107,6 @@ export default function HistoryScreen({ user, onNew, onLoad, onScanComplete, onB
             <ScanWithEditor
               initialScanResult={scanResult}
               scanImage={scanImage}
-              apiKey={apiKey}
               onComplete={handleEditorComplete}
               onBackToScan={() => { setShowEditor(false); setShowUpload(true); }}
             />

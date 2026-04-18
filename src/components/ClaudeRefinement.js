@@ -34,7 +34,6 @@ export default function ClaudeRefinement({
   annotatedImage,  // string base64 PNG (avec ou sans préfixe data:...)
   annotations,     // array d'éléments SVG
   initialResult,   // scanResult initial
-  apiKey,          // non utilisé — la clé reste sur le serveur
   onComplete,      // (newScanResult) => void
   onCancel,
 }) {

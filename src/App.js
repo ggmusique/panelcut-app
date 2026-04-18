@@ -79,10 +79,6 @@ export default function App() {
   const [computing, setComputing] = useState(false);
   const [saving,    setSaving]    = useState(false);
   const [saveMsg,   setSaveMsg]   = useState('');
-  const [apiKey, setApiKey] = useState(
-    process.env.REACT_APP_ANTHROPIC_KEY || lsGet('pc_apikey', '')
-  );
-
   const setScreen  = (s) => { setScreenRaw(s);  lsSet(LS_SCREEN,  s); };
   const setProject = (p) => { setProjectRaw(p); lsSet(LS_PROJECT, p); };
   const setResults = (r) => { setResultsRaw(r); lsSet(LS_RESULTS, r); };
@@ -354,7 +350,6 @@ export default function App() {
         <SketchEditor
           image={project.scanImage}
           initialResult={project.scanResult}
-          apiKey={apiKey}
           draft={project.sketchDraft}
           onDraftChange={(draft) => setProject(p => ({ ...p, sketchDraft: draft }))}
           onComplete={handleRefinementComplete}
