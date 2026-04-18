@@ -319,7 +319,8 @@ export function computeAllPieces(cabinet) {
 
       drawerPieceDefs.forEach(def => {
         if (!def.enabled) return;
-        const comp = applyEdgeCompensation(def.length, def.height, edgePresetForRole(def.role), edgeType);
+        const drawerEdges = edgePresetForRole(def.role);
+        const comp = applyEdgeCompensation(def.length, def.height, drawerEdges, edgeType);
         pieces.push({
           id: uid(),
           name: def.name,
@@ -333,9 +334,9 @@ export function computeAllPieces(cabinet) {
           isRod: false,
           isBiais: false,
           angle: 0,
-          edges: edgePresetForRole(def.role),
+          edges: drawerEdges,
           edgeType,
-          edgeCount: countEdges(edgePresetForRole(def.role)),
+          edgeCount: countEdges(drawerEdges),
           notes: `Tiroir h=${drawerH} cm, pos=${drawer.yFromBottom ?? 0} cm`,
         });
       });

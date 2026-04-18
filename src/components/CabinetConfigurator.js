@@ -3,9 +3,12 @@ import { Disc } from 'lucide-react';
 import FacadeSVG from './configurator/FacadeSVG';
 import ModuleCard from './configurator/ModuleCard';
 import CabinetPiecesList from './configurator/PiecesList';
-import { normalizeResultToCabinetState, convertCabinetStateToPieces } from '../utils/cabinetCalculator';
-import { computeAllPieces } from '../utils/cabinetCalculator';
-import { validateCabinetFabrication } from '../utils/cabinetCalculator';
+import {
+  normalizeResultToCabinetState,
+  convertCabinetStateToPieces,
+  computeAllPieces,
+  validateCabinetFabrication,
+} from '../utils/cabinetCalculator';
 import { captureFacadeToImage } from '../utils/captureFacadeToImage';
 
 const LS_KEY = 'pc_cabinet_configurator';
@@ -302,7 +305,7 @@ export default function CabinetConfigurator({
     } finally {
       setLoading(false);
     }
-  }, [buildContextPrompt, cabinet, setCabinet]);
+  }, [buildContextPrompt, cabinet, setCabinet, panelThickness, panelW, panelH, edgeType]);
 
   // ── Utiliser tel quel ───────────────────────────────────────────────────
   const handleComplete = useCallback(() => {
