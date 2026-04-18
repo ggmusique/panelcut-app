@@ -1,10 +1,9 @@
 import React, { useMemo, useRef, useState } from 'react';
 
-const WOOD_FILL    = '#f5ede0';
-const WOOD_STROKE  = '#8b6914';
-const DOUBLE_COLOR = '#d97706';
-const DIM_COLOR    = '#dc2626';
-const MARGIN       = { l: 70, r: 55, t: 60, b: 70 };
+const WOOD_FILL = '#f5ede0';
+const WOOD_STROKE = '#8b6914';
+const DIM_COLOR = '#dc2626';
+const MARGIN = { l: 70, r: 55, t: 60, b: 70 };
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 
@@ -27,7 +26,6 @@ export default function FacadeSVG({
 }) {
   const localSvgRef = useRef(null);
   const svgRef = externalSvgRef || localSvgRef;
-  const wrapperRef = useRef(null);
 
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [hoveredModule, setHoveredModule] = useState(null);
@@ -108,9 +106,10 @@ export default function FacadeSVG({
     const svg = svgRef.current;
     if (!svg) return { x: 0, y: 0 };
     const rect = svg.getBoundingClientRect();
-    const x = ((clientX - rect.left) / Math.max(1, rect.width)) * SVG_W;
-    const y = ((clientY - rect.top) / Math.max(1, rect.height)) * SVG_H;
-    return { x, y };
+    return {
+      x: ((clientX - rect.left) / Math.max(1, rect.width)) * SVG_W,
+      y: ((clientY - rect.top) / Math.max(1, rect.height)) * SVG_H,
+    };
   };
 
   const findHoveredModule = (x, y) => {
@@ -179,15 +178,9 @@ export default function FacadeSVG({
   const deleteItem = (payload) => {
     updateModuleContent(payload.moduleIdx, (mod) => {
       const content = mod.content || {};
-      if (payload.type === 'shelf') {
-        return { ...mod, content: { ...content, shelves: (content.shelves || []).filter((_, i) => i !== payload.itemIdx) } };
-      }
-      if (payload.type === 'rod') {
-        return { ...mod, content: { ...content, rods: (content.rods || []).filter((_, i) => i !== payload.itemIdx) } };
-      }
-      if (payload.type === 'drawer') {
-        return { ...mod, content: { ...content, drawers: (content.drawers || []).filter((_, i) => i !== payload.itemIdx) } };
-      }
+      if (payload.type === 'shelf') return { ...mod, content: { ...content, shelves: (content.shelves || []).filter((_, i) => i !== payload.itemIdx) } };
+      if (payload.type === 'rod') return { ...mod, content: { ...content, rods: (content.rods || []).filter((_, i) => i !== payload.itemIdx) } };
+      if (payload.type === 'drawer') return { ...mod, content: { ...content, drawers: (content.drawers || []).filter((_, i) => i !== payload.itemIdx) } };
       return mod;
     });
   };
@@ -197,11 +190,9 @@ export default function FacadeSVG({
     setMousePos(pos);
     const mIdx = findHoveredModule(pos.x, pos.y);
     setHoveredModule(mIdx);
-
     if (drag.active && mIdx === drag.moduleIdx) {
       const rect = modRects[mIdx];
-      const yFromBottom = moduleYFromBottom(rect, pos.y);
-      updateItemY(drag, yFromBottom);
+      updateItemY(drag, moduleYFromBottom(rect, pos.y));
     }
   };
 
@@ -216,9 +207,8 @@ export default function FacadeSVG({
       return;
     }
     if (activeTool === 'dim') {
-      if (!dimFirstPoint) {
-        setDimFirstPoint({ x: mousePos.x, y: mousePos.y });
-      } else {
+      if (!dimFirstPoint) setDimFirstPoint({ x: mousePos.x, y: mousePos.y });
+      else {
         setPendingDim({ x1: dimFirstPoint.x, y1: dimFirstPoint.y, x2: mousePos.x, y2: mousePos.y });
         setDimFirstPoint(null);
       }
@@ -228,8 +218,7 @@ export default function FacadeSVG({
   const commitPendingDim = () => {
     if (!pendingDim) return;
     const label = dimLabel.trim() || `${Math.hypot(pendingDim.x2 - pendingDim.x1, pendingDim.y2 - pendingDim.y1).toFixed(0)} px`;
-    const next = [...(annotations || []), { id: uid(), ...pendingDim, label }];
-    onAnnotationsChange?.(next);
+    onAnnotationsChange?.([...(annotations || []), { id: uid(), ...pendingDim, label }]);
     setPendingDim(null);
     setDimLabel('');
   };
@@ -245,13 +234,11 @@ export default function FacadeSVG({
   const previewY = previewRect ? previewRect.bl.y - previewYFromBottom * sy : 0;
   const drawerPreviewH = 18 * sy;
 
-  const avgHL = toNum(HL, 220);
-  const avgHR = toNum(HR, 220);
-  const boxHL = avgHL * sy;
-  const boxHR = avgHR * sy;
+  const boxHL = toNum(HL, 220) * sy;
+  const boxHR = toNum(HR, 220) * sy;
 
   return (
-    <div ref={wrapperRef} className="relative w-full">
+    <div className="relative w-full">
       <svg
         ref={svgRef}
         xmlns="http://www.w3.org/2000/svg"
@@ -262,70 +249,70 @@ export default function FacadeSVG({
         onMouseUp={handleSvgMouseUp}
       >
         <defs>
+          <linearGradient id="gWood" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stopColor="#dcc89a"/><stop offset="45%" stopColor="#f5ede0"/><stop offset="100%" stopColor="#dcc89a"/></linearGradient>
+          <linearGradient id="gRail" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#c4a87a"/><stop offset="100%" stopColor="#e8d5b0"/></linearGradient>
           <marker id="arrR2" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0L8 4L0 8Z" fill={DIM_COLOR} /></marker>
           <marker id="arrL2" viewBox="0 0 8 8" refX="1" refY="4" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M8 0L0 4L8 8Z" fill={DIM_COLOR} /></marker>
           <marker id="arrDim" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#22d3ee" /></marker>
         </defs>
 
-        <polygon points={`${ox},${oy} ${ox + drawW},${oy + (boxHR - boxHL)} ${ox + drawW},${oy + boxHR} ${ox},${oy + boxHL}`} fill={WOOD_FILL} stroke={WOOD_STROKE} strokeWidth="2.5" />
+        <text x={SVG_W / 2} y={24} textAnchor="middle" fontSize={13} fontWeight="700" fill="#334155">
+          Vue façade — {W} × {Math.max(HL, HR)} cm {Math.abs(HL - HR) > 0.1 ? `(biais: G${HL} / D${HR})` : ''}
+        </text>
+
+        <polygon points={`${ox},${oy} ${ox + drawW},${oy + (boxHR - boxHL)} ${ox + drawW},${oy + boxHR} ${ox},${oy + boxHL}`} fill="url(#gWood)" stroke={WOOD_STROKE} strokeWidth="2.5" />
+        <rect x={ox} y={oy + boxHL - plPxL} width={drawW} height={Math.max(plPxL, plPxR)} fill="#c8b07c" opacity="0.85" />
+        <polygon points={`${ox},${oy} ${ox + drawW},${oy + (boxHR - boxHL)} ${ox + drawW},${oy + (boxHR - boxHL) + thPx} ${ox},${oy + thPx}`} fill="url(#gRail)" stroke={WOOD_STROKE} strokeWidth="1.3" />
 
         {modRects.map((r, i) => {
           const mod = modules[i];
           const content = mod.content || {};
-          const interiorH = Math.max(0, r.modHL - PL - TH * 2);
           const cmToY = (yCm) => r.bl.y - yCm * sy;
 
-          const shelves = (content.shelves || []).map((sh, si) => {
+          const renderShelf = (sh, si) => {
             const id = `shelf-${i}-${si}`;
             const yPx = cmToY(sh.yFromBottom ?? 0);
-            const dimText = `${(sh.yFromBottom ?? 0).toFixed(0)} cm`;
             const hovered = hoveredItemId === id && activeTool === 'erase';
             return (
-              <g key={id}>
-                <line
-                  x1={r.tl.x + 2}
-                  x2={r.tr.x - 2}
-                  y1={yPx}
-                  y2={yPx}
-                  stroke="#7c6341"
-                  strokeWidth="5"
-                  opacity={hovered ? 0.4 : 1}
-                  onMouseEnter={() => setHoveredItemId(id)}
-                  onMouseLeave={() => setHoveredItemId(null)}
-                  onMouseDown={(e) => {
-                    e.stopPropagation();
-                    if (activeTool === 'select') setDrag({ active: true, moduleIdx: i, type: 'shelf', itemIdx: si });
-                  }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (activeTool === 'erase') deleteItem({ moduleIdx: i, type: 'shelf', itemIdx: si });
-                  }}
-                />
-                {drag.active && drag.moduleIdx === i && drag.type === 'shelf' && drag.itemIdx === si && (
-                  <text x={r.tr.x + 6} y={yPx + 4} fontSize="10" fill="white" stroke="#0f172a" strokeWidth="3" paintOrder="stroke">{dimText}</text>
-                )}
-              </g>
+              <rect
+                key={id}
+                x={r.tl.x + 2}
+                y={yPx - 3}
+                width={r.w - 4}
+                height={6}
+                fill="#8d6e45"
+                stroke={WOOD_STROKE}
+                strokeWidth="0.8"
+                rx="1"
+                opacity={hovered ? 0.4 : 1}
+                onMouseEnter={() => setHoveredItemId(id)}
+                onMouseLeave={() => setHoveredItemId(null)}
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  if (activeTool === 'select') setDrag({ active: true, moduleIdx: i, type: 'shelf', itemIdx: si });
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (activeTool === 'erase') deleteItem({ moduleIdx: i, type: 'shelf', itemIdx: si });
+                }}
+              />
             );
-          });
+          };
 
-          const rods = (content.rods || []).map((rod, ri) => {
+          const renderRod = (rod, ri) => {
             const id = `rod-${i}-${ri}`;
             const yPx = cmToY(rod.yFromBottom ?? 0);
-            const dimText = `${(rod.yFromBottom ?? 0).toFixed(0)} cm`;
             const hovered = hoveredItemId === id && activeTool === 'erase';
             return (
-              <g key={id}>
+              <g key={id} opacity={hovered ? 0.4 : 1} onMouseEnter={() => setHoveredItemId(id)} onMouseLeave={() => setHoveredItemId(null)}>
                 <line
-                  x1={r.tl.x + 6}
-                  x2={r.tr.x - 6}
+                  x1={r.tl.x + 8}
+                  x2={r.tr.x - 8}
                   y1={yPx}
                   y2={yPx}
-                  stroke="#374151"
+                  stroke="#64748b"
                   strokeWidth="4"
                   strokeLinecap="round"
-                  opacity={hovered ? 0.4 : 1}
-                  onMouseEnter={() => setHoveredItemId(id)}
-                  onMouseLeave={() => setHoveredItemId(null)}
                   onMouseDown={(e) => {
                     e.stopPropagation();
                     if (activeTool === 'select') setDrag({ active: true, moduleIdx: i, type: 'rod', itemIdx: ri });
@@ -335,32 +322,28 @@ export default function FacadeSVG({
                     if (activeTool === 'erase') deleteItem({ moduleIdx: i, type: 'rod', itemIdx: ri });
                   }}
                 />
-                {drag.active && drag.moduleIdx === i && drag.type === 'rod' && drag.itemIdx === ri && (
-                  <text x={r.tr.x + 6} y={yPx + 4} fontSize="10" fill="white" stroke="#0f172a" strokeWidth="3" paintOrder="stroke">{dimText}</text>
-                )}
+                <circle cx={r.tl.x + 8} cy={yPx} r={2.8} fill="#cbd5e1" />
+                <circle cx={r.tr.x - 8} cy={yPx} r={2.8} fill="#cbd5e1" />
               </g>
             );
-          });
+          };
 
-          const drawers = (content.drawers || []).map((dr, di) => {
+          const renderDrawer = (dr, di) => {
             const id = `drawer-${i}-${di}`;
             const yTop = cmToY((dr.yFromBottom ?? 0) + (dr.height ?? 18));
             const hPx = (dr.height ?? 18) * sy;
-            const dimText = `${(dr.yFromBottom ?? 0).toFixed(0)} cm`;
             const hovered = hoveredItemId === id && activeTool === 'erase';
             return (
-              <g key={id}>
+              <g key={id} opacity={hovered ? 0.4 : 1} onMouseEnter={() => setHoveredItemId(id)} onMouseLeave={() => setHoveredItemId(null)}>
                 <rect
                   x={r.tl.x + 2}
                   y={yTop}
                   width={r.w - 4}
                   height={hPx}
-                  fill={WOOD_FILL}
+                  fill="url(#gWood)"
                   stroke={WOOD_STROKE}
                   strokeWidth="1"
-                  opacity={hovered ? 0.4 : 1}
-                  onMouseEnter={() => setHoveredItemId(id)}
-                  onMouseLeave={() => setHoveredItemId(null)}
+                  rx="1"
                   onMouseDown={(e) => {
                     e.stopPropagation();
                     if (activeTool === 'select') setDrag({ active: true, moduleIdx: i, type: 'drawer', itemIdx: di });
@@ -370,29 +353,27 @@ export default function FacadeSVG({
                     if (activeTool === 'erase') deleteItem({ moduleIdx: i, type: 'drawer', itemIdx: di });
                   }}
                 />
-                {drag.active && drag.moduleIdx === i && drag.type === 'drawer' && drag.itemIdx === di && (
-                  <text x={r.tr.x + 6} y={yTop + 10} fontSize="10" fill="white" stroke="#0f172a" strokeWidth="3" paintOrder="stroke">{dimText}</text>
-                )}
+                <rect x={r.tl.x + r.w / 2 - 14} y={yTop + hPx / 2 - 3.5} width="28" height="7" fill="#9ca3af" stroke="#6b7280" strokeWidth="0.8" rx="3" />
               </g>
             );
-          });
+          };
 
           return (
             <g key={`mod-${i}`}>
-              <polygon
-                points={`${r.tl.x},${r.tl.y} ${r.tr.x},${r.tr.y} ${r.br.x},${r.br.y} ${r.bl.x},${r.bl.y}`}
-                fill="transparent"
-                onClick={() => handleModuleClick(i)}
-              />
-              <polygon points={`${r.tl.x},${r.tl.y} ${r.tr.x},${r.tr.y} ${r.br.x},${r.br.y} ${r.bl.x},${r.bl.y}`} fill="none" stroke={WOOD_STROKE} strokeWidth="1" />
-              {shelves}
-              {rods}
-              {drawers}
-              <text x={r.tl.x + r.w / 2} y={r.tl.y + 18} textAnchor="middle" fill={DIM_COLOR} fontSize="11" fontWeight="700">{i + 1}</text>
+              <polygon points={`${r.tl.x},${r.tl.y} ${r.tr.x},${r.tr.y} ${r.br.x},${r.br.y} ${r.bl.x},${r.bl.y}`} fill="transparent" onClick={() => handleModuleClick(i)} />
+              <polygon points={`${r.tl.x},${r.tl.y} ${r.tr.x},${r.tr.y} ${r.br.x},${r.br.y} ${r.bl.x},${r.bl.y}`} fill="rgba(255,255,255,0.02)" stroke={WOOD_STROKE} strokeWidth="1" />
+              {(content.shelves || []).map(renderShelf)}
+              {(content.rods || []).map(renderRod)}
+              {(content.drawers || []).map(renderDrawer)}
+
+              <circle cx={r.tl.x + r.w / 2} cy={r.tl.y + 14} r={11} fill={DIM_COLOR} />
+              <text x={r.tl.x + r.w / 2} y={r.tl.y + 18} textAnchor="middle" fill="white" fontSize="10" fontWeight="700">{i + 1}</text>
+
               <line x1={r.tl.x} y1={oy + Math.max(boxHL, boxHR) + 20} x2={r.tl.x + r.w} y2={oy + Math.max(boxHL, boxHR) + 20} stroke={DIM_COLOR} strokeWidth="1" markerStart="url(#arrL2)" markerEnd="url(#arrR2)" />
               <text x={r.tl.x + r.w / 2} y={oy + Math.max(boxHL, boxHR) + 32} textAnchor="middle" fill={DIM_COLOR} fontSize="10">{(mod.width || 0).toFixed(1)} cm</text>
+
               {drag.active && drag.moduleIdx === i && (
-                <text x={r.tr.x + 8} y={mousePos.y} fontSize="11" fill="white" stroke="#0f172a" strokeWidth="4" paintOrder="stroke">
+                <text x={r.tr.x + 7} y={mousePos.y} fontSize="11" fill="white" stroke="#0f172a" strokeWidth="4" paintOrder="stroke">
                   {moduleYFromBottom(r, mousePos.y).toFixed(0)} cm
                 </text>
               )}
@@ -402,22 +383,14 @@ export default function FacadeSVG({
 
         {(activeTool === 'shelf' || activeTool === 'rod' || activeTool === 'drawer') && previewRect && (
           <g pointerEvents="none">
-            {activeTool === 'shelf' && (
-              <line x1={previewRect.tl.x} y1={previewY} x2={previewRect.tr.x} y2={previewY} stroke="#e8d5b0" strokeWidth="5" opacity="0.5" />
-            )}
-            {activeTool === 'rod' && (
-              <line x1={previewRect.tl.x} y1={previewY} x2={previewRect.tr.x} y2={previewY} stroke="#c0c0c0" strokeWidth="3" strokeDasharray="6 3" opacity="0.5" />
-            )}
-            {activeTool === 'drawer' && (
-              <rect x={previewRect.tl.x + 2} y={previewY - drawerPreviewH} width={previewRect.w - 4} height={drawerPreviewH} fill="rgba(180,140,95,0.2)" stroke="#8b6914" strokeWidth="1" strokeDasharray="4 2" />
-            )}
+            {activeTool === 'shelf' && <line x1={previewRect.tl.x} y1={previewY} x2={previewRect.tr.x} y2={previewY} stroke="#e8d5b0" strokeWidth="5" opacity="0.5" />}
+            {activeTool === 'rod' && <line x1={previewRect.tl.x} y1={previewY} x2={previewRect.tr.x} y2={previewY} stroke="#c0c0c0" strokeWidth="3" strokeDasharray="6 3" opacity="0.5" />}
+            {activeTool === 'drawer' && <rect x={previewRect.tl.x + 2} y={previewY - drawerPreviewH} width={previewRect.w - 4} height={drawerPreviewH} fill="rgba(180,140,95,0.2)" stroke="#8b6914" strokeWidth="1" strokeDasharray="4 2" />}
             <text x={previewRect.tr.x + 6} y={previewY - 3} fill="#0f172a" fontSize="10">{previewYFromBottom.toFixed(0)} cm</text>
           </g>
         )}
 
-        {dimFirstPoint && (
-          <circle cx={dimFirstPoint.x} cy={dimFirstPoint.y} r="4" fill="#f97316" />
-        )}
+        {dimFirstPoint && <circle cx={dimFirstPoint.x} cy={dimFirstPoint.y} r="4" fill="#f97316" />}
 
         {(annotations || []).map((a) => {
           const mx = (a.x1 + a.x2) / 2;
@@ -427,15 +400,11 @@ export default function FacadeSVG({
           return (
             <g key={a.id}>
               <line x1={a.x1} y1={a.y1} x2={a.x2} y2={a.y2} stroke="#22d3ee" strokeWidth="1" strokeDasharray="4 3" markerStart="url(#arrDim)" markerEnd="url(#arrDim)" opacity={hovered ? 0.4 : 1} />
-              <g
-                onMouseEnter={() => setHoveredItemId(id)}
-                onMouseLeave={() => setHoveredItemId(null)}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (activeTool !== 'erase') return;
-                  onAnnotationsChange?.((annotations || []).filter(x => x.id !== a.id));
-                }}
-              >
+              <g onMouseEnter={() => setHoveredItemId(id)} onMouseLeave={() => setHoveredItemId(null)} onClick={(e) => {
+                e.stopPropagation();
+                if (activeTool !== 'erase') return;
+                onAnnotationsChange?.((annotations || []).filter(x => x.id !== a.id));
+              }}>
                 <rect x={mx - 30} y={my - 11} width="60" height="20" rx="6" fill="#0e7490" opacity={hovered ? 0.4 : 1} />
                 <text x={mx} y={my + 4} textAnchor="middle" fill="white" fontSize="11" fontWeight="500">{a.label}</text>
               </g>
