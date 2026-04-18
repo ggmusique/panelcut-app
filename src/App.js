@@ -84,22 +84,20 @@ export default function App() {
   const setResults = (r) => { setResultsRaw(r); lsSet(LS_RESULTS, r); };
 
   const { user, handleSignOut: authSignOut } = useAuth();
-  const prevUserRef = useRef(undefined);
+  const prevUserRef = useRef(user);
 
   // Post-login redirect and sign-out cleanup
   useEffect(() => {
-    if (prevUserRef.current !== undefined) {
-      if (user && screen === SCREENS.AUTH) {
-        setScreen(SCREENS.HISTORY);
-      } else if (prevUserRef.current && !user) {
-        lsClear();
-        setScreenRaw(SCREENS.LANDING);
-        setProjectRaw({ ...DEFAULT_PROJECT });
-        setResultsRaw(null);
-      }
+    if (user && screen === SCREENS.AUTH) {
+      setScreen(SCREENS.HISTORY);
+    } else if (prevUserRef.current && !user) {
+      lsClear();
+      setScreenRaw(SCREENS.LANDING);
+      setProjectRaw({ ...DEFAULT_PROJECT });
+      setResultsRaw(null);
     }
     prevUserRef.current = user;
-  }, [user]);
+  }, [user, screen]);
 
   const handleSignOut = async () => {
     await authSignOut();
