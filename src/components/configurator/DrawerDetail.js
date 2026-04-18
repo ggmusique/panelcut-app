@@ -1,5 +1,3 @@
-import { useState } from 'react';
-
 const PIECE_LABELS = {
   face:          'Face (façade visible)',
   avanCaisse:    'Avant caisse',
@@ -10,6 +8,10 @@ const PIECE_LABELS = {
 };
 
 const PIECE_KEYS = ['face', 'avanCaisse', 'arriereCaisse', 'flancGauche', 'flancDroit', 'fond'];
+const SLIDE_LENGTHS = {
+  side: [25, 30, 35, 40, 45, 50],
+  undermount: [27, 30, 35, 40, 45, 50],
+};
 
 /**
  * DrawerDetail — UI for a single drawer with its 6 toggleable pieces.
@@ -21,11 +23,20 @@ export default function DrawerDetail({ drawer, onChange, onDelete, moduleNetWidt
 
   const drawerH     = drawer.height     ?? 18;
   const yFromBottom = drawer.yFromBottom ?? 0;
+  const slideType = drawer.slideType || 'side';
+  const slideClearance = drawer.slideClearance ?? (slideType === 'undermount' ? 0.2 : slideType === 'none' ? 0 : 1.3);
+  const backClearance = drawer.backClearance ?? (slideType === 'none' ? 0 : 2);
   const pieces      = drawer.pieces     || {};
 
-  const innerNetW = netW - 2 * th;
+  const innerNetW = netW - 2 * th - 2 * slideClearance;
   const caisseH   = drawerH - th;
-  const flancL    = d - th;
+  const usefulDepth = Math.max(0, d - th - backClearance);
+  const flancL    = usefulDepth;
+  const suggestedSlide = (() => {
+    const arr = SLIDE_LENGTHS[slideType] || [];
+    const fit = arr.filter(v => v <= usefulDepth);
+    return fit.length ? fit[fit.length - 1] : 0;
+  })();
 
   const dims = {
     face:          { w: netW,       h: drawerH },
@@ -33,7 +44,7 @@ export default function DrawerDetail({ drawer, onChange, onDelete, moduleNetWidt
     arriereCaisse: { w: innerNetW,  h: caisseH },
     flancGauche:   { w: flancL,     h: caisseH },
     flancDroit:    { w: flancL,     h: caisseH },
-    fond:          { w: innerNetW,  h: d - th  },
+    fond:          { w: innerNetW,  h: usefulDepth  },
   };
 
   const handlePieceToggle = (key) => {
@@ -66,6 +77,47 @@ export default function DrawerDetail({ drawer, onChange, onDelete, moduleNetWidt
           />
           cm
         </label>
+        <label className="flex items-center gap-1 text-xs text-slate-300">
+          Coulisse
+          <select
+            value={slideType}
+            onChange={e => {
+              const nextType = e.target.value;
+              const nextClearance = nextType === 'undermount' ? 0.2 : nextType === 'none' ? 0 : 1.3;
+              const nextBack = nextType === 'none' ? 0 : 2;
+              onChange({ ...drawer, slideType: nextType, slideClearance: nextClearance, backClearance: nextBack });
+            }}
+            className="ml-1 px-1.5 py-0.5 bg-slate-800 border border-white/20 rounded text-slate-200 text-xs"
+          >
+            <option value="side">Latérale</option>
+            <option value="undermount">Sous tiroir</option>
+            <option value="none">Sans coulisse</option>
+          </select>
+        </label>
+        <label className="flex items-center gap-1 text-xs text-slate-300">
+          Jeu/côté
+          <input
+            type="number"
+            min="0"
+            step="0.1"
+            value={slideClearance}
+            onChange={e => onChange({ ...drawer, slideClearance: Math.max(0, Number(e.target.value) || 0) })}
+            className="w-14 ml-1 px-1.5 py-0.5 bg-slate-800 border border-white/20 rounded text-slate-200 text-xs"
+          />
+          cm
+        </label>
+        <label className="flex items-center gap-1 text-xs text-slate-300">
+          Recul ar.
+          <input
+            type="number"
+            min="0"
+            step="0.1"
+            value={backClearance}
+            onChange={e => onChange({ ...drawer, backClearance: Math.max(0, Number(e.target.value) || 0) })}
+            className="w-14 ml-1 px-1.5 py-0.5 bg-slate-800 border border-white/20 rounded text-slate-200 text-xs"
+          />
+          cm
+        </label>
         <button
           onClick={onDelete}
           className="ml-auto text-red-400 hover:text-red-300 text-xs px-2 py-0.5 rounded hover:bg-red-500/10 transition-colors"
@@ -73,6 +125,13 @@ export default function DrawerDetail({ drawer, onChange, onDelete, moduleNetWidt
           ✕
         </button>
       </div>
+      <p className="text-[10px] text-slate-400">
+        Profondeur utile tiroir: <span className="text-slate-200 font-mono">{usefulDepth.toFixed(1)} cm</span> ·
+        Largeur intérieure utile: <span className="text-slate-200 font-mono">{Math.max(0, innerNetW).toFixed(1)} cm</span>
+        {slideType !== 'none' && (
+          <> · Coulisse conseillée: <span className="text-slate-200 font-mono">{suggestedSlide || 'N/A'} cm</span></>
+        )}
+      </p>
 
       <div className="grid grid-cols-2 gap-1">
         {PIECE_KEYS.map(key => {

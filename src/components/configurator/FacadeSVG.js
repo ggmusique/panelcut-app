@@ -15,7 +15,7 @@ function toNum(v, d = 0) {
  * FacadeSVG — technical plan view of the cabinet.
  * Supports trapezoid modules (biais) and all content types.
  */
-export default function FacadeSVG({ cabinet, svgRef }) {
+export default function FacadeSVG({ cabinet, svgRef, activeTool = 'drawer', selectedItem = null, onModuleClick, onItemClick }) {
   if (!cabinet) return null;
 
   const {
@@ -243,9 +243,21 @@ export default function FacadeSVG({ cabinet, svgRef }) {
         // Shelves
         const shelves = (content.shelves || []).map((sh, si) => {
           const yPx = cmToY(sh.yFromBottom ?? 0);
+          const isSelected = selectedItem?.type === 'shelf' && selectedItem?.moduleIdx === i && selectedItem?.itemIdx === si;
           return (
             <g key={`sh-${i}-${si}`}>
-              <rect x={tl.x + 2} y={yPx - 3} width={w - 4} height={5} fill="#7c6341" stroke={WOOD_STROKE} strokeWidth="0.8" rx="1"/>
+              <rect
+                x={tl.x + 2}
+                y={yPx - 3}
+                width={w - 4}
+                height={5}
+                fill={isSelected ? '#16a34a' : '#7c6341'}
+                stroke={WOOD_STROKE}
+                strokeWidth="0.8"
+                rx="1"
+                style={{ cursor: activeTool === 'erase' ? 'not-allowed' : 'grab' }}
+                onClick={(e) => { e.stopPropagation(); onItemClick?.({ type: 'shelf', moduleIdx: i, itemIdx: si }); }}
+              />
             </g>
           );
         });
@@ -254,9 +266,14 @@ export default function FacadeSVG({ cabinet, svgRef }) {
         const drawers = (content.drawers || []).map((dr, di) => {
           const h   = (dr.height ?? 18) * sy;
           const yPx = cmToY((dr.yFromBottom ?? 0) + (dr.height ?? 18));
+          const isSelected = selectedItem?.type === 'drawer' && selectedItem?.moduleIdx === i && selectedItem?.itemIdx === di;
           return (
-            <g key={`dr-${i}-${di}`}>
-              <rect x={tl.x + 2} y={yPx + 1} width={w - 4} height={h - 2} fill={WOOD_FILL} stroke={WOOD_STROKE} strokeWidth="1" rx="1"/>
+            <g
+              key={`dr-${i}-${di}`}
+              style={{ cursor: activeTool === 'erase' ? 'not-allowed' : 'grab' }}
+              onClick={(e) => { e.stopPropagation(); onItemClick?.({ type: 'drawer', moduleIdx: i, itemIdx: di }); }}
+            >
+              <rect x={tl.x + 2} y={yPx + 1} width={w - 4} height={h - 2} fill={isSelected ? '#fde68a' : WOOD_FILL} stroke={WOOD_STROKE} strokeWidth="1" rx="1"/>
               <rect x={tl.x + w / 2 - 14} y={yPx + h / 2 - 3.5} width="28" height="7" fill="#9ca3af" stroke="#6b7280" strokeWidth="0.8" rx="3"/>
               <ellipse cx={tl.x + w / 2} cy={yPx + h / 2} rx="3.5" ry="2.5" fill="#6b7280"/>
             </g>
@@ -266,9 +283,14 @@ export default function FacadeSVG({ cabinet, svgRef }) {
         // Rods
         const rods = (content.rods || []).map((rod, ri) => {
           const yPx = cmToY(rod.yFromBottom ?? 160);
+          const isSelected = selectedItem?.type === 'rod' && selectedItem?.moduleIdx === i && selectedItem?.itemIdx === ri;
           return (
-            <g key={`rod-${i}-${ri}`}>
-              <line x1={tl.x + 6} y1={yPx} x2={tl.x + w - 6} y2={yPx} stroke="#374151" strokeWidth="4" strokeLinecap="round"/>
+            <g
+              key={`rod-${i}-${ri}`}
+              style={{ cursor: activeTool === 'erase' ? 'not-allowed' : 'grab' }}
+              onClick={(e) => { e.stopPropagation(); onItemClick?.({ type: 'rod', moduleIdx: i, itemIdx: ri }); }}
+            >
+              <line x1={tl.x + 6} y1={yPx} x2={tl.x + w - 6} y2={yPx} stroke={isSelected ? '#db2777' : '#374151'} strokeWidth="4" strokeLinecap="round"/>
               <circle cx={tl.x + 8}     cy={yPx - 4} r={4} fill="#9ca3af" stroke="#374151" strokeWidth="1.5"/>
               <circle cx={tl.x + w - 8} cy={yPx - 4} r={4} fill="#9ca3af" stroke="#374151" strokeWidth="1.5"/>
             </g>
@@ -325,6 +347,25 @@ export default function FacadeSVG({ cabinet, svgRef }) {
 
         return (
           <g key={`mod-${i}`}>
+            <polygon
+              points={`${tl.x},${tl.y} ${tr.x},${tr.y} ${br.x},${br.y} ${bl.x},${bl.y}`}
+              fill="transparent"
+              style={{ cursor: ['drawer', 'shelf', 'rod', 'move'].includes(activeTool) ? 'copy' : 'default' }}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!onModuleClick) return;
+                const svg = e.currentTarget.ownerSVGElement;
+                if (!svg) return;
+                const pt = svg.createSVGPoint();
+                pt.x = e.clientX;
+                pt.y = e.clientY;
+                const ctm = svg.getScreenCTM();
+                if (!ctm) return;
+                const loc = pt.matrixTransform(ctm.inverse());
+                const yFromBottom = Math.max(0, (bl.y - loc.y) / sy);
+                onModuleClick(i, yFromBottom);
+              }}
+            />
             {shelves}
             {drawers}
             {rods}
