@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Disc } from 'lucide-react';
 import FacadeSVG from './configurator/FacadeSVG';
 import ModuleCard from './configurator/ModuleCard';
+import NumInput from './configurator/NumInput';
 import CabinetPiecesList from './configurator/PiecesList';
 import { normalizeResultToCabinetState, convertCabinetStateToPieces } from '../utils/cabinetCalculator';
 import { computeAllPieces } from '../utils/cabinetCalculator';
@@ -258,24 +259,6 @@ export default function CabinetConfigurator({
     }
   }, [cabinet, onSave]);
 
-  // ── Dim input helper ────────────────────────────────────────────────────
-  const numInput = (label, field, min = 1, step = 1) => (
-    <label className="flex flex-col gap-1">
-      <span className="text-[10px] text-slate-500 uppercase tracking-wide">{label}</span>
-      <div className="flex items-center gap-1">
-        <input
-          type="number"
-          min={min}
-          step={step}
-          value={cabinet[field] ?? 0}
-          onChange={e => setCabinet(prev => ({ ...prev, [field]: Math.max(min, Number(e.target.value) || min) }))}
-          className="w-20 px-2 py-1 bg-slate-800 border border-white/20 rounded text-slate-200 text-sm"
-        />
-        <span className="text-xs text-slate-500">cm</span>
-      </div>
-    </label>
-  );
-
   const isBiais = Math.abs((cabinet.heightLeft ?? 220) - (cabinet.heightRight ?? 220)) > 0.1;
 
   return (
@@ -317,12 +300,12 @@ export default function CabinetConfigurator({
             <section>
               <h3 className="text-xs font-bold text-orange-400 uppercase tracking-wide mb-2">Dimensions globales</h3>
               <div className="grid grid-cols-2 gap-x-3 gap-y-2">
-                {numInput('Largeur totale', 'totalWidth', 10)}
-                {numInput('Profondeur', 'depth', 10)}
-                {numInput('Hauteur gauche', 'heightLeft', 10)}
-                {numInput('Hauteur droite', 'heightRight', 10)}
-                {numInput('Plinthe', 'plinth', 0)}
-                {numInput('Épaisseur', 'thickness', 0.5, 0.1)}
+                <NumInput label="Largeur totale" value={cabinet.totalWidth} onChange={v => setCabinet(prev => ({ ...prev, totalWidth: v }))} min={10} />
+                <NumInput label="Profondeur" value={cabinet.depth} onChange={v => setCabinet(prev => ({ ...prev, depth: v }))} min={10} />
+                <NumInput label="Hauteur gauche" value={cabinet.heightLeft} onChange={v => setCabinet(prev => ({ ...prev, heightLeft: v }))} min={10} />
+                <NumInput label="Hauteur droite" value={cabinet.heightRight} onChange={v => setCabinet(prev => ({ ...prev, heightRight: v }))} min={10} />
+                <NumInput label="Plinthe" value={cabinet.plinth} onChange={v => setCabinet(prev => ({ ...prev, plinth: v }))} min={0} />
+                <NumInput label="Épaisseur" value={cabinet.thickness} onChange={v => setCabinet(prev => ({ ...prev, thickness: v }))} min={0.5} step={0.1} />
               </div>
               {isBiais && (
                 <p className="mt-2 text-[10px] text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded px-2 py-1">
