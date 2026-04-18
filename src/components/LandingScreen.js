@@ -1,4 +1,7 @@
-export default function LandingScreen({ onNew, onHistory, onAuth, user }) {
+import { useAuth } from '../contexts/AuthContext';
+
+export default function LandingScreen({ onNew, onHistory, onAuth }) {
+  const { user } = useAuth();
   const APP_VERSION = process.env.REACT_APP_VERSION || '1.0.0';
 
   const steps = [

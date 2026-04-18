@@ -1,8 +1,9 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { optimise } from './engine';
 import { I18N, useLang } from './i18n';
 import { isRodPiece } from './utils/isRodPiece';
-import { supabase, saveProject, loadProject, signOut } from './supabase';
+import { saveProject, loadProject } from './supabase';
+import { useAuth } from './contexts/AuthContext';
 import PiecesList from './components/PiecesList';
 import Results from './components/Results';
 import AuthScreen from './components/AuthScreen';
@@ -75,13 +76,32 @@ export default function App() {
   const [project, setProjectRaw] = useState(() => lsGet(LS_PROJECT, { ...DEFAULT_PROJECT }));
   const [results, setResultsRaw] = useState(() => lsGet(LS_RESULTS, null));
 
-  const [user,      setUser]      = useState(null);
   const [computing, setComputing] = useState(false);
   const [saving,    setSaving]    = useState(false);
   const [saveMsg,   setSaveMsg]   = useState('');
   const setScreen  = (s) => { setScreenRaw(s);  lsSet(LS_SCREEN,  s); };
   const setProject = (p) => { setProjectRaw(p); lsSet(LS_PROJECT, p); };
   const setResults = (r) => { setResultsRaw(r); lsSet(LS_RESULTS, r); };
+
+  const { user, handleSignOut: authSignOut } = useAuth();
+  const prevUserRef = useRef(user);
+
+  // Post-login redirect and sign-out cleanup
+  useEffect(() => {
+    if (user && screen === SCREENS.AUTH) {
+      setScreen(SCREENS.HISTORY);
+    } else if (prevUserRef.current && !user) {
+      lsClear();
+      setScreenRaw(SCREENS.LANDING);
+      setProjectRaw({ ...DEFAULT_PROJECT });
+      setResultsRaw(null);
+    }
+    prevUserRef.current = user;
+  }, [user, screen]);
+
+  const handleSignOut = async () => {
+    await authSignOut();
+  };
 
   useEffect(() => {
     if (isDark) {
@@ -93,32 +113,6 @@ export default function App() {
   }, [isDark]);
 
   const toggleDarkMode = () => setIsDark(prev => !prev);
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        setUser(session.user);
-        const savedScreen = lsGet(LS_SCREEN, SCREENS.LANDING);
-        if (savedScreen === SCREENS.AUTH) setScreen(SCREENS.HISTORY);
-      }
-    });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        setUser(session.user);
-        if (_event === 'SIGNED_IN') {
-          const savedScreen = lsGet(LS_SCREEN, SCREENS.LANDING);
-          if (savedScreen === SCREENS.AUTH) setScreen(SCREENS.HISTORY);
-        }
-      } else {
-        setUser(null);
-        lsClear();
-        setScreenRaw(SCREENS.LANDING);
-        setProjectRaw({ ...DEFAULT_PROJECT });
-        setResultsRaw(null);
-      }
-    });
-    return () => subscription.unsubscribe();
-  }, []);
 
   const startNew = (devisNum = '') => {
     localStorage.removeItem(LS_SKETCH);
@@ -307,15 +301,6 @@ export default function App() {
     setSaving(false); setSaveMsg('OK'); setTimeout(() => setSaveMsg(''), 2000);
   };
 
-  const handleSignOut = async () => {
-    await signOut();
-    setUser(null);
-    lsClear();
-    setScreenRaw(SCREENS.LANDING);
-    setProjectRaw({ ...DEFAULT_PROJECT });
-    setResultsRaw(null);
-  };
-
   const toggleLang = () => setLangOverride(l => l === 'fr' ? 'en' : 'fr');
   const [devisNum] = useState(() => 'DV-' + new Date().getFullYear() + '-' + String(Math.floor(Math.random() * 9000) + 1000));
 
@@ -340,11 +325,11 @@ export default function App() {
   return (
     <div className="app min-h-screen bg-[#0f1620] text-slate-200 font-sans dark:bg-slate-950 dark:text-slate-100 transition-colors duration-300">
 
-      {screen === SCREENS.LANDING  && <LandingScreen onNew={() => startNew(devisNum)} onHistory={() => setScreen(user ? SCREENS.HISTORY : SCREENS.AUTH)} onAuth={() => setScreen(SCREENS.AUTH)} user={user} />}
+      {screen === SCREENS.LANDING  && <LandingScreen onNew={() => startNew(devisNum)} onHistory={() => setScreen(user ? SCREENS.HISTORY : SCREENS.AUTH)} onAuth={() => setScreen(SCREENS.AUTH)} />}
 
       {screen === SCREENS.WIZARD   && <ProjectForm showScanActions t={tr} project={project} onChange={setProject} onGoScan={handleScanComplete} onGoManual={() => setScreen(SCREENS.PIECES)} onCancel={() => setScreen(SCREENS.LANDING)} />}
 
-      {screen === SCREENS.HISTORY  && <HistoryScreen user={user} onNew={() => startNew(devisNum)} onLoad={handleLoadProject} onScanComplete={handleScanComplete} onBack={() => setScreen(SCREENS.LANDING)} />}
+      {screen === SCREENS.HISTORY  && <HistoryScreen onNew={() => startNew(devisNum)} onLoad={handleLoadProject} onScanComplete={handleScanComplete} onBack={() => setScreen(SCREENS.LANDING)} />}
 
       {screen === SCREENS.SKETCH && (
         <SketchEditor
