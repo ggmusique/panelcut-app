@@ -8,6 +8,8 @@ import { computeAllPieces } from '../utils/cabinetCalculator';
 import { captureFacadeToImage } from '../utils/captureFacadeToImage';
 
 const LS_KEY = 'pc_cabinet_configurator';
+const AUTOSAVE_DELAY_MS = 30000;
+const SERVER_URL = 'https://panelcut-server.vercel.app';
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 
@@ -129,7 +131,7 @@ export default function CabinetConfigurator({
         await onSave(cab);
         lastSavedRef.current = cabinetSnapshot;
       } catch {}
-    }, 30000);
+    }, AUTOSAVE_DELAY_MS);
     return () => clearTimeout(timer);
   }, [onSave, cabinet, cabinetSnapshot]);
 
@@ -199,11 +201,9 @@ export default function CabinetConfigurator({
       await new Promise(r => requestAnimationFrame(r));
       const png = await captureFacadeToImage(facadeRef);
       const base64 = png ? png.split(',')[1] : null;
-
-      const SERVER = 'https://panelcut-server.vercel.app';
       const prompt = buildContextPrompt();
 
-      let res = await fetch(`${SERVER}/api/refine`, {
+      let res = await fetch(`${SERVER_URL}/api/refine`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -214,7 +214,7 @@ export default function CabinetConfigurator({
         }),
       });
       if (res.status === 404 || res.status === 405) {
-        res = await fetch(`${SERVER}/api/scan`, {
+        res = await fetch(`${SERVER_URL}/api/scan`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ image: base64 || null, mediaType: 'image/png' }),

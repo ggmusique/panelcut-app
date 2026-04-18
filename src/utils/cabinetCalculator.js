@@ -341,7 +341,6 @@ export function normalizeResultToCabinetState(result) {
   const rawModules = Array.isArray(cab.modules) ? cab.modules : [];
 
   const toNum = (v, d = 0) => { const n = Number(v); return Number.isFinite(n) ? n : d; };
-  const uid2  = () => Math.random().toString(36).slice(2, 9);
 
   const totalWidth  = toNum(cab.width, 240);
   const heightLeft  = toNum(cab.height, 220);
@@ -350,18 +349,18 @@ export function normalizeResultToCabinetState(result) {
   const plinth      = toNum(cab.plinth, 10);
   const thickness   = toNum(cab.thickness ?? cab.panel_thickness, 1.8);
 
-  const nb = rawModules.length > 0 ? rawModules.length : Math.max(1, toNum(cab.nb_dividers ?? 3, 3) + 1);
+  const nb = rawModules.length > 0 ? rawModules.length : Math.max(1, toNum(cab.nb_dividers, 3) + 1);
   const defaultModW = totalWidth / Math.max(1, nb);
 
   const modules = rawModules.length > 0
     ? rawModules.map((m) => {
         const shelves = Array.isArray(m.shelves)
           ? m.shelves.map((s, si) => ({
-              id: uid2(),
+              id: uid(),
               yFromBottom: typeof s === 'object' && s !== null ? toNum(s.y ?? s.yFromBottom, (si + 1) * 30) : toNum(s, (si + 1) * 30),
             }))
           : Array.from({ length: toNum(m.nb_shelves ?? 0, 0) }, (_, si) => ({
-              id: uid2(),
+              id: uid(),
               yFromBottom: (si + 1) * 30,
             }));
 
@@ -370,7 +369,7 @@ export function normalizeResultToCabinetState(result) {
           ? m.drawerItems
           : Array.from({ length: nbDrawers }, (_, di) => ({ height: 18, y: di * 18 }));
         const drawers = drawerItems.map((d, di) => ({
-          id: uid2(),
+          id: uid(),
           height: toNum(d.height ?? d.h, 18),
           yFromBottom: toNum(d.y ?? d.yFromBottom, di * 18),
           pieces: { face: true, avanCaisse: true, arriereCaisse: true, flancGauche: true, flancDroit: true, fond: true },
@@ -380,7 +379,7 @@ export function normalizeResultToCabinetState(result) {
           ? m.rods
           : (m.rod || m.tringle || m.hanging) ? [{}] : [];
         const rods = rodsSrc.map((r, ri) => ({
-          id: uid2(),
+          id: uid(),
           yFromBottom: typeof r === 'object' && r !== null ? toNum(r.y ?? r.yFromBottom, 160) : 160,
           diameter: typeof r === 'object' && r !== null ? toNum(r.diameter, 2.5) : 2.5,
         }));
@@ -388,13 +387,13 @@ export function normalizeResultToCabinetState(result) {
         const nbDoors = toNum(m.doors ?? m.nb_doors, 0);
         const nbSliding = toNum(m.slidingDoors ?? m.nb_sliding_doors, 0);
         const doors = nbSliding > 0
-          ? [{ id: uid2(), type: 'sliding', count: 2 }]
+          ? [{ id: uid(), type: 'sliding', count: 2 }]
           : nbDoors > 0
-            ? [{ id: uid2(), type: 'swing', count: Math.min(2, nbDoors) }]
+            ? [{ id: uid(), type: 'swing', count: Math.min(2, nbDoors) }]
             : [];
 
         return {
-          id: m.id ? String(m.id) : uid2(),
+          id: m.id ? String(m.id) : uid(),
           width: toNum(m.width ?? m.w ?? m.largeur, defaultModW),
           heightLeft,
           heightRight,
@@ -403,7 +402,7 @@ export function normalizeResultToCabinetState(result) {
         };
       })
     : Array.from({ length: nb }, (_, i) => ({
-        id: uid2(),
+        id: uid(),
         width: defaultModW,
         heightLeft,
         heightRight,
