@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Disc } from 'lucide-react';
 import FacadeSVG from './configurator/FacadeSVG';
+import FacadeToolbar from './configurator/FacadeToolbar';
 import ModuleCard from './configurator/ModuleCard';
 import NumInput from './configurator/NumInput';
 import CabinetPiecesList from './configurator/PiecesList';
@@ -171,6 +172,88 @@ export default function CabinetConfigurator({
       modules: prev.modules.filter((_, i) => i !== idx),
     }));
   };
+
+  // ── Active drawing tool ─────────────────────────────────────────────────
+  const [activeTool, setActiveTool] = useState('select');
+
+  // ── Facade element handlers ─────────────────────────────────────────────
+  const handleAddElement = useCallback((modIdx, type, yFromBottom) => {
+    setCabinet(prev => {
+      const modules = [...prev.modules];
+      const mod     = { ...modules[modIdx] };
+      const content = {
+        shelves: [...(mod.content?.shelves || [])],
+        drawers: [...(mod.content?.drawers || [])],
+        rods:    [...(mod.content?.rods    || [])],
+        doors:   [...(mod.content?.doors   || [])],
+      };
+      if (type === 'shelf') {
+        content.shelves = [...content.shelves, { yFromBottom }];
+      } else if (type === 'rod') {
+        content.rods = [...content.rods, { yFromBottom }];
+      } else if (type === 'drawer') {
+        content.drawers = [...content.drawers, { yFromBottom, height: 18 }];
+      }
+      mod.content    = content;
+      modules[modIdx] = mod;
+      return { ...prev, modules };
+    });
+  }, [setCabinet]);
+
+  const handleDeleteElement = useCallback((modIdx, type, elemIdx) => {
+    setCabinet(prev => {
+      const modules = [...prev.modules];
+      const mod     = { ...modules[modIdx] };
+      const content = {
+        shelves: [...(mod.content?.shelves || [])],
+        drawers: [...(mod.content?.drawers || [])],
+        rods:    [...(mod.content?.rods    || [])],
+        doors:   [...(mod.content?.doors   || [])],
+      };
+      if (type === 'shelf')  content.shelves = content.shelves.filter((_, i) => i !== elemIdx);
+      if (type === 'rod')    content.rods    = content.rods.filter((_, i) => i !== elemIdx);
+      if (type === 'drawer') content.drawers = content.drawers.filter((_, i) => i !== elemIdx);
+      mod.content    = content;
+      modules[modIdx] = mod;
+      return { ...prev, modules };
+    });
+  }, [setCabinet]);
+
+  const handleMoveElement = useCallback((modIdx, type, elemIdx, newYFromBottom) => {
+    setCabinet(prev => {
+      const modules = [...prev.modules];
+      const mod     = { ...modules[modIdx] };
+      const content = {
+        shelves: [...(mod.content?.shelves || [])],
+        drawers: [...(mod.content?.drawers || [])],
+        rods:    [...(mod.content?.rods    || [])],
+        doors:   [...(mod.content?.doors   || [])],
+      };
+      if (type === 'shelf') {
+        content.shelves = content.shelves.map((s, i) =>
+          i === elemIdx ? { ...s, yFromBottom: newYFromBottom } : s
+        );
+      } else if (type === 'rod') {
+        content.rods = content.rods.map((r, i) =>
+          i === elemIdx ? { ...r, yFromBottom: newYFromBottom } : r
+        );
+      } else if (type === 'drawer') {
+        content.drawers = content.drawers.map((d, i) =>
+          i === elemIdx ? { ...d, yFromBottom: newYFromBottom } : d
+        );
+      }
+      mod.content    = content;
+      modules[modIdx] = mod;
+      return { ...prev, modules };
+    });
+  }, [setCabinet]);
+
+  const handleAddAnnotation = useCallback((annotation) => {
+    setCabinet(prev => ({
+      ...prev,
+      annotations: [...(prev.annotations || []), annotation],
+    }));
+  }, [setCabinet]);
 
   // ── Claude Vision: Relancer ─────────────────────────────────────────────
   const buildContextPrompt = useCallback(() => {
@@ -405,9 +488,19 @@ export default function CabinetConfigurator({
           {/* Tab content */}
           <div className="flex-1 overflow-auto p-4">
             {activeTab === 'facade' && (
-              <div ref={facadeRef} className="w-full">
-                <FacadeSVG cabinet={cabinet} />
-              </div>
+              <>
+                <FacadeToolbar activeTool={activeTool} onChange={setActiveTool} />
+                <div ref={facadeRef} className="w-full">
+                  <FacadeSVG
+                    cabinet={cabinet}
+                    activeTool={activeTool}
+                    onAddElement={handleAddElement}
+                    onDeleteElement={handleDeleteElement}
+                    onMoveElement={handleMoveElement}
+                    onAddAnnotation={handleAddAnnotation}
+                  />
+                </div>
+              </>
             )}
             {activeTab === 'pieces' && (
               <CabinetPiecesList cabinet={cabinet} />
