@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { optimise } from './engine';
 import { I18N, useLang, useToggleLang } from './i18n';
 import { isRodPiece } from './utils/isRodPiece';
+import { migrateStoredProject, STORAGE_SCHEMA_VERSION } from './utils/migrations';
 import { saveProject, loadProject } from './supabase';
 import { useAuth } from './contexts/AuthContext';
 import PiecesList from './components/PiecesList';
@@ -73,14 +74,17 @@ export default function App() {
     const stored = lsGet(LS_SCREEN, SCREENS.LANDING);
     return Object.values(SCREENS).includes(stored) ? stored : SCREENS.LANDING;
   });
-  const [project, setProjectRaw] = useState(() => lsGet(LS_PROJECT, { ...DEFAULT_PROJECT }));
+  const [project, setProjectRaw] = useState(() => {
+    const stored = lsGet(LS_PROJECT, null);
+    return stored ? (migrateStoredProject(stored) ?? { ...DEFAULT_PROJECT }) : { ...DEFAULT_PROJECT };
+  });
   const [results, setResultsRaw] = useState(() => lsGet(LS_RESULTS, null));
 
   const [computing, setComputing] = useState(false);
   const [saving,    setSaving]    = useState(false);
   const [saveMsg,   setSaveMsg]   = useState('');
   const setScreen  = (s) => { setScreenRaw(s);  lsSet(LS_SCREEN,  s); };
-  const setProject = (p) => { setProjectRaw(p); lsSet(LS_PROJECT, p); };
+  const setProject = (p) => { setProjectRaw(p); lsSet(LS_PROJECT, { ...p, _schemaVersion: STORAGE_SCHEMA_VERSION }); };
   const setResults = (r) => { setResultsRaw(r); lsSet(LS_RESULTS, r); };
 
   const { user, handleSignOut: authSignOut } = useAuth();
