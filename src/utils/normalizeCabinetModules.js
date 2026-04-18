@@ -58,6 +58,15 @@ function _defaultDrawerParts() {
 }
 
 export function normalizeCabinetModules(cabinet, options = {}) {
+  const cabinetHeight = Math.max(0, _toNum(options.cabinetHeight ?? cabinet?.height, 0));
+  const plinthHeight  = Math.max(0, _toNum(options.plinth ?? cabinet?.plinth, 0));
+  const interiorH     = cabinetHeight > 0 ? Math.max(1, cabinetHeight - plinthHeight) : 0;
+
+  // Clamp a y position to [0, interiorH] when interior height is known
+  const clampY = interiorH > 0
+    ? (y) => Math.max(0, Math.min(interiorH, y))
+    : (y) => Math.max(0, y);
+
   const raw = Array.isArray(cabinet?.modules) ? cabinet.modules : [];
 
   // ── Chemin 1 : modules[] avec objets détaillés ─────────────────────────────
@@ -69,7 +78,7 @@ export function normalizeCabinetModules(cabinet, options = {}) {
 
         // Tablettes
         const rawShelves = m.shelves ?? m.nb_shelves ?? 0;
-        const shelfPositions = _normalizeYList(rawShelves);
+        const shelfPositions = _normalizeYList(rawShelves).map(clampY);
         const shelves =
           shelfPositions.length > 0
             ? shelfPositions.length
@@ -95,7 +104,7 @@ export function normalizeCabinetModules(cabinet, options = {}) {
 
         // Tringles
         const rodSource = Array.isArray(m.rods) ? m.rods : Array.isArray(m.rod) ? m.rod : [];
-        const rodYs = _normalizeYList(rodSource);
+        const rodYs = _normalizeYList(rodSource).map(clampY);
         const rod = rodYs.length > 0 || _hasRodFlag(m);
 
         return {
