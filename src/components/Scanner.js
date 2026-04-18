@@ -142,17 +142,13 @@ const Scanner = ({ onComplete, onClose }) => {
       const base64Data = processedImageBase64.split(',')[1];
       const mediaType = 'image/jpeg';
 
-      const formData = new FormData();
-      formData.append('image', base64Data);
-      formData.append('mediaType', mediaType);
-      formData.append('prompt', VISION_PROMPT);
-
       const apiUrl = 'https://panelcut-server.vercel.app/api/scan';
       console.log('Envoi du scan vers:', apiUrl);
 
       const response = await fetch(apiUrl, {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: base64Data, mediaType, prompt: VISION_PROMPT }),
       });
 
       if (!response.ok) {
