@@ -1,7 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
 
-const SUPABASE_URL = 'https://mofyzotmnnjqmmudjppi.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1vZnl6b3Rtbm5qcW1tdWRqcHBpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQwOTgzOTUsImV4cCI6MjA4OTY3NDM5NX0.3rXz33i6wf0cBQIg4edz43mwTdgngdvoDZwoZgYEHD0';
+const SUPABASE_URL = process.env.REACT_APP_SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.REACT_APP_SUPABASE_ANON_KEY;
+
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  console.error('Supabase credentials manquants — vérifie .env');
+}
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
