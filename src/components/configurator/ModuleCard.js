@@ -7,6 +7,9 @@ const defaultDrawer = () => ({
   id: uid(),
   height: 18,
   yFromBottom: 0,
+  slideType: 'side',
+  slideClearance: 1.3, // cm par côté
+  backClearance: 2,    // cm recul arrière pour coulisse
   pieces: { face: true, avanCaisse: true, arriereCaisse: true, flancGauche: true, flancDroit: true, fond: true },
 });
 

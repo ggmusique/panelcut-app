@@ -134,6 +134,7 @@ export default function CabinetConfigurator({
   const [activeTab, setActiveTab] = useState('facade'); // 'facade' | 'pieces'
   const [loading,   setLoading]   = useState(false);
   const [error,     setError]     = useState(null);
+  const [quickModuleIdx, setQuickModuleIdx] = useState(0);
 
   // ── Cabinet updater + draft save ───────────────────────────────────────
   const setCabinet = useCallback((updater) => {
@@ -228,6 +229,65 @@ export default function CabinetConfigurator({
       modules: prev.modules.filter((_, i) => i !== idx),
     }));
   };
+
+  useEffect(() => {
+    setQuickModuleIdx(prev => {
+      const maxIdx = Math.max(0, (cabinet.modules || []).length - 1);
+      return Math.min(prev, maxIdx);
+    });
+  }, [cabinet.modules]);
+
+  const quickAdd = useCallback((kind) => {
+    setCabinet(prev => {
+      const mods = [...(prev.modules || [])];
+      if (!mods[quickModuleIdx]) return prev;
+      const mod = mods[quickModuleIdx];
+      const content = mod.content || {};
+      const drawers = content.drawers || [];
+      const shelves = content.shelves || [];
+      const rods = content.rods || [];
+      const doors = content.doors || [];
+      if (kind === 'drawer') {
+        drawers.push({
+          id: uid(),
+          height: 18,
+          yFromBottom: 0,
+          slideType: 'side',
+          slideClearance: 1.3,
+          backClearance: 2,
+          pieces: { face: true, avanCaisse: true, arriereCaisse: true, flancGauche: true, flancDroit: true, fond: true },
+        });
+      } else if (kind === 'shelf') {
+        shelves.push({ id: uid(), yFromBottom: 45 });
+      } else if (kind === 'rod') {
+        rods.push({ id: uid(), yFromBottom: 160, diameter: 2.5 });
+      } else if (kind === 'door') {
+        doors.push({ id: uid(), type: 'swing', count: 1 });
+      }
+      mods[quickModuleIdx] = { ...mod, content: { ...content, drawers, shelves, rods, doors } };
+      return { ...prev, modules: mods };
+    });
+  }, [quickModuleIdx, setCabinet]);
+
+  const quickErase = useCallback(() => {
+    setCabinet(prev => {
+      const mods = [...(prev.modules || [])];
+      if (!mods[quickModuleIdx]) return prev;
+      const mod = mods[quickModuleIdx];
+      const content = mod.content || {};
+      const drawers = [...(content.drawers || [])];
+      const shelves = [...(content.shelves || [])];
+      const rods = [...(content.rods || [])];
+      const doors = [...(content.doors || [])];
+      if (drawers.length > 0) drawers.pop();
+      else if (shelves.length > 0) shelves.pop();
+      else if (rods.length > 0) rods.pop();
+      else if (doors.length > 0) doors.pop();
+      else return prev;
+      mods[quickModuleIdx] = { ...mod, content: { ...content, drawers, shelves, rods, doors } };
+      return { ...prev, modules: mods };
+    });
+  }, [quickModuleIdx, setCabinet]);
 
   // ── Claude Vision: Relancer ─────────────────────────────────────────────
   const buildContextPrompt = useCallback(() => {
@@ -440,6 +500,28 @@ export default function CabinetConfigurator({
 
             {/* Modules */}
             <section>
+              <div className="mb-2 p-2 rounded-lg border border-white/10 bg-slate-900/30">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-[10px] uppercase tracking-wide text-slate-400 font-bold">Barre rapide</span>
+                  <select
+                    value={quickModuleIdx}
+                    onChange={e => setQuickModuleIdx(Math.max(0, Number(e.target.value) || 0))}
+                    className="ml-auto text-xs px-1.5 py-1 bg-slate-800 border border-white/20 rounded text-slate-200"
+                  >
+                    {(cabinet.modules || []).map((_, i) => (
+                      <option key={i} value={i}>Module {i + 1}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="grid grid-cols-3 gap-1">
+                  <button onClick={() => quickAdd('drawer')} className="text-[11px] px-2 py-1 rounded bg-blue-500/20 border border-blue-500/30 text-blue-300">🗄️ Tiroir</button>
+                  <button onClick={() => quickAdd('shelf')} className="text-[11px] px-2 py-1 rounded bg-green-500/20 border border-green-500/30 text-green-300">📦 Tablette</button>
+                  <button onClick={() => quickAdd('rod')} className="text-[11px] px-2 py-1 rounded bg-pink-500/20 border border-pink-500/30 text-pink-300">👔 Tringle</button>
+                  <button onClick={() => setActiveTab('facade')} className="text-[11px] px-2 py-1 rounded bg-cyan-500/20 border border-cyan-500/30 text-cyan-300">📏 Cote</button>
+                  <button onClick={() => quickAdd('door')} className="text-[11px] px-2 py-1 rounded bg-sky-500/20 border border-sky-500/30 text-sky-300">🚪 Porte</button>
+                  <button onClick={quickErase} className="text-[11px] px-2 py-1 rounded bg-red-500/20 border border-red-500/30 text-red-300">🧹 Gomme</button>
+                </div>
+              </div>
               <div className="flex items-center gap-2 mb-2">
                 <h3 className="text-xs font-bold text-orange-400 uppercase tracking-wide">Modules</h3>
                 <span className="text-[10px] text-slate-500">({(cabinet.modules || []).length})</span>

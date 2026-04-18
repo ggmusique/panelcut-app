@@ -262,9 +262,12 @@ export function computeAllPieces(cabinet) {
     (content.drawers || []).forEach((drawer, di) => {
       const drawerH = drawer.height ?? 18;
       const p = drawer.pieces || {};
-      const innerNetW = netW - 2 * thickness;
+      const slideType = drawer.slideType || 'side';
+      const slideClearance = drawer.slideClearance ?? (slideType === 'undermount' ? 0.2 : slideType === 'none' ? 0 : 1.3);
+      const backClearance = drawer.backClearance ?? (slideType === 'none' ? 0 : 2);
+      const innerNetW = netW - 2 * thickness - 2 * slideClearance;
       const caisseH = drawerH - thickness;
-      const flancL = depth - thickness;
+      const flancL = depth - thickness - backClearance;
 
       const drawerPieceDefs = [
         {
@@ -337,7 +340,7 @@ export function computeAllPieces(cabinet) {
           edges: drawerEdges,
           edgeType,
           edgeCount: countEdges(drawerEdges),
-          notes: `Tiroir h=${drawerH} cm, pos=${drawer.yFromBottom ?? 0} cm`,
+          notes: `Tiroir h=${drawerH} cm, pos=${drawer.yFromBottom ?? 0} cm · coulisse=${slideType} jeu=${slideClearance} recul=${backClearance} cm`,
         });
       });
     });
@@ -525,6 +528,9 @@ export function normalizeResultToCabinetState(result) {
           id: uid(),
           height: toNum(d.height ?? d.h, 18),
           yFromBottom: toNum(d.y ?? d.yFromBottom, di * 18),
+          slideType: 'side',
+          slideClearance: 1.3,
+          backClearance: 2,
           pieces: { face: true, avanCaisse: true, arriereCaisse: true, flancGauche: true, flancDroit: true, fond: true },
         }));
 
