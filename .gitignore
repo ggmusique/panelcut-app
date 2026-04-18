@@ -3,3 +3,6 @@ build/
 .env
 .env.local
 .DS_Store
+src/backup/
+*.backup.js
+*.bak.js
