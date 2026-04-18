@@ -14,10 +14,6 @@ export default function ProjectsScreen({ onLoad, onNew, user, onScanComplete }) 
   const [scanImage,   setScanImage]   = useState(null);
   const [scanResult,  setScanResult]  = useState(null);
 
-  const [apiKey, setApiKey] = useState(
-    process.env.REACT_APP_ANTHROPIC_KEY || ''
-  );
-
   useEffect(() => { fetchProjects(); }, []);
 
   const fetchProjects = async () => {
@@ -42,7 +38,6 @@ export default function ProjectsScreen({ onLoad, onNew, user, onScanComplete }) 
   const handleScanReady = (result, imageBase64) => {
     setScanResult(result);
     setScanImage(imageBase64 || null);
-    setApiKey(result?._apiKey || apiKey);
     setShowUpload(false);
     setShowEditor(true);
   };
@@ -80,7 +75,6 @@ export default function ProjectsScreen({ onLoad, onNew, user, onScanComplete }) 
             <ScanWithEditor
               initialScanResult={scanResult}
               scanImage={scanImage}
-              apiKey={apiKey}
               onComplete={handleEditorComplete}
               onBackToScan={() => { setShowEditor(false); setShowUpload(true); }}
             />

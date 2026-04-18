@@ -350,7 +350,7 @@ function FacadeRealisteSVG({
   );
 }
 
-export default function SketchEditor({ image, scanImage, initialResult, apiKey, draft, onDraftChange, onComplete, onCancel, onSave }) {
+export default function SketchEditor({ image, scanImage, initialResult, draft, onDraftChange, onComplete, onCancel, onSave }) {
   const rawImg             = image || scanImage || null;
   const svgRef             = useRef(null);
   const facadeSvgRef       = useRef(null);
