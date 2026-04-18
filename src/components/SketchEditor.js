@@ -2,6 +2,7 @@ import { useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import { Disc } from 'lucide-react';
 import CabinetElevationFront from './CabinetElevationFront';
 import { captureFacadeToImage } from '../utils/captureFacadeToImage';
+import { normalizeCabinetModules } from '../utils/normalizeCabinetModules';
 
 const TOOLS = [
   { id: 'drawer', icon: '🗄️', label: 'Tiroir',   color: '#fbbf24' },
@@ -38,37 +39,33 @@ const defaultModuleDetail = (drawerCount = 0) => ({
 });
 
 const normalizeModulesFromResult = (result, width = 0) => {
-  const cabinet  = result?.cabinet || {};
-  const raw      = Array.isArray(cabinet.modules) ? cabinet.modules : [];
-  const detailed = raw.filter(m => typeof m === 'object' && m !== null);
-  if (detailed.length > 0) {
-    return detailed.map((m) => ({
-      id:      uid(),
-      width:   Math.max(1, toNum(m.width ?? m.w ?? m.largeur, 1)),
-      drawers: Math.max(0, parseInt(m.drawers ?? m.nb_drawers ?? 0, 10) || 0),
-      doors:   Math.max(0, parseInt(m.doors   ?? m.nb_doors   ?? 0, 10) || 0),
-      slidingDoors: Math.max(0, parseInt(m.slidingDoors ?? m.nb_sliding_doors ?? 0, 10) || 0),
+  const cabinet = result?.cabinet || {};
+  const hasRealModules = Array.isArray(cabinet.modules) && cabinet.modules.length > 0;
+  if (!hasRealModules) {
+    const n  = Math.max(1, parseInt(cabinet.nb_dividers ?? 4, 10) + 1);
+    const mw = width > 0 ? width / n : 50;
+    return Array.from({ length: n }, () => ({
+      id: uid(), width: mw, drawers: 0, doors: 0, slidingDoors: 0,
     }));
   }
-  const n  = Math.max(1, parseInt(cabinet.nb_dividers ?? 4, 10) + 1);
-  const mw = width > 0 ? width / n : 50;
-  return Array.from({ length: n }, () => ({
-    id: uid(), width: mw, drawers: 0, doors: 0, slidingDoors: 0,
+  return normalizeCabinetModules(cabinet).map(m => ({
+    id: uid(),
+    width: m.width,
+    drawers: m.drawers,
+    doors: m.doors,
+    slidingDoors: m.slidingDoors,
   }));
 };
 
 const normalizeItemsFromResult = (result) => {
   const cabinet = result?.cabinet || {};
-  const raw     = Array.isArray(cabinet.modules) ? cabinet.modules : [];
-  const items   = [];
-  raw.forEach((m, modIdx) => {
-    if (!m || typeof m !== 'object') return;
-    const nbSh = parseInt(m.shelves ?? m.nb_shelves ?? 0, 10) || 0;
-    for (let si = 0; si < nbSh; si++) {
-      items.push({ id: uid(), type: 'shelf', modIdx, yRatio: (si + 1) / (nbSh + 1) });
+  const modules = normalizeCabinetModules(cabinet);
+  const items = [];
+  modules.forEach((m, modIdx) => {
+    for (let si = 0; si < m.shelves; si++) {
+      items.push({ id: uid(), type: 'shelf', modIdx, yRatio: (si + 1) / (m.shelves + 1) });
     }
-    const hasRod = Boolean(m.rod ?? m.tringle ?? m.hanging ?? m.penderie ?? false);
-    if (hasRod) {
+    if (m.rod) {
       items.push({ id: uid(), type: 'rod', modIdx, yRatio: 0.32 });
     }
   });
