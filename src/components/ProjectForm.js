@@ -92,6 +92,7 @@ export default function ProjectForm({
     panelH, setPanelH,
     panelThickness, setPanelThickness,
     panelLabel, setPanelLabel,
+    customLabel, setCustomLabel,
     grainDirection, setGrainDirection,
     edgeType, setEdgeType,
     supplierRef, setSupplierRef,
@@ -318,8 +319,8 @@ export default function ProjectForm({
               {materialOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
             </select>
             {panelLabel === 'Autre' && (
-              <input type="text" value={project.panel?.customLabel || ''}
-                onChange={(e) => onChange({ ...project, panel: { ...project.panel, customLabel: e.target.value } })}
+              <input type="text" value={customLabel}
+                onChange={(e) => setCustomLabel(e.target.value)}
                 placeholder="Précisez..."
                 className="w-full mt-2 px-3 py-2 bg-slate-800/50 border border-orange-500/50 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-orange-500/50 transition-all" />
             )}

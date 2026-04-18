@@ -26,6 +26,7 @@ export function useProjectForm(project, onChange, t) {
   const [panelH, setPanelH] = useState(project.panel?.h || 122);
   const [panelThickness, setPanelThickness] = useState(project.panel?.thickness || 1.8);
   const [panelLabel, setPanelLabel] = useState(project.panel?.label || '');
+  const [customLabel, setCustomLabel] = useState(project.panel?.customLabel || '');
 
   const [grainDirection, setGrainDirection] = useState(project.grainDirection || 'indifferent');
   const [edgeType, setEdgeType] = useState(project.edgeType || 'pvc_04');
@@ -52,7 +53,7 @@ export function useProjectForm(project, onChange, t) {
       client,
       company,
       devisNum,
-      panel: { w: panelW, h: panelH, thickness: panelThickness, label: panelLabel },
+      panel: { w: panelW, h: panelH, thickness: panelThickness, label: panelLabel, customLabel },
       grainDirection,
       edgeType,
       supplierRef,
@@ -62,7 +63,7 @@ export function useProjectForm(project, onChange, t) {
     });
   }, [
     name, client, company, devisNum,
-    panelW, panelH, panelThickness, panelLabel,
+    panelW, panelH, panelThickness, panelLabel, customLabel,
     grainDirection, edgeType, supplierRef,
     kerf, tolerance, pricePerPanel,
   ]);
@@ -156,6 +157,7 @@ export function useProjectForm(project, onChange, t) {
     panelH, setPanelH,
     panelThickness, setPanelThickness,
     panelLabel, setPanelLabel,
+    customLabel, setCustomLabel,
     // Finition
     grainDirection, setGrainDirection,
     edgeType, setEdgeType,
