@@ -410,7 +410,7 @@ export default function FacadeSVG({
             },
             onMouseDown: (e) => handleElemMouseDown(e, i, type, idx, yCm, bl.y, tl.y),
             onMouseEnter: () => setHoverElem({ modIdx: i, type, elemIdx: idx }),
-            onMouseLeave: () => setHoverElem(h => (h && h.modIdx === i && h.type === type && h.elemIdx === idx) ? null : h),
+            onMouseLeave: () => setHoverElem(null),
           };
         };
 
@@ -560,7 +560,7 @@ export default function FacadeSVG({
         const len = Math.sqrt(dx * dx + dy * dy);
         const midX = (ann.x1 + ann.x2) / 2;
         const midY = (ann.y1 + ann.y2) / 2;
-        const labelCm = (len / Math.max(sx, sy)).toFixed(1);
+        const labelCm = (Math.sqrt((dx / sx) ** 2 + (dy / sy) ** 2)).toFixed(1);
         return (
           <g key={`ann-${ai}`}>
             <line x1={ann.x1} y1={ann.y1} x2={ann.x2} y2={ann.y2}
