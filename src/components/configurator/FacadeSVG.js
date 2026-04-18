@@ -1,7 +1,6 @@
 import React, { useMemo, useRef, useState } from 'react';
 
-const WOOD_FILL = '#f5ede0';
-const WOOD_STROKE = '#8b6914';
+const WOOD_STROKE = '#7a5b32';
 const DIM_COLOR = '#dc2626';
 const MARGIN = { l: 70, r: 55, t: 60, b: 70 };
 
@@ -44,6 +43,7 @@ export default function FacadeSVG({
     plinth: PL = 10,
     thickness: TH = 1.8,
     modules = [],
+    edgeType = 'none',
   } = cabinet;
 
   const SVG_W = 980;
@@ -57,8 +57,8 @@ export default function FacadeSVG({
   const oy = MARGIN.t;
   const plPxL = PL * sy;
   const plPxR = PL * sy;
-  const thPx = TH * sy;
-  const thPxX = TH * sx;
+  const thPxY = Math.max(2, TH * sy);
+  const thPxX = Math.max(2, TH * sx);
 
   const nbMod = modules.length;
   const totalStiles = 2 * TH + (nbMod > 1 ? (nbMod - 1) * 2 * TH : 0);
@@ -74,8 +74,6 @@ export default function FacadeSVG({
       const modHR = toNum(m.heightRight ?? HR, HR);
       const hlPx = modHL * sy;
       const hrPx = modHR * sy;
-      const plHLpx = PL * sy;
-      const plHRpx = PL * sy;
       const rect = {
         i,
         m,
@@ -83,16 +81,17 @@ export default function FacadeSVG({
         w: netWPx,
         modHL,
         modHR,
-        tl: { x: curX, y: oy + thPx },
-        tr: { x: curX + netWPx, y: oy + thPx },
-        bl: { x: curX, y: oy + hlPx - plHLpx - thPx },
-        br: { x: curX + netWPx, y: oy + hrPx - plHRpx - thPx },
+        tl: { x: curX, y: oy + thPxY },
+        tr: { x: curX + netWPx, y: oy + thPxY },
+        bl: { x: curX, y: oy + hlPx - PL * sy - thPxY },
+        br: { x: curX + netWPx, y: oy + hrPx - PL * sy - thPxY },
       };
       curX += netWPx + 2 * thPxX;
       return rect;
     });
-  }, [modules, modScale, sx, sy, HL, HR, PL, oy, thPx, thPxX]);
+  }, [modules, modScale, sx, sy, HL, HR, PL, oy, thPxY, thPxX]);
 
+  const edgeTone = edgeType === 'none' ? '#b48a56' : '#d7c3a1';
   const cursor =
     activeTool === 'shelf' || activeTool === 'rod' || activeTool === 'drawer'
       ? 'cell'
@@ -243,14 +242,40 @@ export default function FacadeSVG({
         ref={svgRef}
         xmlns="http://www.w3.org/2000/svg"
         viewBox={`0 0 ${SVG_W} ${SVG_H}`}
-        className="w-full h-auto bg-white rounded-xl border border-slate-200 shadow-xl"
+        className="w-full h-auto bg-[#f8f6f2] rounded-xl border border-slate-300 shadow-xl"
         style={{ cursor }}
         onMouseMove={handleSvgMouseMove}
         onMouseUp={handleSvgMouseUp}
       >
         <defs>
-          <linearGradient id="gWood" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stopColor="#dcc89a"/><stop offset="45%" stopColor="#f5ede0"/><stop offset="100%" stopColor="#dcc89a"/></linearGradient>
-          <linearGradient id="gRail" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#c4a87a"/><stop offset="100%" stopColor="#e8d5b0"/></linearGradient>
+          <pattern id="woodGrainFine" width="56" height="18" patternUnits="userSpaceOnUse">
+            <rect width="56" height="18" fill="#f5ede0" />
+            <path d="M0 2 H56 M0 9 H56 M0 15 H56" stroke="#d9c3a0" strokeWidth="0.9" opacity="0.45" />
+            <path d="M0 6 C8 4 16 8 24 6 C32 4 40 8 48 6 C52 5 56 5 56 5" stroke="#c9ac84" strokeWidth="0.6" opacity="0.35" fill="none" />
+          </pattern>
+          <pattern id="woodGrainDark" width="64" height="20" patternUnits="userSpaceOnUse">
+            <rect width="64" height="20" fill="#d7bf99" />
+            <path d="M0 4 H64 M0 11 H64 M0 17 H64" stroke="#b89467" strokeWidth="0.85" opacity="0.3" />
+          </pattern>
+          <linearGradient id="metalBrushed" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#f1f5f9" />
+            <stop offset="50%" stopColor="#b7c1cc" />
+            <stop offset="100%" stopColor="#e2e8f0" />
+          </linearGradient>
+          <linearGradient id="plinthGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#baa077" />
+            <stop offset="100%" stopColor="#9f855b" />
+          </linearGradient>
+          <linearGradient id="drawerFrontGrad" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#e9dcc7" />
+            <stop offset="50%" stopColor="#f8f0e4" />
+            <stop offset="100%" stopColor="#dbc8ab" />
+          </linearGradient>
+          <linearGradient id="doorFrontGrad" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#ecdfcb" />
+            <stop offset="50%" stopColor="#f9f4eb" />
+            <stop offset="100%" stopColor="#deccb0" />
+          </linearGradient>
           <marker id="arrR2" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0L8 4L0 8Z" fill={DIM_COLOR} /></marker>
           <marker id="arrL2" viewBox="0 0 8 8" refX="1" refY="4" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M8 0L0 4L8 8Z" fill={DIM_COLOR} /></marker>
           <marker id="arrDim" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#22d3ee" /></marker>
@@ -260,58 +285,64 @@ export default function FacadeSVG({
           Vue façade — {W} × {Math.max(HL, HR)} cm {Math.abs(HL - HR) > 0.1 ? `(biais: G${HL} / D${HR})` : ''}
         </text>
 
-        <polygon points={`${ox},${oy} ${ox + drawW},${oy + (boxHR - boxHL)} ${ox + drawW},${oy + boxHR} ${ox},${oy + boxHL}`} fill="url(#gWood)" stroke={WOOD_STROKE} strokeWidth="2.5" />
-        <rect x={ox} y={oy + boxHL - plPxL} width={drawW} height={Math.max(plPxL, plPxR)} fill="#c8b07c" opacity="0.85" />
-        <polygon points={`${ox},${oy} ${ox + drawW},${oy + (boxHR - boxHL)} ${ox + drawW},${oy + (boxHR - boxHL) + thPx} ${ox},${oy + thPx}`} fill="url(#gRail)" stroke={WOOD_STROKE} strokeWidth="1.3" />
+        <polygon points={`${ox},${oy} ${ox + drawW},${oy + (boxHR - boxHL)} ${ox + drawW},${oy + boxHR} ${ox},${oy + boxHL}`} fill="url(#woodGrainFine)" stroke={WOOD_STROKE} strokeWidth="2.5" />
+        <rect x={ox} y={oy + boxHL - plPxL} width={drawW} height={Math.max(plPxL, plPxR)} fill="url(#plinthGrad)" stroke="#7b613a" strokeWidth="1.2" opacity="0.96" />
+        <polygon
+          points={`${ox},${oy} ${ox + drawW},${oy + (boxHR - boxHL)} ${ox + drawW},${oy + (boxHR - boxHL) + thPxY} ${ox},${oy + thPxY}`}
+          fill="url(#woodGrainDark)"
+          stroke={WOOD_STROKE}
+          strokeWidth={Math.max(1.2, thPxY * 0.2)}
+        />
 
         {modRects.map((r, i) => {
           const mod = modules[i];
           const content = mod.content || {};
           const cmToY = (yCm) => r.bl.y - yCm * sy;
+          const doorCount = (content.doors || []).reduce((sum, d) => sum + Math.max(1, Number(d?.count) || 1), 0);
 
           const renderShelf = (sh, si) => {
             const id = `shelf-${i}-${si}`;
             const yPx = cmToY(sh.yFromBottom ?? 0);
             const hovered = hoveredItemId === id && activeTool === 'erase';
             return (
-              <rect
-                key={id}
-                x={r.tl.x + 2}
-                y={yPx - 3}
-                width={r.w - 4}
-                height={6}
-                fill="#8d6e45"
-                stroke={WOOD_STROKE}
-                strokeWidth="0.8"
-                rx="1"
-                opacity={hovered ? 0.4 : 1}
-                onMouseEnter={() => setHoveredItemId(id)}
-                onMouseLeave={() => setHoveredItemId(null)}
-                onMouseDown={(e) => {
-                  e.stopPropagation();
-                  if (activeTool === 'select') setDrag({ active: true, moduleIdx: i, type: 'shelf', itemIdx: si });
-                }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (activeTool === 'erase') deleteItem({ moduleIdx: i, type: 'shelf', itemIdx: si });
-                }}
-              />
+              <g key={id} opacity={hovered ? 0.4 : 1} onMouseEnter={() => setHoveredItemId(id)} onMouseLeave={() => setHoveredItemId(null)}>
+                <rect
+                  x={r.tl.x + 2}
+                  y={yPx - Math.max(2.2, thPxY * 0.52)}
+                  width={r.w - 4}
+                  height={Math.max(4.4, thPxY * 1.04)}
+                  fill="url(#woodGrainDark)"
+                  stroke={WOOD_STROKE}
+                  strokeWidth="0.8"
+                  rx="1"
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    if (activeTool === 'select') setDrag({ active: true, moduleIdx: i, type: 'shelf', itemIdx: si });
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (activeTool === 'erase') deleteItem({ moduleIdx: i, type: 'shelf', itemIdx: si });
+                  }}
+                />
+                <line x1={r.tl.x + 3} y1={yPx + Math.max(1.8, thPxY * 0.55)} x2={r.tr.x - 3} y2={yPx + Math.max(1.8, thPxY * 0.55)} stroke={edgeTone} strokeWidth="1" opacity="0.9" />
+              </g>
             );
           };
 
           const renderRod = (rod, ri) => {
             const id = `rod-${i}-${ri}`;
             const yPx = cmToY(rod.yFromBottom ?? 0);
+            const d = Math.max(1.4, (rod.diameter || 2.5) * (sx * 0.45));
             const hovered = hoveredItemId === id && activeTool === 'erase';
             return (
               <g key={id} opacity={hovered ? 0.4 : 1} onMouseEnter={() => setHoveredItemId(id)} onMouseLeave={() => setHoveredItemId(null)}>
                 <line
-                  x1={r.tl.x + 8}
-                  x2={r.tr.x - 8}
+                  x1={r.tl.x + 10}
+                  x2={r.tr.x - 10}
                   y1={yPx}
                   y2={yPx}
-                  stroke="#64748b"
-                  strokeWidth="4"
+                  stroke="url(#metalBrushed)"
+                  strokeWidth={d}
                   strokeLinecap="round"
                   onMouseDown={(e) => {
                     e.stopPropagation();
@@ -322,8 +353,8 @@ export default function FacadeSVG({
                     if (activeTool === 'erase') deleteItem({ moduleIdx: i, type: 'rod', itemIdx: ri });
                   }}
                 />
-                <circle cx={r.tl.x + 8} cy={yPx} r={2.8} fill="#cbd5e1" />
-                <circle cx={r.tr.x - 8} cy={yPx} r={2.8} fill="#cbd5e1" />
+                <circle cx={r.tl.x + 9} cy={yPx} r={Math.max(2.4, d * 0.62)} fill="#cbd5e1" stroke="#64748b" strokeWidth="0.8" />
+                <circle cx={r.tr.x - 9} cy={yPx} r={Math.max(2.4, d * 0.62)} fill="#cbd5e1" stroke="#64748b" strokeWidth="0.8" />
               </g>
             );
           };
@@ -333,6 +364,7 @@ export default function FacadeSVG({
             const yTop = cmToY((dr.yFromBottom ?? 0) + (dr.height ?? 18));
             const hPx = (dr.height ?? 18) * sy;
             const hovered = hoveredItemId === id && activeTool === 'erase';
+            const railInset = Math.max(2, thPxX * 0.25);
             return (
               <g key={id} opacity={hovered ? 0.4 : 1} onMouseEnter={() => setHoveredItemId(id)} onMouseLeave={() => setHoveredItemId(null)}>
                 <rect
@@ -340,10 +372,10 @@ export default function FacadeSVG({
                   y={yTop}
                   width={r.w - 4}
                   height={hPx}
-                  fill="url(#gWood)"
+                  fill="url(#drawerFrontGrad)"
                   stroke={WOOD_STROKE}
                   strokeWidth="1"
-                  rx="1"
+                  rx="1.5"
                   onMouseDown={(e) => {
                     e.stopPropagation();
                     if (activeTool === 'select') setDrag({ active: true, moduleIdx: i, type: 'drawer', itemIdx: di });
@@ -353,29 +385,61 @@ export default function FacadeSVG({
                     if (activeTool === 'erase') deleteItem({ moduleIdx: i, type: 'drawer', itemIdx: di });
                   }}
                 />
-                <rect x={r.tl.x + r.w / 2 - 14} y={yTop + hPx / 2 - 3.5} width="28" height="7" fill="#9ca3af" stroke="#6b7280" strokeWidth="0.8" rx="3" />
+                <line x1={r.tl.x + 5} y1={yTop + hPx - Math.max(2, thPxY * 0.35)} x2={r.tr.x - 5} y2={yTop + hPx - Math.max(2, thPxY * 0.35)} stroke="#ab8455" strokeWidth="0.9" opacity="0.8" />
+                <rect x={r.tl.x + railInset} y={yTop + hPx * 0.35} width="4" height={Math.max(8, hPx * 0.28)} fill="#9ca3af" opacity="0.9" rx="1" />
+                <rect x={r.tr.x - railInset - 4} y={yTop + hPx * 0.35} width="4" height={Math.max(8, hPx * 0.28)} fill="#9ca3af" opacity="0.9" rx="1" />
+                <rect x={r.tl.x + r.w / 2 - 16} y={yTop + hPx / 2 - 3.2} width="32" height="6.4" fill="url(#metalBrushed)" stroke="#64748b" strokeWidth="0.8" rx="3.2" />
               </g>
             );
+          };
+
+          const renderDoors = () => {
+            if (doorCount <= 0 || (content.drawers || []).length > 0) return null;
+            const count = Math.min(2, doorCount);
+            const gap = 2;
+            const dW = (r.w - gap * (count - 1) - 4) / count;
+            const doorTop = r.tl.y + 2;
+            const doorBottom = r.bl.y - 2;
+            const doorHeight = Math.max(10, doorBottom - doorTop);
+            return Array.from({ length: count }, (_, idx) => {
+              const x = r.tl.x + 2 + idx * (dW + gap);
+              const isLeft = idx === 0;
+              const hx = isLeft ? x + dW - 6 : x + 6;
+              const hingeX = isLeft ? x + 2.5 : x + dW - 2.5;
+              return (
+                <g key={`door-${i}-${idx}`} opacity="0.9" pointerEvents="none">
+                  <rect x={x} y={doorTop} width={dW} height={doorHeight} fill="url(#doorFrontGrad)" stroke="#8a6940" strokeWidth="0.8" rx="1" />
+                  <line x1={x + 2} y1={doorTop + 14} x2={x + dW - 2} y2={doorTop + 14} stroke="#c7a674" strokeWidth="0.7" opacity="0.6" />
+                  <rect x={hx - 1.4} y={doorTop + doorHeight * 0.45} width="2.8" height={Math.max(16, doorHeight * 0.12)} fill="url(#metalBrushed)" stroke="#64748b" strokeWidth="0.5" rx="1.4" />
+                  <circle cx={hingeX} cy={doorTop + 18} r="1.7" fill="#94a3b8" />
+                  <circle cx={hingeX} cy={doorTop + doorHeight - 18} r="1.7" fill="#94a3b8" />
+                </g>
+              );
+            });
           };
 
           return (
             <g key={`mod-${i}`}>
               <polygon points={`${r.tl.x},${r.tl.y} ${r.tr.x},${r.tr.y} ${r.br.x},${r.br.y} ${r.bl.x},${r.bl.y}`} fill="transparent" onClick={() => handleModuleClick(i)} />
-              <polygon points={`${r.tl.x},${r.tl.y} ${r.tr.x},${r.tr.y} ${r.br.x},${r.br.y} ${r.bl.x},${r.bl.y}`} fill="rgba(255,255,255,0.02)" stroke={WOOD_STROKE} strokeWidth="1" />
+              <polygon points={`${r.tl.x},${r.tl.y} ${r.tr.x},${r.tr.y} ${r.br.x},${r.br.y} ${r.bl.x},${r.bl.y}`} fill="rgba(255,255,255,0.03)" stroke={WOOD_STROKE} strokeWidth="1" />
+              {renderDoors()}
               {(content.shelves || []).map(renderShelf)}
               {(content.rods || []).map(renderRod)}
               {(content.drawers || []).map(renderDrawer)}
 
-              <circle cx={r.tl.x + r.w / 2} cy={r.tl.y + 14} r={11} fill={DIM_COLOR} />
-              <text x={r.tl.x + r.w / 2} y={r.tl.y + 18} textAnchor="middle" fill="white" fontSize="10" fontWeight="700">{i + 1}</text>
+              <circle cx={r.tl.x + r.w / 2} cy={r.tl.y + 14} r={10.5} fill="#1e293b" opacity="0.9" />
+              <text x={r.tl.x + r.w / 2} y={r.tl.y + 18} textAnchor="middle" fill="#f8fafc" fontSize="10" fontWeight="700">{i + 1}</text>
 
               <line x1={r.tl.x} y1={oy + Math.max(boxHL, boxHR) + 20} x2={r.tl.x + r.w} y2={oy + Math.max(boxHL, boxHR) + 20} stroke={DIM_COLOR} strokeWidth="1" markerStart="url(#arrL2)" markerEnd="url(#arrR2)" />
               <text x={r.tl.x + r.w / 2} y={oy + Math.max(boxHL, boxHR) + 32} textAnchor="middle" fill={DIM_COLOR} fontSize="10">{(mod.width || 0).toFixed(1)} cm</text>
 
               {drag.active && drag.moduleIdx === i && (
-                <text x={r.tr.x + 7} y={mousePos.y} fontSize="11" fill="white" stroke="#0f172a" strokeWidth="4" paintOrder="stroke">
-                  {moduleYFromBottom(r, mousePos.y).toFixed(0)} cm
-                </text>
+                <g pointerEvents="none">
+                  <rect x={r.tr.x + 5} y={mousePos.y - 12} width="46" height="18" rx="4" fill="#1e293b" opacity="0.95" />
+                  <text x={r.tr.x + 28} y={mousePos.y + 1} fontSize="11" textAnchor="middle" fill="white" fontWeight="700">
+                    {moduleYFromBottom(r, mousePos.y).toFixed(0)} cm
+                  </text>
+                </g>
               )}
             </g>
           );
@@ -383,10 +447,11 @@ export default function FacadeSVG({
 
         {(activeTool === 'shelf' || activeTool === 'rod' || activeTool === 'drawer') && previewRect && (
           <g pointerEvents="none">
-            {activeTool === 'shelf' && <line x1={previewRect.tl.x} y1={previewY} x2={previewRect.tr.x} y2={previewY} stroke="#e8d5b0" strokeWidth="5" opacity="0.5" />}
-            {activeTool === 'rod' && <line x1={previewRect.tl.x} y1={previewY} x2={previewRect.tr.x} y2={previewY} stroke="#c0c0c0" strokeWidth="3" strokeDasharray="6 3" opacity="0.5" />}
+            {activeTool === 'shelf' && <line x1={previewRect.tl.x} y1={previewY} x2={previewRect.tr.x} y2={previewY} stroke="#e8d5b0" strokeWidth={Math.max(4, thPxY * 0.95)} opacity="0.55" />}
+            {activeTool === 'rod' && <line x1={previewRect.tl.x} y1={previewY} x2={previewRect.tr.x} y2={previewY} stroke="#c0c0c0" strokeWidth="3" strokeDasharray="6 3" opacity="0.55" />}
             {activeTool === 'drawer' && <rect x={previewRect.tl.x + 2} y={previewY - drawerPreviewH} width={previewRect.w - 4} height={drawerPreviewH} fill="rgba(180,140,95,0.2)" stroke="#8b6914" strokeWidth="1" strokeDasharray="4 2" />}
-            <text x={previewRect.tr.x + 6} y={previewY - 3} fill="#0f172a" fontSize="10">{previewYFromBottom.toFixed(0)} cm</text>
+            <rect x={previewRect.tr.x + 6} y={previewY - 15} width="42" height="14" rx="3" fill="#f1f5f9" opacity="0.95" />
+            <text x={previewRect.tr.x + 27} y={previewY - 5} fill="#0f172a" textAnchor="middle" fontSize="10" fontWeight="700">{previewYFromBottom.toFixed(0)} cm</text>
           </g>
         )}
 
@@ -400,12 +465,16 @@ export default function FacadeSVG({
           return (
             <g key={a.id}>
               <line x1={a.x1} y1={a.y1} x2={a.x2} y2={a.y2} stroke="#22d3ee" strokeWidth="1" strokeDasharray="4 3" markerStart="url(#arrDim)" markerEnd="url(#arrDim)" opacity={hovered ? 0.4 : 1} />
-              <g onMouseEnter={() => setHoveredItemId(id)} onMouseLeave={() => setHoveredItemId(null)} onClick={(e) => {
-                e.stopPropagation();
-                if (activeTool !== 'erase') return;
-                onAnnotationsChange?.((annotations || []).filter(x => x.id !== a.id));
-              }}>
-                <rect x={mx - 30} y={my - 11} width="60" height="20" rx="6" fill="#0e7490" opacity={hovered ? 0.4 : 1} />
+              <g
+                onMouseEnter={() => setHoveredItemId(id)}
+                onMouseLeave={() => setHoveredItemId(null)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (activeTool !== 'erase') return;
+                  onAnnotationsChange?.((annotations || []).filter((x) => x.id !== a.id));
+                }}
+              >
+                <rect x={mx - 34} y={my - 11} width="68" height="20" rx="6" fill="#0e7490" opacity={hovered ? 0.4 : 1} />
                 <text x={mx} y={my + 4} textAnchor="middle" fill="white" fontSize="11" fontWeight="500">{a.label}</text>
               </g>
             </g>
@@ -420,7 +489,11 @@ export default function FacadeSVG({
           onChange={(e) => setDimLabel(e.target.value)}
           placeholder="ex: 78 cm"
           className="absolute px-2 py-1 text-xs bg-slate-800 text-white border border-cyan-500/50 rounded"
-          style={{ left: `${((pendingDim.x1 + pendingDim.x2) / 2 / SVG_W) * 100}%`, top: `${((pendingDim.y1 + pendingDim.y2) / 2 / SVG_H) * 100}%`, transform: 'translate(-50%, -50%)' }}
+          style={{
+            left: `${(((pendingDim.x1 + pendingDim.x2) / 2 / SVG_W) * 100).toFixed(2)}%`,
+            top: `${(((pendingDim.y1 + pendingDim.y2) / 2 / SVG_H) * 100).toFixed(2)}%`,
+            transform: 'translate(-50%, -50%)',
+          }}
           onBlur={commitPendingDim}
           onKeyDown={(e) => {
             if (e.key === 'Enter') commitPendingDim();
