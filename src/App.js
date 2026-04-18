@@ -205,7 +205,17 @@ export default function App() {
       };
     }).filter(p => p.length > 0 && p.height > 0);
 
-    const cabinet = scanResult.cabinet || null;
+    const rawCab = scanResult.cabinet || null;
+    const cabinet = rawCab
+      ? {
+          ...rawCab,
+          thickness: Number(project.panel?.thickness) || Number(rawCab.thickness) || 1.8,
+          panelThickness: Number(project.panel?.thickness) || Number(rawCab.panelThickness) || 1.8,
+          edgeType: project.edgeType || rawCab.edgeType || 'none',
+          panelW: Number(project.panel?.w) || 244,
+          panelH: Number(project.panel?.h) || 122,
+        }
+      : null;
 
     setProject(prev => ({
       ...prev,
@@ -282,7 +292,16 @@ export default function App() {
       newScanResult.cabinet ||
       newScanResult.result?.cabinet ||
       project.cabinet;
-    const cabinet = reconstructModulesFromFlat(rawCabinet);
+    const cabinet = rawCabinet
+      ? {
+          ...reconstructModulesFromFlat(rawCabinet),
+          thickness: Number(project.panel?.thickness) || Number(rawCabinet.thickness) || 1.8,
+          panelThickness: Number(project.panel?.thickness) || Number(rawCabinet.panelThickness) || 1.8,
+          edgeType: project.edgeType || rawCabinet.edgeType || 'none',
+          panelW: Number(project.panel?.w) || 244,
+          panelH: Number(project.panel?.h) || 122,
+        }
+      : null;
     setProject(p => ({ ...p, pieces, cabinet, scanResult: newScanResult, sketchDraft: null }));
     setScreen(SCREENS.PIECES);
   };
@@ -356,6 +375,10 @@ export default function App() {
           initialResult={project.scanResult}
           apiKey={apiKey}
           draft={project.sketchDraft}
+          panelThickness={project.panel?.thickness || 1.8}
+          panelW={project.panel?.w || 244}
+          panelH={project.panel?.h || 122}
+          edgeType={project.edgeType || 'none'}
           onDraftChange={(draft) => setProject(p => ({ ...p, sketchDraft: draft }))}
           onComplete={handleRefinementComplete}
           onCancel={() => setScreen(SCREENS.PIECES)}
