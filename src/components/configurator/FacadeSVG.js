@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 
 const WOOD_FILL    = '#f5ede0';
 const WOOD_STROKE  = '#8b6914';
@@ -6,16 +6,72 @@ const DOUBLE_COLOR = '#d97706';
 const DIM_COLOR    = '#dc2626';
 const MARGIN       = { l: 70, r: 55, t: 60, b: 70 };
 
+// Eraser cursor — a small red eraser icon encoded as data URI
+const ERASER_CURSOR = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='22' height='22' viewBox='0 0 22 22'%3E%3Cpolygon points='4,22 18,22 18,10 11,2 4,10' fill='%23fca5a5' stroke='%23991b1b' stroke-width='1.5'/%3E%3Crect x='4' y='14' width='14' height='8' rx='1' fill='%23ef4444' stroke='%23991b1b' stroke-width='1.5'/%3E%3Cline x1='11' y1='14' x2='11' y2='22' stroke='%23991b1b' stroke-width='1'/%3E%3C/svg%3E") 11 22, cell`;
+
+const CURSORS = {
+  select:  'default',
+  shelf:   'cell',
+  rod:     'cell',
+  drawer:  'cell',
+  cote:    'crosshair',
+  eraser:  ERASER_CURSOR,
+};
+
 function toNum(v, d = 0) {
   const n = Number(v);
   return Number.isFinite(n) ? n : d;
 }
 
+/** Convert a DOM mouse/touch event to SVG viewBox coordinates */
+function getSVGCoords(svgEl, e) {
+  const pt = svgEl.createSVGPoint();
+  pt.x = e.clientX;
+  pt.y = e.clientY;
+  return pt.matrixTransform(svgEl.getScreenCTM().inverse());
+}
+
 /**
  * FacadeSVG — technical plan view of the cabinet.
  * Supports trapezoid modules (biais) and all content types.
+ * Interactive: place / move / delete elements directly on the drawing.
+ *
+ * Props:
+ *   cabinet        — cabinet state object
+ *   svgRef         — optional external ref forwarded to <svg> (for capture)
+ *   activeTool     — 'select' | 'shelf' | 'rod' | 'drawer' | 'cote' | 'eraser'
+ *   onAddElement   — (modIdx, type, yFromBottom) => void
+ *   onDeleteElement— (modIdx, type, elemIdx) => void
+ *   onMoveElement  — (modIdx, type, elemIdx, newYFromBottom) => void
+ *   onAddAnnotation— ({ x1, y1, x2, y2 }) => void
  */
-export default function FacadeSVG({ cabinet, svgRef }) {
+export default function FacadeSVG({
+  cabinet,
+  svgRef,
+  activeTool,
+  onAddElement,
+  onDeleteElement,
+  onMoveElement,
+  onAddAnnotation,
+}) {
+  // ── Internal state for interactivity ──────────────────────────────────────
+  const localSvgRef = useRef(null);
+  // Merge external svgRef with internal one via callback ref
+  const setSvgRef = useCallback((el) => {
+    localSvgRef.current = el;
+    if (svgRef) {
+      if (typeof svgRef === 'function') svgRef(el);
+      else svgRef.current = el;
+    }
+  }, [svgRef]);
+
+  // drag = { modIdx, type, elemIdx, startSvgY, currentSvgY, originalYCm, blY, tlY }
+  const [drag, setDrag] = useState(null);
+  // hoverElem = { modIdx, type, elemIdx } — for eraser hover highlight
+  const [hoverElem, setHoverElem] = useState(null);
+  // coteStart = { x, y } — first click for dimension annotation
+  const [coteStart, setCoteStart] = useState(null);
+
   if (!cabinet) return null;
 
   const {
@@ -95,12 +151,115 @@ export default function FacadeSVG({ cabinet, svgRef }) {
   const boxHL = avgHL * sy;
   const boxHR = avgHR * sy;
 
+  // ── Interaction helpers ──────────────────────────────────────────────────
+
+  const isInteractive = !!activeTool && activeTool !== 'select';
+
+  // Convert an interior click (SVG coords) to yFromBottom (cm)
+  function yFromSVG(svgY, blY) {
+    return Math.max(0, (blY - svgY) / sy);
+  }
+
+  // Clamp a yFromBottom value to the module's interior height
+  function clampY(yCm, tlY, blY) {
+    const maxCm = (blY - tlY) / sy;
+    return Math.max(0, Math.min(yCm, maxCm));
+  }
+
+  // Click on the module interior overlay: place element
+  function handleModuleClick(e, modRect) {
+    const tool = activeTool;
+    if (!tool || tool === 'select' || tool === 'eraser' || tool === 'cote') return;
+    e.stopPropagation();
+    const svgEl = localSvgRef.current;
+    if (!svgEl) return;
+    const pt = getSVGCoords(svgEl, e);
+    const rawY = yFromSVG(pt.y, modRect.bl.y);
+    const yCm  = clampY(rawY, modRect.tl.y, modRect.bl.y);
+    onAddElement?.(modRect.i, tool, yCm);
+  }
+
+  // Click on the SVG background for cote tool
+  function handleSVGClick(e) {
+    if (activeTool !== 'cote') return;
+    const svgEl = localSvgRef.current;
+    if (!svgEl) return;
+    const pt = getSVGCoords(svgEl, e);
+    if (!coteStart) {
+      setCoteStart({ x: pt.x, y: pt.y });
+    } else {
+      onAddAnnotation?.({ x1: coteStart.x, y1: coteStart.y, x2: pt.x, y2: pt.y });
+      setCoteStart(null);
+    }
+  }
+
+  // Mouse down on an interactive element (select drag OR eraser delete)
+  function handleElemMouseDown(e, modIdx, type, elemIdx, yCm, blY, tlY) {
+    if (activeTool === 'eraser') {
+      e.stopPropagation();
+      onDeleteElement?.(modIdx, type, elemIdx);
+      setHoverElem(null);
+      return;
+    }
+    if (activeTool === 'select') {
+      e.stopPropagation();
+      const svgEl = localSvgRef.current;
+      if (!svgEl) return;
+      const pt = getSVGCoords(svgEl, e);
+      setDrag({ modIdx, type, elemIdx, startSvgY: pt.y, currentSvgY: pt.y, originalYCm: yCm, blY, tlY });
+    }
+  }
+
+  // SVG-level mouse move — update drag preview
+  function handleSVGMouseMove(e) {
+    if (!drag) return;
+    const svgEl = localSvgRef.current;
+    if (!svgEl) return;
+    const pt = getSVGCoords(svgEl, e);
+    setDrag(prev => prev ? { ...prev, currentSvgY: pt.y } : null);
+  }
+
+  // SVG-level mouse up — commit drag
+  function handleSVGMouseUp(e) {
+    if (!drag) return;
+    const svgEl = localSvgRef.current;
+    if (svgEl) {
+      const pt = getSVGCoords(svgEl, e);
+      const deltaCm  = (drag.startSvgY - pt.y) / sy; // up = higher yFromBottom
+      const newYCm   = clampY(drag.originalYCm + deltaCm, drag.tlY, drag.blY);
+      onMoveElement?.(drag.modIdx, drag.type, drag.elemIdx, newYCm);
+    }
+    setDrag(null);
+  }
+
+  // Compute dragged position in SVG coords for preview rendering
+  function getDragPreviewY(modIdx, type, elemIdx, defaultSvgY) {
+    if (!drag) return defaultSvgY;
+    if (drag.modIdx !== modIdx || drag.type !== type || drag.elemIdx !== elemIdx) return defaultSvgY;
+    const deltaSvg = drag.currentSvgY - drag.startSvgY;
+    return defaultSvgY + deltaSvg;
+  }
+
+  function isHovered(modIdx, type, elemIdx) {
+    return hoverElem &&
+      hoverElem.modIdx === modIdx &&
+      hoverElem.type   === type   &&
+      hoverElem.elemIdx === elemIdx;
+  }
+
+  const svgCursor = CURSORS[activeTool] || 'default';
+
   return (
     <svg
-      ref={svgRef}
+      ref={setSvgRef}
       xmlns="http://www.w3.org/2000/svg"
       viewBox={`0 0 ${SVG_W} ${SVG_H}`}
       className="w-full h-auto bg-white rounded-xl border border-slate-200 shadow-xl"
+      style={{ cursor: svgCursor }}
+      onMouseMove={handleSVGMouseMove}
+      onMouseUp={handleSVGMouseUp}
+      onMouseLeave={() => { if (drag) setDrag(null); }}
+      onClick={handleSVGClick}
     >
       <defs>
         <linearGradient id="gWood" x1="0" y1="0" x2="1" y2="0">
@@ -235,29 +394,53 @@ export default function FacadeSVG({ cabinet, svgRef }) {
         const intH = (modHL - PL - TH * 2) * sy; // interior height in px at left edge
 
         // Y from bottom (cm) → px from top of interior
-        const cmToY = (yCm) => {
-          // bl.y is bottom of interior (left side)
-          return bl.y - yCm * sy;
+        const cmToY = (yCm) => bl.y - yCm * sy;
+
+        // Shared props for interactive (draggable/erasable) elements
+        const elemProps = (type, idx, yCm) => {
+          if (!activeTool || activeTool === 'cote') return {};
+          const hovered = isHovered(i, type, idx);
+          const isDragging = drag && drag.modIdx === i && drag.type === type && drag.elemIdx === idx;
+          return {
+            style: {
+              cursor: activeTool === 'eraser' ? ERASER_CURSOR
+                : activeTool === 'select' ? (isDragging ? 'grabbing' : 'grab')
+                : 'default',
+              opacity: hovered && activeTool === 'eraser' ? 0.55 : 1,
+            },
+            onMouseDown: (e) => handleElemMouseDown(e, i, type, idx, yCm, bl.y, tl.y),
+            onMouseEnter: () => setHoverElem({ modIdx: i, type, elemIdx: idx }),
+            onMouseLeave: () => setHoverElem(null),
+          };
         };
 
         // Shelves
         const shelves = (content.shelves || []).map((sh, si) => {
-          const yPx = cmToY(sh.yFromBottom ?? 0);
+          const baseY  = cmToY(sh.yFromBottom ?? 0);
+          const yPx    = getDragPreviewY(i, 'shelf', si, baseY);
+          const ep     = elemProps('shelf', si, sh.yFromBottom ?? 0);
           return (
-            <g key={`sh-${i}-${si}`}>
-              <rect x={tl.x + 2} y={yPx - 3} width={w - 4} height={5} fill="#7c6341" stroke={WOOD_STROKE} strokeWidth="0.8" rx="1"/>
+            <g key={`sh-${i}-${si}`} {...ep}>
+              <rect x={tl.x + 2} y={yPx - 3} width={w - 4} height={5}
+                fill="#7c6341" stroke={WOOD_STROKE} strokeWidth="0.8" rx="1"/>
+              {/* Wider invisible hit area */}
+              <rect x={tl.x} y={yPx - 7} width={w} height={13} fill="transparent"/>
             </g>
           );
         });
 
         // Drawers
         const drawers = (content.drawers || []).map((dr, di) => {
-          const h   = (dr.height ?? 18) * sy;
-          const yPx = cmToY((dr.yFromBottom ?? 0) + (dr.height ?? 18));
+          const h      = (dr.height ?? 18) * sy;
+          const baseY  = cmToY((dr.yFromBottom ?? 0) + (dr.height ?? 18));
+          const yPx    = getDragPreviewY(i, 'drawer', di, baseY);
+          const ep     = elemProps('drawer', di, dr.yFromBottom ?? 0);
           return (
-            <g key={`dr-${i}-${di}`}>
-              <rect x={tl.x + 2} y={yPx + 1} width={w - 4} height={h - 2} fill={WOOD_FILL} stroke={WOOD_STROKE} strokeWidth="1" rx="1"/>
-              <rect x={tl.x + w / 2 - 14} y={yPx + h / 2 - 3.5} width="28" height="7" fill="#9ca3af" stroke="#6b7280" strokeWidth="0.8" rx="3"/>
+            <g key={`dr-${i}-${di}`} {...ep}>
+              <rect x={tl.x + 2} y={yPx + 1} width={w - 4} height={h - 2}
+                fill={WOOD_FILL} stroke={WOOD_STROKE} strokeWidth="1" rx="1"/>
+              <rect x={tl.x + w / 2 - 14} y={yPx + h / 2 - 3.5} width="28" height="7"
+                fill="#9ca3af" stroke="#6b7280" strokeWidth="0.8" rx="3"/>
               <ellipse cx={tl.x + w / 2} cy={yPx + h / 2} rx="3.5" ry="2.5" fill="#6b7280"/>
             </g>
           );
@@ -265,12 +448,17 @@ export default function FacadeSVG({ cabinet, svgRef }) {
 
         // Rods
         const rods = (content.rods || []).map((rod, ri) => {
-          const yPx = cmToY(rod.yFromBottom ?? 160);
+          const baseY  = cmToY(rod.yFromBottom ?? 160);
+          const yPx    = getDragPreviewY(i, 'rod', ri, baseY);
+          const ep     = elemProps('rod', ri, rod.yFromBottom ?? 160);
           return (
-            <g key={`rod-${i}-${ri}`}>
-              <line x1={tl.x + 6} y1={yPx} x2={tl.x + w - 6} y2={yPx} stroke="#374151" strokeWidth="4" strokeLinecap="round"/>
+            <g key={`rod-${i}-${ri}`} {...ep}>
+              <line x1={tl.x + 6} y1={yPx} x2={tl.x + w - 6} y2={yPx}
+                stroke="#374151" strokeWidth="4" strokeLinecap="round"/>
               <circle cx={tl.x + 8}     cy={yPx - 4} r={4} fill="#9ca3af" stroke="#374151" strokeWidth="1.5"/>
               <circle cx={tl.x + w - 8} cy={yPx - 4} r={4} fill="#9ca3af" stroke="#374151" strokeWidth="1.5"/>
+              {/* Wider invisible hit area */}
+              <rect x={tl.x} y={yPx - 10} width={w} height={20} fill="transparent"/>
             </g>
           );
         });
@@ -323,6 +511,18 @@ export default function FacadeSVG({ cabinet, svgRef }) {
           </g>
         );
 
+        // Invisible overlay for placement tools (shelf / rod / drawer)
+        const placementOverlay = isInteractive && activeTool !== 'eraser' && activeTool !== 'cote' && (
+          <rect
+            key={`overlay-${i}`}
+            x={tl.x} y={tl.y}
+            width={w} height={bl.y - tl.y}
+            fill="transparent"
+            style={{ cursor: CURSORS[activeTool] || 'cell' }}
+            onClick={(e) => handleModuleClick(e, { i, tl, bl })}
+          />
+        );
+
         return (
           <g key={`mod-${i}`}>
             {shelves}
@@ -331,6 +531,7 @@ export default function FacadeSVG({ cabinet, svgRef }) {
             {doors}
             {modNumCircle}
             {modWidthDim}
+            {placementOverlay}
           </g>
         );
       })}
@@ -351,6 +552,34 @@ export default function FacadeSVG({ cabinet, svgRef }) {
         transform={`rotate(-90, ${ox - 26}, ${oy + boxHL / 2})`}>
         {HL} cm
       </text>
+
+      {/* User-drawn dimension annotations (cote tool) */}
+      {(cabinet.annotations || []).map((ann, ai) => {
+        const dx = ann.x2 - ann.x1;
+        const dy = ann.y2 - ann.y1;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        const midX = (ann.x1 + ann.x2) / 2;
+        const midY = (ann.y1 + ann.y2) / 2;
+        const labelCm = (Math.sqrt((dx / sx) ** 2 + (dy / sy) ** 2)).toFixed(1);
+        return (
+          <g key={`ann-${ai}`}>
+            <line x1={ann.x1} y1={ann.y1} x2={ann.x2} y2={ann.y2}
+              stroke="#7c3aed" strokeWidth="1.5"
+              markerEnd="url(#arrR2)" markerStart="url(#arrL2)"
+              strokeDasharray="6 3"/>
+            <circle cx={ann.x1} cy={ann.y1} r={3} fill="#7c3aed"/>
+            <circle cx={ann.x2} cy={ann.y2} r={3} fill="#7c3aed"/>
+            <text x={midX} y={midY - 5} textAnchor="middle" fill="#7c3aed" fontSize="9" fontWeight="700">
+              {labelCm} cm
+            </text>
+          </g>
+        );
+      })}
+
+      {/* Cote: ghost line from first click to mouse position */}
+      {coteStart && (
+        <circle cx={coteStart.x} cy={coteStart.y} r={4} fill="#7c3aed" opacity="0.7"/>
+      )}
     </svg>
   );
 }
