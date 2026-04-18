@@ -252,87 +252,99 @@ export default function HistoryScreen({ user, onNew, onLoad, onScanComplete, onB
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
               {filtered.map(p => (
-                <div
+                <ProjectCard
                   key={p.id}
-                  className="group relative bg-[#131c2a] hover:bg-[#1a2535] rounded-2xl p-5 border border-white/5 hover:border-orange-500/30 transition-all duration-200 shadow-md overflow-hidden flex flex-col gap-3"
-                >
-                  <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-orange-500 to-red-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-l-2xl" />
-
-                  {/* Name + badge */}
-                  <div className="flex items-start justify-between gap-2 pl-1">
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-bold text-white group-hover:text-orange-400 transition-colors truncate">
-                        {p.name || 'Sans titre'}
-                      </h3>
-                      {p.client && (
-                        <div className="flex items-center gap-1.5 text-slate-400 text-sm mt-1">
-                          <User className="w-3.5 h-3.5 flex-shrink-0" />
-                          <span className="truncate">{p.client}</span>
-                        </div>
-                      )}
-                    </div>
-                    {p.results_data && (
-                      <span className="flex-shrink-0 px-2 py-0.5 bg-orange-500/10 text-orange-500 text-[10px] font-bold uppercase tracking-wider rounded border border-orange-500/20">
-                        Optimisé
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Meta */}
-                  <div className="flex flex-wrap gap-2 pl-1">
-                    <div className="flex items-center gap-1.5 bg-white/5 px-2.5 py-1 rounded-lg border border-white/5 text-xs text-slate-400">
-                      <Calendar className="w-3.5 h-3.5" />
-                      {formatDate(p.updated_at)}
-                    </div>
-                    {p.devis_num && (
-                      <div className="flex items-center gap-1.5 bg-blue-500/10 px-2.5 py-1 rounded-lg border border-blue-500/20 text-xs text-blue-400">
-                        <FileText className="w-3.5 h-3.5" />
-                        {p.devis_num}
-                      </div>
-                    )}
-                    {p.results_data && (
-                      <div className="flex items-center gap-1.5 bg-purple-500/10 px-2.5 py-1 rounded-lg border border-purple-500/20 text-xs text-purple-400">
-                        <Ruler className="w-3.5 h-3.5" />
-                        {p.results_data.summary?.totalPanels || 0} panneaux
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex items-center gap-2 pl-1 pt-1 border-t border-white/5">
-                    <button
-                      onClick={() => onLoad(p.id)}
-                      className="flex-1 py-2 text-xs font-bold text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg transition-colors"
-                    >
-                      Ouvrir
-                    </button>
-                    <button
-                      onClick={() => handleDuplicate(p.id)}
-                      disabled={duplicating === p.id}
-                      className="flex items-center gap-1 px-3 py-2 text-xs font-bold text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg transition-colors disabled:opacity-50"
-                      title="Dupliquer"
-                    >
-                      {duplicating === p.id
-                        ? <div className="w-3.5 h-3.5 border border-slate-400 border-t-transparent rounded-full animate-spin" />
-                        : <Copy className="w-3.5 h-3.5" />}
-                    </button>
-                    <button
-                      onClick={() => handleDelete(p.id)}
-                      disabled={deleting === p.id}
-                      className="flex items-center gap-1 px-3 py-2 text-xs font-bold text-slate-400 hover:text-red-400 bg-white/5 hover:bg-red-500/10 rounded-lg transition-colors disabled:opacity-50"
-                      title="Supprimer"
-                    >
-                      {deleting === p.id
-                        ? <div className="w-3.5 h-3.5 border border-red-500 border-t-transparent rounded-full animate-spin" />
-                        : <Trash2 className="w-3.5 h-3.5" />}
-                    </button>
-                  </div>
-                </div>
+                  project={p}
+                  onOpen={onLoad}
+                  onDuplicate={handleDuplicate}
+                  onDelete={handleDelete}
+                  deleting={deleting}
+                  duplicating={duplicating}
+                  formatDate={formatDate}
+                />
               ))}
             </div>
           </>
         )}
 
+      </div>
+    </div>
+  );
+}
+
+function ProjectCard({ project: p, onOpen, onDuplicate, onDelete, deleting, duplicating, formatDate }) {
+  return (
+    <div className="group relative bg-[#131c2a] hover:bg-[#1a2535] rounded-2xl p-5 border border-white/5 hover:border-orange-500/30 transition-all duration-200 shadow-md overflow-hidden flex flex-col gap-3">
+      <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-orange-500 to-red-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-l-2xl" />
+
+      {/* Name + badge */}
+      <div className="flex items-start justify-between gap-2 pl-1">
+        <div className="flex-1 min-w-0">
+          <h3 className="font-bold text-white group-hover:text-orange-400 transition-colors truncate">
+            {p.name || 'Sans titre'}
+          </h3>
+          {p.client && (
+            <div className="flex items-center gap-1.5 text-slate-400 text-sm mt-1">
+              <User className="w-3.5 h-3.5 flex-shrink-0" />
+              <span className="truncate">{p.client}</span>
+            </div>
+          )}
+        </div>
+        {p.results_data && (
+          <span className="flex-shrink-0 px-2 py-0.5 bg-orange-500/10 text-orange-500 text-[10px] font-bold uppercase tracking-wider rounded border border-orange-500/20">
+            Optimisé
+          </span>
+        )}
+      </div>
+
+      {/* Meta */}
+      <div className="flex flex-wrap gap-2 pl-1">
+        <div className="flex items-center gap-1.5 bg-white/5 px-2.5 py-1 rounded-lg border border-white/5 text-xs text-slate-400">
+          <Calendar className="w-3.5 h-3.5" />
+          {formatDate(p.updated_at)}
+        </div>
+        {p.devis_num && (
+          <div className="flex items-center gap-1.5 bg-blue-500/10 px-2.5 py-1 rounded-lg border border-blue-500/20 text-xs text-blue-400">
+            <FileText className="w-3.5 h-3.5" />
+            {p.devis_num}
+          </div>
+        )}
+        {p.results_data && (
+          <div className="flex items-center gap-1.5 bg-purple-500/10 px-2.5 py-1 rounded-lg border border-purple-500/20 text-xs text-purple-400">
+            <Ruler className="w-3.5 h-3.5" />
+            {p.results_data.summary?.totalPanels || 0} panneaux
+          </div>
+        )}
+      </div>
+
+      {/* Actions */}
+      <div className="flex items-center gap-2 pl-1 pt-1 border-t border-white/5">
+        <button
+          onClick={() => onOpen(p.id)}
+          className="flex-1 py-2 text-xs font-bold text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg transition-colors"
+        >
+          Ouvrir
+        </button>
+        <button
+          onClick={() => onDuplicate(p.id)}
+          disabled={duplicating === p.id}
+          className="flex items-center gap-1 px-3 py-2 text-xs font-bold text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg transition-colors disabled:opacity-50"
+          title="Dupliquer"
+        >
+          {duplicating === p.id
+            ? <div className="w-3.5 h-3.5 border border-slate-400 border-t-transparent rounded-full animate-spin" />
+            : <Copy className="w-3.5 h-3.5" />}
+        </button>
+        <button
+          onClick={() => onDelete(p.id)}
+          disabled={deleting === p.id}
+          className="flex items-center gap-1 px-3 py-2 text-xs font-bold text-slate-400 hover:text-red-400 bg-white/5 hover:bg-red-500/10 rounded-lg transition-colors disabled:opacity-50"
+          title="Supprimer"
+        >
+          {deleting === p.id
+            ? <div className="w-3.5 h-3.5 border border-red-500 border-t-transparent rounded-full animate-spin" />
+            : <Trash2 className="w-3.5 h-3.5" />}
+        </button>
       </div>
     </div>
   );
