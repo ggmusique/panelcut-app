@@ -3,6 +3,7 @@ import { Stage, Layer, Rect, Line, Text, Group, Circle } from 'react-konva';
 import { WOOD_STROKE, DIM_COLOR } from './konvaTheme';
 import FacadeKonvaItems from './FacadeKonvaItems';
 import FacadeKonvaAnnotations from './FacadeKonvaAnnotations';
+import { useFacadeKonva } from './useFacadeKonva';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -138,6 +139,7 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
   onElementUpdate,
   onElementRemove,
   activeTool      = 'select',
+  onChange,
 }, ref) {
   // ── 1. RESPONSIVE RESIZE ───────────────────────────────────────────────────
   const containerRef = useRef(null);
@@ -289,6 +291,51 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
     [facadeModules, joints, thPx, drawW, mL, mT, innerH],
   );
 
+  // ── 2b. HISTORY / SNAP (useFacadeKonva) ──────────────────────────────────
+  // stageWidth = drawW so the hook's internal geometry aligns with the drawing
+  // area; snapX from the hook is relative to the drawing area's left edge (0),
+  // so we add mL to render it in Stage coordinates.
+  const {
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    snapActive,
+    snapX: hookSnapX,
+  } = useFacadeKonva({
+    cabinetDims: { width: toNum(cabW), height: toNum(cabH), plinth: toNum(plinth) },
+    facadeModules,
+    facadeItems,
+    joints,
+    thickness:   toNum(thick, 1.8),
+    stageWidth:  drawW,
+    stageHeight: drawH,
+    onChange,
+  });
+
+  // Snap line position in Stage coordinate space
+  const snapLineX = hookSnapX != null ? hookSnapX + mL : null;
+
+  // ── Keyboard shortcuts: Ctrl+Z undo, Ctrl+Y / Ctrl+Shift+Z redo ──────────
+  useEffect(() => {
+    const handler = (e) => {
+      const tag = e.target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || e.target?.isContentEditable) return;
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === 'z') {
+        e.preventDefault();
+        undo();
+      } else if (
+        (e.ctrlKey || e.metaKey) &&
+        (e.key === 'y' || (e.shiftKey && e.key === 'z'))
+      ) {
+        e.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [undo, redo]);
+
   // ── 3. ANNOTATION Y (scaled margins) ─────────────────────────────────────
   const annotBaseY = mT + drawH;   // bottom of drawing area
   const dimLineH   = 26 * scaleRatio;
@@ -412,7 +459,53 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
 
   // ── 6. RENDER ─────────────────────────────────────────────────────────────
   return (
-    <div ref={containerRef} style={{ width: '100%' }}>
+    <div ref={containerRef} style={{ width: '100%', position: 'relative' }}>
+
+      {/* ── Undo / Redo bandeau (top-left overlay on the Konva Stage) ── */}
+      <div style={{
+        position: 'absolute',
+        top: 6,
+        left: 6,
+        zIndex: 10,
+        display: 'flex',
+        gap: 4,
+        pointerEvents: 'auto',
+      }}>
+        <button
+          onClick={undo}
+          disabled={!canUndo}
+          title="Annuler (Ctrl+Z)"
+          style={{
+            padding: '3px 10px',
+            fontSize: 13,
+            borderRadius: 4,
+            border: '1px solid #d1d5db',
+            background: canUndo ? '#fff' : '#f3f4f6',
+            color: canUndo ? '#1f2937' : '#9ca3af',
+            cursor: canUndo ? 'pointer' : 'default',
+            lineHeight: 1.4,
+          }}
+        >
+          ↩ Annuler
+        </button>
+        <button
+          onClick={redo}
+          disabled={!canRedo}
+          title="Rétablir (Ctrl+Y)"
+          style={{
+            padding: '3px 10px',
+            fontSize: 13,
+            borderRadius: 4,
+            border: '1px solid #d1d5db',
+            background: canRedo ? '#fff' : '#f3f4f6',
+            color: canRedo ? '#1f2937' : '#9ca3af',
+            cursor: canRedo ? 'pointer' : 'default',
+            lineHeight: 1.4,
+          }}
+        >
+          ↪ Rétablir
+        </button>
+      </div>
       <Stage
         ref={stageRef}
         width={stageW}
@@ -717,6 +810,17 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
             onElementRemove={onElementRemove}
             stageRef={stageRef}
           />
+
+          {/* ── SNAP LINE — golden vertical guide shown during module resize ── */}
+          {snapActive && snapLineX != null && (
+            <Line
+              points={[snapLineX, mT, snapLineX, mT + innerH]}
+              stroke="#f59e0b"
+              strokeWidth={2}
+              dash={[6, 3]}
+              listening={false}
+            />
+          )}
 
         </Layer>
       </Stage>
