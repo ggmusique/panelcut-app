@@ -1,8 +1,8 @@
 import { useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import { Disc } from 'lucide-react';
 import CabinetElevationFront from './CabinetElevationFront';
-import FacadeCanvas from './FacadeCanvas';
 import SketchToolbar from './SketchToolbar';
+import FacadeKonvaEditor from '../facade/FacadeKonvaEditor';
 import { captureFacadeToImage } from '../utils/captureFacadeToImage';
 import { useSketchGestures } from '../hooks/useSketchGestures';
 import { useSketchPersistence } from '../hooks/useSketchPersistence';
@@ -31,7 +31,7 @@ const defaultModuleDetail = (drawerCount = 0) => ({
 export default function SketchEditor({ image, scanImage, initialResult, draft, onDraftChange, onComplete, onCancel, onSave }) {
   const rawImg             = image || scanImage || null;
   const svgRef             = useRef(null);
-  const facadeSvgRef       = useRef(null);
+  const konvaEditorRef     = useRef(null);
   const facadeContainerRef = useRef(null);
 
   const [facadePng, setFacadePng] = useState(null);
@@ -357,32 +357,9 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
     setError(null);
     try {
       await new Promise(resolve => requestAnimationFrame(resolve));
-      const facadeSvg = facadeSvgRef.current;
-      if (!facadeSvg) throw new Error('SVG façade hors-écran introuvable');
-      const clone = facadeSvg.cloneNode(true);
-      clone.querySelectorAll('image').forEach(el => el.remove());
-      clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-      clone.setAttribute('width',  FACADE_W);
-      clone.setAttribute('height', FACADE_H);
-      const svgStr  = new XMLSerializer().serializeToString(clone);
-      const b64svg  = btoa(unescape(encodeURIComponent(svgStr)));
-      const dataUrl = 'data:image/svg+xml;base64,' + b64svg;
-      const canvas = document.createElement('canvas');
-      canvas.width  = FACADE_W;
-      canvas.height = FACADE_H;
-      const ctx2d = canvas.getContext('2d');
-      await new Promise((resolve, reject) => {
-        const img = new window.Image();
-        img.onload = () => {
-          ctx2d.fillStyle = '#f8fafc';
-          ctx2d.fillRect(0, 0, canvas.width, canvas.height);
-          ctx2d.drawImage(img, 0, 0, canvas.width, canvas.height);
-          resolve();
-        };
-        img.onerror = reject;
-        img.src = dataUrl;
-      });
-      const base64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
+      const dataUrl = konvaEditorRef.current?.exportDataUrl();
+      if (!dataUrl) throw new Error('Éditeur Konva non initialisé');
+      const base64 = dataUrl.split(',')[1];
       console.log('🚀 RELANCER DATA:', {
         hasImage: !!base64,
         piecesCount: currentCabinet?.modules?.length,
@@ -492,34 +469,6 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
         </div>
       )}
 
-      <svg
-        ref={facadeSvgRef}
-        xmlns="http://www.w3.org/2000/svg"
-        width={FACADE_W}
-        height={FACADE_H}
-        style={{ position: 'absolute', left: '-9999px', top: 0, pointerEvents: 'none' }}
-        aria-hidden="true"
-      >
-        <rect width={FACADE_W} height={FACADE_H} fill="#f8fafc"/>
-        <FacadeCanvas
-          svgW={FACADE_W} svgH={FACADE_H}
-          cabW={cabinetDims.width} cabH={cabinetDims.height}
-          plinth={cabinetDims.plinth} thick={thickness}
-          facadeModules={facadeModules}
-          cabinetModules={currentCabinet?.modules || []}
-          facadeItems={facadeItems}
-          joints={joints}
-          globalSliding={globalSliding}
-          onFacadePointerDown={() => {}}
-          onItemPointerDown={() => {}}
-          onItemErase={() => {}}
-          onModuleClick={() => {}}
-          onModuleErase={() => {}}
-          activeTool="none"
-        />
-        {elements.filter(el => ['dim','note'].includes(el.type)).map(renderElement)}
-      </svg>
-
       {currentCabinet && (
         <div ref={facadeContainerRef}
           style={{position:'absolute',left:'-9999px',top:0,width:`${FACADE_CAPTURE_WIDTH}px`,visibility:'hidden',pointerEvents:'none'}}
@@ -599,37 +548,39 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
       />
 
       <div className="flex-1 overflow-auto bg-slate-950 flex justify-center p-4">
-        <svg ref={svgRef} width={imgSize.w} height={imgSize.h}
-          viewBox={`${viewport.x} ${viewport.y} ${viewport.w} ${viewport.h}`}
-          className="shadow-2xl"
-          style={{ background: baseView === 'facade' ? '#f8fafc' : '#1e293b' }}
-          onMouseDown={handlePointerDown} onMouseMove={handlePointerMove}
-          onMouseUp={handlePointerUp}     onMouseLeave={handlePointerUp}
-          onTouchStart={handlePointerDown} onTouchMove={handlePointerMove}
-          onTouchEnd={handlePointerUp}>
-          {baseView === 'photo' && imgSrc && (
-            <image href={imgSrc} width={imgSize.w} height={imgSize.h} preserveAspectRatio="xMidYMid meet"/>
-          )}
-          {baseView === 'facade' && (
-            <FacadeCanvas
-              svgW={imgSize.w} svgH={imgSize.h}
-              cabW={cabinetDims.width} cabH={cabinetDims.height}
-              plinth={cabinetDims.plinth} thick={thickness}
-              facadeModules={facadeModules}
-              cabinetModules={currentCabinet?.modules || []}
-              facadeItems={facadeItems}
-              joints={joints}
-              globalSliding={globalSliding}
-              onFacadePointerDown={handleFacadePointerDown}
-              onItemPointerDown={handleItemPointerDown}
-              onItemErase={handleItemErase}
-              onModuleClick={handleModuleClick}
-              onModuleErase={handleModuleErase}
-              activeTool={tool}
-            />
-          )}
-          {elements.filter(el => ['dim','note'].includes(el.type)).map(renderElement)}
-        </svg>
+        {baseView === 'photo' ? (
+          <svg ref={svgRef} width={imgSize.w} height={imgSize.h}
+            viewBox={`${viewport.x} ${viewport.y} ${viewport.w} ${viewport.h}`}
+            className="shadow-2xl"
+            style={{ background: '#1e293b' }}
+            onMouseDown={handlePointerDown} onMouseMove={handlePointerMove}
+            onMouseUp={handlePointerUp}     onMouseLeave={handlePointerUp}
+            onTouchStart={handlePointerDown} onTouchMove={handlePointerMove}
+            onTouchEnd={handlePointerUp}>
+            {imgSrc && (
+              <image href={imgSrc} width={imgSize.w} height={imgSize.h} preserveAspectRatio="xMidYMid meet"/>
+            )}
+            {elements.filter(el => ['dim','note'].includes(el.type)).map(renderElement)}
+          </svg>
+        ) : (
+          <FacadeKonvaEditor
+            ref={konvaEditorRef}
+            svgW={imgSize.w} svgH={imgSize.h}
+            cabW={cabinetDims.width} cabH={cabinetDims.height}
+            plinth={cabinetDims.plinth} thick={thickness}
+            facadeModules={facadeModules}
+            cabinetModules={currentCabinet?.modules || []}
+            facadeItems={facadeItems}
+            joints={joints}
+            globalSliding={globalSliding}
+            onFacadePointerDown={handleFacadePointerDown}
+            onItemPointerDown={handleItemPointerDown}
+            onItemErase={handleItemErase}
+            onModuleClick={handleModuleClick}
+            onModuleErase={handleModuleErase}
+            activeTool={tool}
+          />
+        )}
       </div>
 
       <div className="bg-slate-900 border-t border-slate-700 p-2">

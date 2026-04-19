@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useRef, useState, useEffect, useMemo, useCallback, useImperativeHandle } from 'react';
 import { Stage, Layer, Rect, Line, Text, Group, Circle } from 'react-konva';
 import { WOOD_STROKE, DIM_COLOR } from './konvaTheme';
 import FacadeKonvaItems from './FacadeKonvaItems';
@@ -100,7 +100,7 @@ const sepGradH = (w) => ({
  *   onModuleErase        — (modIdx, type) => void
  *   activeTool           — 'select'|'shelf'|'rod'|'drawer'|'door'|'sliding'|'erase'|…
  */
-export default function FacadeKonvaEditor({
+const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
   svgW         = 1140,
   svgH         = 700,
   cabW,
@@ -118,10 +118,15 @@ export default function FacadeKonvaEditor({
   onModuleClick,
   onModuleErase,
   activeTool      = 'select',
-}) {
+}, ref) {
   // ── 1. RESPONSIVE RESIZE ───────────────────────────────────────────────────
   const containerRef = useRef(null);
   const stageRef     = useRef(null);
+
+  useImperativeHandle(ref, () => ({
+    // Returns a JPEG data URL of the current Konva stage content.
+    exportDataUrl: () => stageRef.current?.toDataURL({ mimeType: 'image/jpeg', quality: 0.85 }) ?? null,
+  }), []);
   const [stageSize, setStageSize] = useState({ w: svgW, h: svgH });
 
   useEffect(() => {
@@ -502,4 +507,6 @@ export default function FacadeKonvaEditor({
       </Stage>
     </div>
   );
-}
+});
+
+export default FacadeKonvaEditor;
