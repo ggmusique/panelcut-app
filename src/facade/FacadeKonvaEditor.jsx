@@ -22,7 +22,21 @@ const BADGE_MAX_FRAC    = 0.70; // maximum fraction to keep badge away from bott
 const DOUBLE_LABEL_OFFSET = 10;
 const DOUBLE_LABEL_WIDTH  = 20;
 
+// Delay (ms) before resetting isPinching after the last touch ends,
+// preventing a residual single-finger move from firing right after a pinch.
+const PINCH_GESTURE_DELAY_MS = 50;
+
 const toNum = (v, d = 0) => { const n = Number(v); return Number.isFinite(n) ? n : d; };
+
+// ── Gesture helpers ───────────────────────────────────────────────────────────
+
+function getDistance(p1, p2) {
+  return Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
+}
+
+function getCenter(p1, p2) {
+  return { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+}
 
 // ── Geometry ──────────────────────────────────────────────────────────────────
 
@@ -140,6 +154,42 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
     return () => obs.disconnect();
   }, [svgW, svgH]);
 
+  // ── 1b. VIEWPORT STATE (zoom / pan) ────────────────────────────────────────
+  const [scale,    setScale]    = useState(1);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const lastCenter    = useRef(null);
+  const lastDist      = useRef(null);
+  const isPinching    = useRef(false);
+  const touchStartPos = useRef(null);
+
+  // Non-passive wheel listener so we can call preventDefault()
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onWheel = (e) => {
+      e.preventDefault();
+      const scaleBy = 1.06;
+      const stage   = stageRef.current;
+      if (!stage) return;
+      const oldScale = stage.scaleX();
+      const pointer  = stage.getPointerPosition();
+      if (!pointer) return;
+      const direction = e.deltaY > 0 ? -1 : 1;
+      const newScale  = Math.max(0.5, Math.min(4, direction > 0 ? oldScale * scaleBy : oldScale / scaleBy));
+      const mousePointTo = {
+        x: (pointer.x - stage.x()) / oldScale,
+        y: (pointer.y - stage.y()) / oldScale,
+      };
+      setScale(newScale);
+      setPosition({
+        x: pointer.x - mousePointTo.x * newScale,
+        y: pointer.y - mousePointTo.y * newScale,
+      });
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
+
   const { w: stageW, h: stageH } = stageSize;
 
   // Scale factor between the Konva canvas and the SVG reference size
@@ -161,9 +211,10 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
   );
 
   // ── 3. TOOL FLAGS ─────────────────────────────────────────────────────────
-  const isErase = activeTool === 'erase';
-  const isPlace = activeTool === 'shelf' || activeTool === 'rod';
-  const isAdd   = activeTool === 'drawer' || activeTool === 'door' || activeTool === 'sliding';
+  const isErase   = activeTool === 'erase';
+  const isPlace   = activeTool === 'shelf' || activeTool === 'rod';
+  const isAdd     = activeTool === 'drawer' || activeTool === 'door' || activeTool === 'sliding';
+  const isNavMode = activeTool === 'select';
 
   // ── 4. ANNOTATION Y (scaled margins) ─────────────────────────────────────
   const annotBaseY = mT + drawH;   // bottom of drawing area
@@ -172,6 +223,71 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
   const rightDimX  = mL + drawW + 24 * scaleRatio;
 
   // ── 5. EVENT HANDLERS ─────────────────────────────────────────────────────
+
+  // ── Touch gesture handlers ────────────────────────────────────────────────
+
+  const handleStageTouchStart = useCallback((e) => {
+    if (e.evt.touches.length === 1 && isNavMode) {
+      const stage = stageRef.current;
+      touchStartPos.current = {
+        clientX: e.evt.touches[0].clientX,
+        clientY: e.evt.touches[0].clientY,
+        stageX:  stage.x(),
+        stageY:  stage.y(),
+      };
+    }
+  }, [isNavMode]);
+
+  const handleStageTouchMove = useCallback((e) => {
+    const touches = e.evt.touches;
+    if (touches.length === 2) {
+      // Pinch-to-zoom
+      e.evt.preventDefault();
+      isPinching.current = true;
+      const p1 = { x: touches[0].clientX, y: touches[0].clientY };
+      const p2 = { x: touches[1].clientX, y: touches[1].clientY };
+      const newDist   = getDistance(p1, p2);
+      const newCenter = getCenter(p1, p2);
+      if (!lastDist.current) {
+        lastDist.current   = newDist;
+        lastCenter.current = newCenter;
+        return;
+      }
+      const scaleBy  = newDist / lastDist.current;
+      const stage    = stageRef.current;
+      const oldScale = stage.scaleX();
+      const newScale = Math.max(0.5, Math.min(4, oldScale * scaleBy));
+      const pointer  = stage.getPointerPosition();
+      if (!pointer) return;
+      const mousePointTo = {
+        x: (pointer.x - stage.x()) / oldScale,
+        y: (pointer.y - stage.y()) / oldScale,
+      };
+      setScale(newScale);
+      setPosition({
+        x: pointer.x - mousePointTo.x * newScale,
+        y: pointer.y - mousePointTo.y * newScale,
+      });
+      lastDist.current   = newDist;
+      lastCenter.current = newCenter;
+    } else if (touches.length === 1 && isNavMode && !isPinching.current) {
+      // Single-finger pan
+      if (!touchStartPos.current) return;
+      const dx = touches[0].clientX - touchStartPos.current.clientX;
+      const dy = touches[0].clientY - touchStartPos.current.clientY;
+      setPosition({
+        x: touchStartPos.current.stageX + dx,
+        y: touchStartPos.current.stageY + dy,
+      });
+    }
+  }, [isNavMode]);
+
+  const handleStageTouchEnd = useCallback(() => {
+    lastDist.current      = null;
+    lastCenter.current    = null;
+    touchStartPos.current = null;
+    setTimeout(() => { isPinching.current = false; }, PINCH_GESTURE_DELAY_MS);
+  }, []);
 
   /**
    * Shelf / rod placement hit.
@@ -222,7 +338,18 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
   // ── 6. RENDER ─────────────────────────────────────────────────────────────
   return (
     <div ref={containerRef} style={{ width: '100%' }}>
-      <Stage ref={stageRef} width={stageW} height={stageH}>
+      <Stage
+        ref={stageRef}
+        width={stageW}
+        height={stageH}
+        scaleX={scale}
+        scaleY={scale}
+        x={position.x}
+        y={position.y}
+        onTouchStart={handleStageTouchStart}
+        onTouchMove={handleStageTouchMove}
+        onTouchEnd={handleStageTouchEnd}
+      >
         <Layer>
 
           {/* ── 2. FOND BOIS — outer cabinet rectangle ── */}
