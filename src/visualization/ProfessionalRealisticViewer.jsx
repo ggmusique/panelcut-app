@@ -862,7 +862,7 @@ const ProfessionalRealisticViewer = forwardRef(function ProfessionalRealisticVie
   const [viewPreset, setViewPreset] = useState('angle');
   const [autoRotate, setAutoRotate] = useState(presentationMode);
   const [userStoppedRotation, setUserStoppedRotation] = useState(false);
-  const [finish, setFinish] = useState(initialFinish || 'oak');
+  const [finish, setFinish] = useState(initialFinish);
   const glCaptureRef = useRef(null);
 
   useEffect(() => {
