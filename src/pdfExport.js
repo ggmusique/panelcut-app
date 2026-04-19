@@ -106,7 +106,7 @@ export function exportPDF(results, project, extras = {}) {
   const MEDIUM_UTIL_THRESHOLD = 60;
 
   // Pièces tringles — exclues de l'optimisation panneau bois
-  const rodPieces       = extras.rodPieces || (project.pieces || []).filter(isRodPiece);
+  const rodPieces = extras.rodPieces || (project.pieces || []).filter(isRodPiece);
   const hasTringlesPage = rodPieces.length > 0;
 
   // ── PAGE DE GARDE ──────────────────────────────────────────────────────
@@ -655,7 +655,8 @@ export function exportPDF(results, project, extras = {}) {
       doc.text(h, cx + 3, tblY0 + 4.8);
     });
 
-    // Regrouper par nom + longueur (utiliser qty du projet si disponible)
+    // Regrouper par nom + longueur ; p.qty peut être > 1 si la pièce a déjà
+    // une quantité dans le projet, sinon on compte chaque occurrence comme 1.
     const rodMap = {};
     rodPieces.forEach(p => {
       const len = p.length || p.l || 0;
