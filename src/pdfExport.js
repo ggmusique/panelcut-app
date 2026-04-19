@@ -98,164 +98,211 @@ export function exportPDF(results, project, extras = {}) {
   const ACCENT = [245, 158, 11];
   const DARK   = [26, 26, 46];
   const GRAY   = [100, 100, 100];
-  const LIGHT  = [245, 245, 245];
+  const GREEN  = [16, 185, 129];
   const RED    = [231, 76, 60];
+
+  const HIGH_UTIL_THRESHOLD   = 80;
+  const MEDIUM_UTIL_THRESHOLD = 60;
+
+  // 3 panneaux par page (utilisé aussi pour le total pages)
+  const PANELS_PER_PAGE = 3;
 
   // ── PAGE DE GARDE ──────────────────────────────────────────────────────
 
-  // Header fond sombre
-  doc.setFillColor(...DARK);
-  doc.rect(0, 0, PW, 32, 'F');
+  // Pré-calcul du nombre total de pages
+  const cutPages = Math.ceil(panels.length / PANELS_PER_PAGE);
+  const extraPages = [extras.facadeImage, extras.view3dImage].filter(Boolean).length;
+  const totalPages = 1 + cutPages + extraPages;
 
-  // Logo
-  doc.setTextColor(...ACCENT);
-  doc.setFontSize(18);
-  doc.setFont('helvetica','bold');
-  doc.text('✂ PanelCut Pro', M, 14);
+  const generatedAt = new Date().toLocaleString('fr-BE');
 
-  doc.setTextColor(136, 153, 180);
+  // Coordonnées entreprise (champs optionnels sur le projet)
+  const companyAddress = project.companyAddress || '';
+  const companyPhone   = project.companyPhone   || '';
+  const companyEmail   = project.companyEmail   || '';
+  const companyWebsite = project.companyWebsite || '';
+
+  // 1. HEADER ENTREPRISE (0 à 45mm) ─────────────────────────────────────
+  // Fond blanc (par défaut A4)
+
+  // Colonne gauche : nom entreprise
+  doc.setTextColor(0, 0, 0);
+  doc.setFontSize(22);
+  doc.setFont('helvetica', 'bold');
+  doc.text(company, M, 14);
+
+  doc.setTextColor(136, 136, 136);
   doc.setFontSize(10);
-  doc.setFont('helvetica','normal');
-  doc.text(company, M, 21);
+  doc.setFont('helvetica', 'normal');
+  doc.text('Menuiserie sur mesure', M, 21);
 
-  // Numéro devis
-  if (devisNum) {
-    doc.setTextColor(...ACCENT);
-    doc.setFontSize(12);
-    doc.setFont('helvetica','bold');
-    doc.text(devisNum, PW - M, 14, { align: 'right' });
-    doc.setTextColor(136,153,180);
-    doc.setFontSize(9);
-    doc.setFont('helvetica','normal');
-    doc.text(date, PW - M, 21, { align: 'right' });
-  } else {
-    doc.setTextColor(136,153,180);
-    doc.setFontSize(9);
-    doc.text(date, PW - M, 14, { align: 'right' });
-  }
-
-  let y = 42;
-
-  // Trait accent
-  doc.setDrawColor(...ACCENT);
-  doc.setLineWidth(0.8);
-  doc.line(M, y-4, M+4, y-4);
-  doc.setLineWidth(0.1);
-
-  // Titre projet
-  doc.setTextColor(...DARK);
-  doc.setFontSize(20);
-  doc.setFont('helvetica','bold');
-  doc.text(projectName, M, y+2);
-  y += 8;
-
-  doc.setTextColor(...GRAY);
+  // Coordonnées entreprise
+  doc.setTextColor(170, 170, 170);
   doc.setFontSize(9);
-  doc.setFont('helvetica','normal');
-  doc.text(`Plan de découpe — ${date}`, M, y);
-  y += 10;
+  let yHeader = 27;
+  if (companyAddress) { doc.text(companyAddress, M, yHeader); yHeader += 4; }
+  if (companyPhone)   { doc.text(companyPhone,   M, yHeader); yHeader += 4; }
+  if (companyEmail)   { doc.text(companyEmail,   M, yHeader); yHeader += 4; }
+  if (companyWebsite) { doc.text(companyWebsite, M, yHeader); yHeader += 4; }
 
-  // Bloc client
-  if (client) {
-    doc.setFillColor(...LIGHT);
-    doc.roundedRect(M, y, CW, 16, 2, 2, 'F');
-    doc.setTextColor(...GRAY);
-    doc.setFontSize(8);
-    doc.setFont('helvetica','bold');
-    doc.text('CLIENT', M+5, y+6);
-    doc.setTextColor(...DARK);
-    doc.setFontSize(13);
-    doc.setFont('helvetica','bold');
-    doc.text(client, M+5, y+13);
-    y += 22;
+  // Colonne droite : numéro de devis encadré
+  const rightX = PW - M;
+  if (devisNum) {
+    const devisBoxW = 52;
+    const devisBoxH = 9;
+    const devisBoxX = rightX - devisBoxW;
+    const devisBoxY = 7;
+    doc.setDrawColor(200, 200, 200);
+    doc.setLineWidth(0.3);
+    doc.roundedRect(devisBoxX, devisBoxY, devisBoxW, devisBoxH, 1, 1, 'S');
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`N\u00b0 ${devisNum}`, rightX - 3, devisBoxY + 5.8, { align: 'right' });
   }
 
-  // Résumé 4 cases
-  const boxW = (CW - 9) / 4;
-  [[summary.totalPanels,'Panneaux'],[summary.totalPieces,'Pièces'],[summary.utilizationPct+'%','Utilisation'],[totalCost+'€','Coût matière']].forEach(([val,lbl],i) => {
-    const bx = M + i*(boxW+3);
-    doc.setFillColor(...DARK);
-    doc.roundedRect(bx, y, boxW, 18, 2, 2, 'F');
-    doc.setTextColor(...ACCENT);
-    doc.setFontSize(14);
-    doc.setFont('helvetica','bold');
-    doc.text(String(val), bx+boxW/2, y+10, { align:'center' });
-    doc.setTextColor(136,153,180);
-    doc.setFontSize(7);
-    doc.setFont('helvetica','normal');
-    doc.text(lbl.toUpperCase(), bx+boxW/2, y+15, { align:'center' });
-  });
-  y += 24;
+  // Date
+  doc.setTextColor(100, 100, 100);
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.text(date, rightX, 22, { align: 'right' });
 
-  // Récap meubles
-  const furnitureGroups = {};
-  panels.forEach(p => p.placed.forEach(pc => {
-    const fName = pc.furnitureName || null;
-    if (!fName) return;
-    if (!furnitureGroups[fName]) furnitureGroups[fName] = {};
-    const key = `${pc.name} ${(pc.l/10).toFixed(1)}×${(pc.h/10).toFixed(1)}cm`;
-    furnitureGroups[fName][key] = (furnitureGroups[fName][key] || 0) + 1;
-  }));
-  if (Object.keys(furnitureGroups).length > 0) {
-    doc.setFillColor(...LIGHT);
-    doc.roundedRect(M, y, CW, 8, 2, 2, 'F');
-    doc.setTextColor(...GRAY);
-    doc.setFontSize(8);
-    doc.setFont('helvetica','bold');
-    doc.text('RÉCAPITULATIF PAR MEUBLE', M+5, y+5.5);
-    y += 12;
-    Object.entries(furnitureGroups).forEach(([fname, pcs]) => {
-      doc.setTextColor(...DARK);
-      doc.setFontSize(10);
-      doc.setFont('helvetica','bold');
-      doc.text(fname, M+3, y);
-      y += 5;
-      doc.setFont('helvetica','normal');
-      doc.setFontSize(9);
-      doc.setTextColor(...GRAY);
-      const items = Object.entries(pcs).map(([k,qty]) => `${k} ×${qty}`).join('   ');
-      const lines = doc.splitTextToSize(items, CW-6);
-      lines.forEach(line => { doc.text(line, M+5, y); y += 4.5; });
-      y += 2;
-    });
-  }
+  // Statut DEVIS avec lettres espacées
+  doc.setTextColor(0, 0, 0);
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  const devisLabel = 'D E V I S';
+  doc.text(devisLabel, rightX, 31, { align: 'right' });
 
-  // Légende couleurs
-  y += 4;
-  doc.setTextColor(...GRAY);
-  doc.setFontSize(8);
-  doc.setFont('helvetica','bold');
-  doc.text('LÉGENDE', M, y);
-  y += 5;
-  let lx = M;
-  Object.entries(colorMap).forEach(([name, hex]) => {
-    const [r,g,b] = hexToRgb(hex);
-    doc.setFillColor(r,g,b);
-    doc.roundedRect(lx, y-3, 4, 4, 0.5, 0.5, 'F');
-    doc.setTextColor(...DARK);
-    doc.setFontSize(8);
-    doc.setFont('helvetica','normal');
-    const tw = doc.getTextWidth(name) + 8;
-    doc.text(name, lx+5.5, y);
-    lx += tw + 4;
-    if (lx > PW - M - 20) { lx = M; y += 6; }
-  });
+  // Ligne orange sous DEVIS
+  const devisLabelW = doc.getTextWidth(devisLabel);
+  doc.setDrawColor(...ACCENT);
+  doc.setLineWidth(1);
+  doc.line(rightX - devisLabelW, 32.8, rightX, 32.8);
 
-  // Infos panneau en bas
-  y = PH - 20;
-  doc.setDrawColor(220,220,220);
+  // Séparateur horizontal à y=45
+  doc.setDrawColor(220, 220, 220);
   doc.setLineWidth(0.3);
-  doc.line(M, y, PW-M, y);
-  y += 5;
+  doc.line(M, 45, PW - M, 45);
+
+  // 2. BLOC CLIENT (50mm à 75mm) ─────────────────────────────────────────
+  if (client) {
+    doc.setTextColor(150, 150, 150);
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'bold');
+    doc.text('DESTINATAIRE', M, 56);
+
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text(client, M, 67);
+  }
+
+  // 3. VISUEL FAÇADE (80mm à 170mm) ──────────────────────────────────────
+  const facadeY    = 80;
+  const maxImgW    = 160;
+  const maxImgH    = 80;
+  const facadeImgX = M + (CW - maxImgW) / 2;
+
+  if (extras.facadeImage) {
+    const props  = doc.getImageProperties(extras.facadeImage);
+    const imgW   = props?.width  || maxImgW;
+    const imgH   = props?.height || maxImgH;
+    const scale  = Math.min(maxImgW / imgW, maxImgH / imgH);
+    const drawW  = imgW * scale;
+    const drawH  = imgH * scale;
+    const drawX  = M + (CW - drawW) / 2;
+    const drawY  = facadeY + (maxImgH - drawH) / 2;
+
+    doc.addImage(extras.facadeImage, 'PNG', drawX, drawY, drawW, drawH, undefined, 'FAST');
+
+    // Bordure fine grise avec coins arrondis
+    doc.setDrawColor(180, 180, 180);
+    doc.setLineWidth(0.3);
+    doc.roundedRect(drawX, drawY, drawW, drawH, 2, 2, 'S');
+
+    // Légende sous l'image
+    doc.setTextColor(136, 136, 136);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Vue de fa\u00e7ade \u2014 ${projectName}`, PW / 2, facadeY + maxImgH + 8, { align: 'center' });
+  } else {
+    // Placeholder
+    doc.setFillColor(240, 240, 240);
+    doc.setDrawColor(210, 210, 210);
+    doc.setLineWidth(0.3);
+    doc.roundedRect(facadeImgX, facadeY, maxImgW, maxImgH, 2, 2, 'FD');
+    doc.setTextColor(160, 160, 160);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Fa\u00e7ade non disponible', PW / 2, facadeY + maxImgH / 2, { align: 'center' });
+  }
+
+  // 4. GRILLE DE RÉSUMÉ (180mm à 210mm) ──────────────────────────────────
+  const gridY   = 180;
+  const gridH   = 28;
+  const boxW    = (CW - 9) / 4;
+  const utilizationPct = summary.utilizationPct;
+  const utilBarColor   = utilizationPct >= HIGH_UTIL_THRESHOLD ? GREEN : utilizationPct >= MEDIUM_UTIL_THRESHOLD ? [...ACCENT] : [...RED];
+
+  const summaryBoxes = [
+    { val: String(summary.totalPanels), lbl: 'Panneaux',        color: ACCENT,       isUtil: false },
+    { val: String(summary.totalPieces), lbl: 'Pi\u00e8ces',     color: DARK,         isUtil: false },
+    { val: utilizationPct + '%',        lbl: 'Utilisation',     color: utilBarColor, isUtil: true  },
+    { val: totalCost + '\u20ac',        lbl: 'Mati\u00e8re estim\u00e9e', color: DARK, isUtil: false },
+  ];
+
+  summaryBoxes.forEach(({ val, lbl, color, isUtil }, i) => {
+    const bx = M + i * (boxW + 3);
+
+    doc.setFillColor(250, 250, 250);
+    doc.setDrawColor(220, 220, 220);
+    doc.setLineWidth(0.3);
+    doc.roundedRect(bx, gridY, boxW, gridH, 2, 2, 'FD');
+
+    // Valeur principale
+    doc.setTextColor(...color);
+    doc.setFontSize(18);
+    doc.setFont('helvetica', 'bold');
+    doc.text(val, bx + boxW / 2, gridY + (isUtil ? 11 : 13), { align: 'center' });
+
+    if (isUtil) {
+      // Barre de progression (3mm de haut)
+      const barX = bx + 4;
+      const barY = gridY + 14;
+      const barW = boxW - 8;
+      const barH = 3;
+      doc.setFillColor(220, 220, 220);
+      doc.roundedRect(barX, barY, barW, barH, 1, 1, 'F');
+      doc.setFillColor(...utilBarColor);
+      doc.roundedRect(barX, barY, barW * Math.min(utilizationPct / 100, 1), barH, 1, 1, 'F');
+    }
+
+    // Label
+    doc.setTextColor(136, 136, 136);
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'normal');
+    doc.text(lbl.toUpperCase(), bx + boxW / 2, gridY + gridH - 4, { align: 'center' });
+  });
+
+  // 5. PIED DE PAGE (y=285mm) ─────────────────────────────────────────────
+  doc.setDrawColor(220, 220, 220);
+  doc.setLineWidth(0.3);
+  doc.line(M, 285, PW - M, 285);
+
   doc.setTextColor(...GRAY);
   doc.setFontSize(8);
-  doc.setFont('helvetica','normal');
-  doc.text(`Panneau : ${panelW}×${panelH}cm   Trait de scie : ${project.kerf}mm   Matière : ${material}   Prix/panneau : ${(project.pricePerPanel||0).toFixed(2)}€`, M, y);
+  doc.setFont('helvetica', 'normal');
+  doc.text('Document g\u00e9n\u00e9r\u00e9 par PanelCut Pro \u00b7 panelcut.app', M, 290);
+  doc.text(`Page 1/${totalPages}`, PW - M, 290, { align: 'right' });
+  doc.text(generatedAt, PW / 2, 290, { align: 'center' });
+
+  doc.setTextColor(180, 180, 180);
+  doc.setFontSize(7);
+  doc.text('Ce devis est valable 30 jours.', PW / 2, 295, { align: 'center' });
 
   // ── PAGES DE DÉCOUPE ───────────────────────────────────────────────────
 
-  // 3 panneaux par page
-  const PANELS_PER_PAGE = 3;
   const panelAreaH = (PH - 2*M - 14) / PANELS_PER_PAGE; // hauteur dispo par panneau
   const SVG_W_mm = 80;  // largeur du visuel en mm
   const SVG_H_mm = Math.round(SVG_W_mm * panelH / panelW);
@@ -300,7 +347,7 @@ export function exportPDF(results, project, extras = {}) {
     doc.setFontSize(9);
     doc.setFont('helvetica','bold');
     doc.text(`Panneau ${panel.panelId} / ${panels.length}`, M+4, baseY+5);
-    const utilColor = panel.utilizationPct >= 80 ? [16,185,129] : panel.utilizationPct >= 60 ? [...ACCENT] : [...RED];
+    const utilColor = panel.utilizationPct >= HIGH_UTIL_THRESHOLD ? GREEN : panel.utilizationPct >= MEDIUM_UTIL_THRESHOLD ? [...ACCENT] : [...RED];
     doc.setTextColor(...utilColor);
     doc.text(`${panel.utilizationPct}% utilisé · chute ${panel.wastePct}%`, PW-M-4, baseY+5, {align:'right'});
 
