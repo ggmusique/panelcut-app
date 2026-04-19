@@ -248,8 +248,6 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
     });
   }, [tool, sketchFingerprint, elements, cabinetDims, facadeModules, moduleDetails, generalNotes, joints, globalSliding, setFacadeItems]);
 
-  const handleItemPointerDown = useCallback(() => {}, []);
-
   const handleModuleClick = useCallback((modIdx, activeTool) => {
     setFacadeModules(prev => {
       const next = prev.map((m, i) => {
@@ -472,7 +470,6 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
           globalSliding={globalSliding}
           elements={elements}
           onFacadePointerDown={handleFacadePointerDown}
-          onItemPointerDown={handleItemPointerDown}
           onItemMove={handleItemMove}
           onItemErase={handleItemErase}
           onModuleClick={handleModuleClick}
