@@ -11,8 +11,8 @@ import {
   normalizeItemsFromResult,
   buildSketchContextPrompt,
 } from '../utils/sketchEditorHelpers';
+import { LS_SKETCH_KEY, defaultDrawerParts } from '../utils/sketchEditorConstants';
 
-const LS_SKETCH_KEY               = 'pc_sketch_editor';
 const FACADE_CAPTURE_WIDTH        = 980;
 const FACADE_CAPTURE_INITIAL_DELAY_MS = 150;
 const FACADE_CAPTURE_DEBOUNCE_MS  = 400;
@@ -20,7 +20,6 @@ const MOBILE_BREAKPOINT_PX        = 768;
 
 const toNum = (v, d = 0) => { const n = Number(v); return Number.isFinite(n) ? n : d; };
 const jointThickness = (isDouble, t) => isDouble ? t * 2 : t;
-const defaultDrawerParts = () => ({ front: true, back: true, left: true, right: true, bottom: true });
 const defaultModuleDetail = (drawerCount = 0) => ({
   hasBack: true,
   slidingDoors: 0,

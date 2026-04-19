@@ -5,7 +5,6 @@ const DOUBLE_COLOR = '#d97706';
 export const MARGIN = { l: 65, r: 52, t: 55, b: 65 };
 
 const toNum = (v, d = 0) => { const n = Number(v); return Number.isFinite(n) ? n : d; };
-const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
 export function computeMRects(facadeModules, joints, thPx, drawW, drawH, mL, mT, plPx) {
   const innerH     = drawH - plPx;

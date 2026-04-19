@@ -1,6 +1,5 @@
 import { useRef, useState, useCallback, useEffect, useMemo } from 'react';
-
-const LS_SKETCH_KEY               = 'pc_sketch_editor';
+import { LS_SKETCH_KEY } from '../utils/sketchEditorConstants';
 const REMOTE_AUTOSAVE_INTERVAL_MS = 30000;
 
 /**

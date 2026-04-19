@@ -1,8 +1,7 @@
 import { normalizeCabinetModules } from './normalizeCabinetModules';
+import { uid, defaultDrawerParts } from './sketchEditorConstants';
 
-const uid   = () => Math.random().toString(36).slice(2, 9);
 const toNum = (v, d = 0) => { const n = Number(v); return Number.isFinite(n) ? n : d; };
-const defaultDrawerParts = () => ({ front: true, back: true, left: true, right: true, bottom: true });
 
 export function normalizeModulesFromResult(result, width = 0) {
   const cabinet = result?.cabinet || {};

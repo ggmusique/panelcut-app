@@ -1,9 +1,7 @@
 import { useRef, useState, useCallback } from 'react';
 import { MARGIN, computeMRects } from '../components/FacadeCanvas';
+import { LS_SKETCH_KEY, uid } from '../utils/sketchEditorConstants';
 
-const LS_SKETCH_KEY = 'pc_sketch_editor';
-
-const uid   = () => Math.random().toString(36).slice(2, 9);
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
 /**

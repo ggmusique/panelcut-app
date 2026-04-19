@@ -11,8 +11,6 @@ const TOOLS = [
 
 const toNum = (v, d = 0) => { const n = Number(v); return Number.isFinite(n) ? n : d; };
 
-const defaultDrawerParts = () => ({ front: true, back: true, left: true, right: true, bottom: true });
-
 /**
  * Barre d'outils complète de l'éditeur : outils, vues, dimensions meuble,
  * largeurs des modules, coulissantes globales, détails menuiserie et FAB mobile.
