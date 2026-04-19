@@ -231,11 +231,11 @@ export default function Results({ t, results, project, onFinishChange }) {
   const hasCabinet = !!(cabinet && cabinet.width > 0 && cabinet.height > 0);
 
   const panel      = results.panels[currentPanel];
-  const panelW     = Math.round(project.panel.w * 10);
-  const panelH     = Math.round(project.panel.h * 10);
+  const panelW     = Math.round((project.panel?.w ?? 244) * 10);
+  const panelH     = Math.round((project.panel?.h ?? 122) * 10);
   const kerf       = Math.round((project.kerf ?? 3) * 1);
   const totalCost  = (results.summary.totalPanels * (project.pricePerPanel || 0)).toFixed(2);
-  const utilization = panel.utilizationPct;
+  const utilization = panel?.utilizationPct;
 
   const allNames = [...new Set(results.panels.flatMap(p => p.placed.map(pc => pc.name)))];
   allNames.forEach(n => getColor(n, colorMap));
