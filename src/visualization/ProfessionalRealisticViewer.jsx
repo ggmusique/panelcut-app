@@ -1,5 +1,5 @@
-import React, { useMemo, Suspense, useState } from 'react';
-import { Canvas } from '@react-three/fiber';
+import React, { useMemo, Suspense, useState, useEffect } from 'react';
+import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, Environment, ContactShadows } from '@react-three/drei';
 import { EffectComposer, N8AO, Bloom, Vignette } from '@react-three/postprocessing';
 import * as THREE from 'three';
@@ -607,10 +607,23 @@ function PostEffects() {
 }
 
 /* ═══════════════════════════════════════════════════════════════
+   SCENE BACKGROUND HELPER
+   ═══════════════════════════════════════════════════════════════ */
+
+function SceneBg({ isCapturing }) {
+  const { scene } = useThree();
+  useEffect(() => {
+    scene.background = isCapturing ? new THREE.Color('#ffffff') : null;
+    return () => { scene.background = null; };
+  }, [isCapturing, scene]);
+  return null;
+}
+
+/* ═══════════════════════════════════════════════════════════════
    SCENE
    ═══════════════════════════════════════════════════════════════ */
 
-function Scene({ cabinet, modules }) {
+function Scene({ cabinet, modules, isCapturing = false }) {
   const mats = useMaterials();
 
   const W  = Number(cabinet.width)     || 0;
@@ -629,13 +642,15 @@ function Scene({ cabinet, modules }) {
 
   return (
     <>
+      <SceneBg isCapturing={isCapturing} />
+
       {/* ── Lighting (3-point + ambient) ── */}
-      <ambientLight intensity={0.45} color="#fff5eb" />
+      <ambientLight intensity={isCapturing ? 0.75 : 0.45} color="#fff5eb" />
 
       {/* Key light (warm, top-right) */}
       <directionalLight
         position={[3, 5, 4]}
-        intensity={1.6}
+        intensity={isCapturing ? 2.2 : 1.6}
         color="#fff8f0"
         castShadow
         shadow-mapSize-width={4096}
@@ -650,10 +665,10 @@ function Scene({ cabinet, modules }) {
       />
 
       {/* Fill light (cool, left) */}
-      <directionalLight position={[-3, 3.5, 2]} intensity={0.3} color="#e8eeff" />
+      <directionalLight position={[-3, 3.5, 2]} intensity={isCapturing ? 0.55 : 0.3} color="#e8eeff" />
 
       {/* Rim / back light */}
-      <directionalLight position={[0, 4, -3]} intensity={0.15} color="#ffe8d0" />
+      <directionalLight position={[0, 4, -3]} intensity={isCapturing ? 0.28 : 0.15} color="#ffe8d0" />
 
       {/* Room ceiling light */}
       <pointLight position={[0, roomH - 0.08, roomD * 0.15]} intensity={0.8} color="#fff5eb" distance={roomH * 3} decay={1.5} />
@@ -733,7 +748,7 @@ function getCameraPreset(preset, camDist, Hm) {
   return [camDist * 0.35, Hm * 0.5, camDist * 1.1];
 }
 
-export default function ProfessionalRealisticViewer({ cabinet, name, fullScreen = false, presentationMode = false }) {
+export default function ProfessionalRealisticViewer({ cabinet, name, fullScreen = false, presentationMode = false, isCapturing = false }) {
   if (!cabinet || !cabinet.width || !cabinet.height) {
     return (
       <div className="w-full h-[700px] flex items-center justify-center bg-gray-100 rounded-2xl text-gray-400 text-base">
@@ -750,19 +765,18 @@ export default function ProfessionalRealisticViewer({ cabinet, name, fullScreen 
   const Wm = W / 100;
   const camDist = Math.max(Wm, Hm) * 1.6;
   const [viewPreset, setViewPreset] = useState('angle');
-  const cameraPos = useMemo(() => getCameraPreset(viewPreset, camDist, Hm), [viewPreset, camDist, Hm]);
 
   return (
     <div
       className={`relative w-full overflow-hidden shadow-2xl ${fullScreen ? 'rounded-none' : 'rounded-2xl'}`}
-      style={{ height: fullScreen ? '100dvh' : 750 }}
+      style={{ height: fullScreen ? '100dvh' : 750, background: isCapturing ? '#ffffff' : undefined }}
       onWheel={e => e.stopPropagation()}
     >
       <Canvas
-        key={`${viewPreset}`}
+        key={`${viewPreset}-${isCapturing ? 'cap' : 'std'}`}
         shadows
         camera={{
-          position: getCameraPreset('angle', camDist, Hm),
+          position: getCameraPreset(isCapturing ? 'face' : 'angle', camDist, Hm),
           fov: 40,
           near: 0.01,
           far: 100,
@@ -770,18 +784,19 @@ export default function ProfessionalRealisticViewer({ cabinet, name, fullScreen 
         gl={{
           antialias: true,
           toneMapping: THREE.ACESFilmicToneMapping,
-          toneMappingExposure: 1.1,
+          toneMappingExposure: isCapturing ? 1.3 : 1.1,
           outputColorSpace: THREE.SRGBColorSpace,
+          preserveDrawingBuffer: isCapturing,
         }}
         dpr={[1, 2]}
       >
         <Suspense fallback={null}>
-          <Scene cabinet={cabinet} name={name} modules={modules} />
+          <Scene cabinet={cabinet} name={name} modules={modules} isCapturing={isCapturing} />
         </Suspense>
       </Canvas>
 
       {/* UI Overlays */}
-      {!presentationMode && (
+      {!presentationMode && !isCapturing && (
         <>
           <div className="absolute top-4 left-4 z-20 bg-white/90 backdrop-blur-sm px-4 py-3 rounded-xl shadow-md border border-gray-100">
             <div className="text-sm font-bold text-gray-800 flex items-center gap-1.5">

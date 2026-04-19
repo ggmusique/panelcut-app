@@ -109,11 +109,21 @@ export function exportPDF(results, project, extras = {}) {
   const rodPieces = extras.rodPieces || (project.pieces || []).filter(isRodPiece);
   const hasTringlesPage = rodPieces.length > 0;
 
+  // Cabinet data for 3D page
+  const rawCab = project.cabinet || null;
+  const cab = rawCab ? {
+    width:   Number(rawCab.width)   || 0,
+    height:  Number(rawCab.height)  || 0,
+    depth:   Number(rawCab.depth)   || 60,
+    modules: Array.isArray(rawCab.modules) ? rawCab.modules : [],
+  } : null;
+  const has3DPage = !!(cab && cab.width > 0 && cab.height > 0);
+
   // ── PAGE DE GARDE ──────────────────────────────────────────────────────
 
   // Pré-calcul du nombre total de pages (1 panneau par page de découpe)
   const cutPages   = panels.length;
-  const extraPages = [extras.facadeImage, extras.view3dImage].filter(Boolean).length;
+  const extraPages = [extras.facadeImage].filter(Boolean).length + (has3DPage ? 1 : 0);
   const totalPages = 1 + cutPages + extraPages + (hasTringlesPage ? 1 : 0);
 
   const generatedAt = new Date().toLocaleString('fr-BE');
@@ -303,8 +313,8 @@ export function exportPDF(results, project, extras = {}) {
   doc.setFontSize(7);
   doc.text('Ce devis est valable 30 jours.', PW / 2, 295, { align: 'center' });
 
-  // ── PAGES DE DÉCOUPE ───────────────────────────────────────────────────
-  // 1 panneau par page — visuel gauche 60 % / liste des coupes droite 40 %
+  // ── PAGE VUE 3D CLIENT ────────────────────────────────────────────────
+  // Insérée après la page de garde, avant les pages de découpe.
 
   const SVG_W_mm   = 120;                           // largeur du visuel (mm)
   const FOOTER_Y   = 278;                           // y de la ligne de pied de page
@@ -328,10 +338,139 @@ export function exportPDF(results, project, extras = {}) {
     doc.text('Ce devis est valable 30 jours.', PW / 2, FOOTER_Y + 10, { align: 'center' });
   };
 
+  if (has3DPage) {
+    doc.addPage();
+
+    const panelLabel = project.panel?.label || project.selectedPanel?.name || material;
+    const cabW = cab.width;
+    const cabH = cab.height;
+    const cabD = cab.depth;
+    const moduleCount = cab.modules.length;
+
+    // ── En-tête ──
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Rendu 3D \u2014 ${projectName}`, PW / 2, 22, { align: 'center' });
+
+    doc.setTextColor(...GRAY);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Vue perspective \u2014 dimensions r\u00e9elles', PW / 2, 30, { align: 'center' });
+
+    doc.setDrawColor(220, 220, 220);
+    doc.setLineWidth(0.3);
+    doc.line(M, 35, PW - M, 35);
+
+    // ── Zone image + bloc info ──
+    const imgZoneX = M;
+    const imgZoneW = 118;   // mm — laisse ~62mm pour le bloc info
+    const imgZoneH = 120;   // mm
+    const imgZoneY = 40;
+    const infoX    = M + imgZoneW + 6;
+    const infoW    = CW - imgZoneW - 6;
+
+    if (extras.view3dImage) {
+      const props = doc.getImageProperties(extras.view3dImage);
+      const imgW  = props?.width  || imgZoneW;
+      const imgH  = props?.height || imgZoneH;
+      const scale = Math.min(imgZoneW / imgW, imgZoneH / imgH);
+      const drawW = imgW * scale;
+      const drawH = imgH * scale;
+      const drawX = imgZoneX + (imgZoneW - drawW) / 2;
+      const drawY = imgZoneY + (imgZoneH - drawH) / 2;
+
+      doc.addImage(extras.view3dImage, 'PNG', drawX, drawY, drawW, drawH, undefined, 'FAST');
+      doc.setDrawColor(180, 180, 180);
+      doc.setLineWidth(0.3);
+      doc.roundedRect(drawX, drawY, drawW, drawH, 1, 1, 'S');
+    } else {
+      // Placeholder
+      doc.setFillColor(235, 235, 235);
+      doc.setDrawColor(200, 200, 200);
+      doc.setLineWidth(0.3);
+      doc.roundedRect(imgZoneX, imgZoneY, imgZoneW, imgZoneH, 2, 2, 'FD');
+      doc.setTextColor(160, 160, 160);
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      const phLines = doc.splitTextToSize(
+        'Vue 3D non disponible \u2014 ouvrir l\u2019onglet Vue 3D avant l\u2019export',
+        imgZoneW - 10
+      );
+      doc.text(phLines, imgZoneX + imgZoneW / 2, imgZoneY + imgZoneH / 2 - (phLines.length - 1) * 2.5, { align: 'center' });
+    }
+
+    // ── Bloc info (colonne droite) ──
+    let infoY = imgZoneY;
+    const infoRow = (label, value, bold = false) => {
+      doc.setTextColor(150, 150, 150);
+      doc.setFontSize(7);
+      doc.setFont('helvetica', 'bold');
+      doc.text(label.toUpperCase(), infoX, infoY);
+      infoY += 4.5;
+      doc.setTextColor(20, 20, 20);
+      doc.setFontSize(9);
+      doc.setFont('helvetica', bold ? 'bold' : 'normal');
+      doc.text(String(value), infoX, infoY);
+      infoY += 7;
+    };
+
+    // Dimensions : 3 colonnes L / H / P
+    doc.setTextColor(150, 150, 150);
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'bold');
+    doc.text('DIMENSIONS', infoX, infoY);
+    infoY += 4.5;
+
+    const dimColW  = infoW / 3;
+    const dimLabels = ['L', 'H', 'P'];
+    const dimValues = [cabW, cabH, cabD];
+    dimLabels.forEach((lbl, i) => {
+      const dx = infoX + i * dimColW;
+      doc.setFillColor(248, 248, 248);
+      doc.setDrawColor(220, 220, 220);
+      doc.setLineWidth(0.25);
+      doc.roundedRect(dx, infoY - 3, dimColW - 1, 11, 1, 1, 'FD');
+      doc.setTextColor(100, 100, 100);
+      doc.setFontSize(7);
+      doc.setFont('helvetica', 'bold');
+      doc.text(lbl, dx + dimColW / 2, infoY + 0.5, { align: 'center' });
+      doc.setTextColor(20, 20, 20);
+      doc.setFontSize(8.5);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`${dimValues[i]} cm`, dx + dimColW / 2, infoY + 5.5, { align: 'center' });
+    });
+    infoY += 13;
+
+    infoRow('Mat\u00e9riau', panelLabel);
+    infoRow('Modules', moduleCount);
+    infoRow('Prix mati\u00e8re estim\u00e9', `${totalCost} \u20ac`, true);
+
+    // ── Note bas de page ──
+    const noteY = imgZoneY + imgZoneH + 10;
+    doc.setDrawColor(220, 220, 220);
+    doc.setLineWidth(0.3);
+    doc.line(M, noteY, PW - M, noteY);
+
+    doc.setTextColor(160, 160, 160);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'italic');
+    doc.text(
+      'Rendu indicatif \u2014 les finitions peuvent varier',
+      PW / 2, noteY + 7, { align: 'center' }
+    );
+
+    // Footer
+    drawCutPageFooter(2);
+  }
+
+  // ── PAGES DE DÉCOUPE ───────────────────────────────────────────────────
+  // 1 panneau par page — visuel gauche 60 % / liste des coupes droite 40 %
+
   for (let pi = 0; pi < panels.length; pi++) {
     doc.addPage();
     const panel    = panels[pi];
-    const pageNum  = 2 + pi;
+    const pageNum  = 2 + (has3DPage ? 1 : 0) + pi;
     const panelWmm = panelW * 10;   // cm → mm
     const panelHmm = panelH * 10;
     const wasteRect = getLargestWasteRect(panel, panelWmm, panelHmm);
@@ -622,7 +761,6 @@ export function exportPDF(results, project, extras = {}) {
   };
 
   addVisualPage('Fa\u00e7ade / Plan fa\u00e7ade', extras.facadeImage);
-  addVisualPage('Vue 3D client',                  extras.view3dImage);
 
   // ── PAGE TRINGLES ────────────────────────────────────────────────────
   if (hasTringlesPage) {
