@@ -1,36 +1,25 @@
 import { useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import { Disc } from 'lucide-react';
 import CabinetElevationFront from './CabinetElevationFront';
+import FacadeCanvas from './FacadeCanvas';
+import SketchToolbar from './SketchToolbar';
 import { captureFacadeToImage } from '../utils/captureFacadeToImage';
-import { normalizeCabinetModules } from '../utils/normalizeCabinetModules';
+import { useSketchGestures } from '../hooks/useSketchGestures';
+import { useSketchPersistence } from '../hooks/useSketchPersistence';
+import {
+  normalizeModulesFromResult,
+  normalizeItemsFromResult,
+  buildSketchContextPrompt,
+} from '../utils/sketchEditorHelpers';
+import { LS_SKETCH_KEY, defaultDrawerParts } from '../utils/sketchEditorConstants';
 
-const TOOLS = [
-  { id: 'drawer', icon: '🗄️', label: 'Tiroir',   color: '#fbbf24' },
-  { id: 'shelf',  icon: '📦', label: 'Tablette', color: '#34d399' },
-  { id: 'rod',    icon: '👔', label: 'Tringle',  color: '#f472b6' },
-  { id: 'door',   icon: '🚪', label: 'Porte',    color: '#60a5fa' },
-  { id: 'sliding',icon: '🚪↔️', label: 'Coulissante', color: '#93c5fd' },
-  { id: 'dim',    icon: '📏', label: 'Cote',     color: '#22d3ee' },
-  { id: 'note',   icon: '📝', label: 'Note',     color: '#fb923c' },
-  { id: 'erase',  icon: '🧹', label: 'Effacer',  color: '#f87171' },
-];
-
-const LS_SKETCH_KEY               = 'pc_sketch_editor';
 const FACADE_CAPTURE_WIDTH        = 980;
 const FACADE_CAPTURE_INITIAL_DELAY_MS = 150;
 const FACADE_CAPTURE_DEBOUNCE_MS  = 400;
-const REMOTE_AUTOSAVE_INTERVAL_MS = 30000;
-const WOOD_FILL            = '#f5ede0';
-const WOOD_STROKE          = '#8b6914';
-const DIM_COLOR            = '#dc2626';
-const DOUBLE_COLOR         = '#d97706';
-const MARGIN               = { l: 65, r: 52, t: 55, b: 65 };
-const MOBILE_BREAKPOINT_PX = 768;
+const MOBILE_BREAKPOINT_PX        = 768;
 
-const uid   = () => Math.random().toString(36).slice(2, 9);
 const toNum = (v, d = 0) => { const n = Number(v); return Number.isFinite(n) ? n : d; };
-const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-const defaultDrawerParts = () => ({ front: true, back: true, left: true, right: true, bottom: true });
+const jointThickness = (isDouble, t) => isDouble ? t * 2 : t;
 const defaultModuleDetail = (drawerCount = 0) => ({
   hasBack: true,
   slidingDoors: 0,
@@ -38,324 +27,12 @@ const defaultModuleDetail = (drawerCount = 0) => ({
   drawerParts: defaultDrawerParts(),
 });
 
-const normalizeModulesFromResult = (result, width = 0) => {
-  const cabinet = result?.cabinet || {};
-  const hasRealModules = Array.isArray(cabinet.modules) && cabinet.modules.length > 0;
-  if (!hasRealModules) {
-    const n  = Math.max(1, parseInt(cabinet.nb_dividers ?? 4, 10) + 1);
-    const mw = width > 0 ? width / n : 50;
-    return Array.from({ length: n }, () => ({
-      id: uid(), width: mw, drawers: 0, doors: 0, slidingDoors: 0,
-    }));
-  }
-  return normalizeCabinetModules(cabinet).map(m => ({
-    id: uid(),
-    width: m.width,
-    drawers: m.drawers,
-    doors: m.doors,
-    slidingDoors: m.slidingDoors,
-  }));
-};
-
-const normalizeItemsFromResult = (result) => {
-  const cabinet = result?.cabinet || {};
-  const modules = normalizeCabinetModules(cabinet);
-  const items = [];
-  modules.forEach((m, modIdx) => {
-    for (let si = 0; si < m.shelves; si++) {
-      items.push({ id: uid(), type: 'shelf', modIdx, yRatio: (si + 1) / (m.shelves + 1) });
-    }
-    if (m.rod) {
-      items.push({ id: uid(), type: 'rod', modIdx, yRatio: 0.32 });
-    }
-  });
-  return items;
-};
-
-const jointThickness = (isDouble, t) => isDouble ? t * 2 : t;
-
-function computeMRects(facadeModules, joints, thPx, drawW, drawH, mL, mT, plPx) {
-  const innerH     = drawH - plPx;
-  const totalSepPx = joints.reduce((acc, j) => acc + (j ? 2 * thPx : thPx), 0) + 2 * thPx;
-  const avail      = drawW - totalSepPx;
-  const totalModW  = facadeModules.reduce((a, m) => a + m.width, 0);
-  const scale      = avail / Math.max(1, totalModW);
-  let xCur = mL + thPx;
-  return facadeModules.map((m, i) => {
-    const wPx = m.width * scale;
-    const r = {
-      x: xCur, w: wPx, m, i,
-      intTop:    mT + thPx,
-      intBottom: mT + innerH - thPx,
-      intH:      innerH - 2 * thPx,
-      innerH,
-    };
-    xCur += wPx + (i < facadeModules.length - 1 ? (joints[i] ? 2 * thPx : thPx) : 0);
-    return r;
-  });
-}
-
-function FacadeRealisteSVG({
-  svgW, svgH, cabW, cabH, plinth, thick,
-  facadeModules, facadeItems, joints,
-  cabinetModules = [],
-  globalSliding,
-  onFacadePointerDown,
-  onItemPointerDown,
-  onItemErase,
-  onModuleClick,
-  onModuleErase,
-  activeTool,
-}) {
-  const drawW  = svgW - MARGIN.l - MARGIN.r;
-  const drawH  = svgH - MARGIN.t  - MARGIN.b;
-  const thPx   = thick * (drawW / Math.max(1, cabW));
-  const plPx   = plinth * (drawH / Math.max(1, cabH));
-  const innerH = drawH - plPx;
-  const mL     = MARGIN.l;
-  const mT     = MARGIN.t;
-  const mRects = computeMRects(facadeModules, joints, thPx, drawW, drawH, mL, mT, plPx);
-
-  const isErase   = activeTool === 'erase';
-  const isPlace   = ['shelf','rod'].includes(activeTool);
-  const isAdd     = ['drawer','door','sliding'].includes(activeTool);
-
-  const defs = (
-    <defs>
-      <linearGradient id="pcGW" x1="0" y1="0" x2="1" y2="0">
-        <stop offset="0%"   stopColor="#dcc89a"/>
-        <stop offset="45%"  stopColor="#f5ede0"/>
-        <stop offset="100%" stopColor="#dcc89a"/>
-      </linearGradient>
-      <linearGradient id="pcGT" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%"   stopColor="#c4a87a"/>
-        <stop offset="100%" stopColor="#e8d5b0"/>
-      </linearGradient>
-      <linearGradient id="pcGDoor" x1="0" y1="0" x2="1" y2="0">
-        <stop offset="0%"   stopColor="#e8dcc8" stopOpacity="0.75"/>
-        <stop offset="50%"  stopColor="#f8f0e4" stopOpacity="0.9"/>
-        <stop offset="100%" stopColor="#ddd0ba" stopOpacity="0.75"/>
-      </linearGradient>
-      <linearGradient id="pcGDouble" x1="0" y1="0" x2="1" y2="0">
-        <stop offset="0%"   stopColor="#dcc89a"/>
-        <stop offset="48%"  stopColor="#e8d5b0"/>
-        <stop offset="52%"  stopColor="#c9b068"/>
-        <stop offset="100%" stopColor="#dcc89a"/>
-      </linearGradient>
-    </defs>
-  );
-
-  return (
-    <g>
-      {defs}
-      <rect x={mL} y={mT} width={drawW} height={drawH} fill="url(#pcGW)" stroke={WOOD_STROKE} strokeWidth="2.5"/>
-      <rect x={mL+thPx} y={mT+thPx} width={drawW-2*thPx} height={innerH-thPx} fill="#ede4d3"/>
-      {plPx > 2 && (
-        <g>
-          <rect x={mL} y={mT+innerH} width={drawW} height={plPx} fill="#c8b07c" stroke={WOOD_STROKE} strokeWidth="1.5"/>
-          <line x1={mL} y1={mT+innerH} x2={mL+drawW} y2={mT+innerH} stroke={WOOD_STROKE} strokeWidth="2"/>
-        </g>
-      )}
-      <rect x={mL}             y={mT} width={thPx}  height={innerH} fill="url(#pcGW)" stroke={WOOD_STROKE} strokeWidth="1.5"/>
-      <rect x={mL+drawW-thPx}  y={mT} width={thPx}  height={innerH} fill="url(#pcGW)" stroke={WOOD_STROKE} strokeWidth="1.5"/>
-      <rect x={mL} y={mT}              width={drawW}  height={thPx}  fill="url(#pcGT)" stroke={WOOD_STROKE} strokeWidth="1.5"/>
-      <rect x={mL} y={mT+innerH-thPx}  width={drawW}  height={thPx}  fill="url(#pcGT)" stroke={WOOD_STROKE} strokeWidth="1.5"/>
-
-      {mRects.map(({ x, w, i }) => {
-        if (i >= facadeModules.length - 1) return null;
-        const isDouble = joints[i];
-        const sepX = x + w;
-        return isDouble ? (
-          <g key={`sep-${i}`}>
-            <rect x={sepX}      y={mT} width={thPx} height={innerH} fill="url(#pcGDouble)" stroke={WOOD_STROKE} strokeWidth="1"/>
-            <rect x={sepX+thPx} y={mT} width={thPx} height={innerH} fill="url(#pcGDouble)" stroke={WOOD_STROKE} strokeWidth="1"/>
-            <line x1={sepX+thPx} y1={mT+2} x2={sepX+thPx} y2={mT+innerH-2}
-              stroke={DOUBLE_COLOR} strokeWidth="1.5" strokeDasharray="4 3" opacity="0.9"/>
-            <text x={sepX+thPx} y={mT+innerH+36} textAnchor="middle" fill={DOUBLE_COLOR} fontSize="9" fontWeight="700">⬛⬛</text>
-          </g>
-        ) : (
-          <rect key={`sep-${i}`} x={sepX} y={mT} width={thPx} height={innerH}
-            fill="url(#pcGW)" stroke={WOOD_STROKE} strokeWidth="1"/>
-        );
-      })}
-
-      {mRects.map(({ x, w, m, i, intTop, intBottom, intH: iH }) => {
-        const moduleData = cabinetModules[i] || m;
-        const interiorCm = Math.max(1, cabH - plinth);
-        const cmToPx = iH / interiorCm;
-        const nbDoors = moduleData.doors || 0;
-        const nbSliding = moduleData.slidingDoors || 0;
-
-        const shelfHeightsCm = Array.isArray(moduleData?.shelves)
-          ? moduleData.shelves
-              .map((s) => (typeof s === 'object' && s !== null ? toNum(s.y, NaN) : toNum(s, NaN)))
-              .filter((v) => Number.isFinite(v))
-              .sort((a, b) => a - b)
-          : [];
-
-        const sourceDrawerItems = Array.isArray(moduleData?.drawerItems) && moduleData.drawerItems.length > 0
-          ? moduleData.drawerItems
-          : [];
-
-        const resolvedDrawerItems = sourceDrawerItems.length > 0
-          ? sourceDrawerItems
-          : Array.from({ length: m.drawers || 0 }, (_, di) => ({ y: di * 18, height: 18 }));
-
-        const safeDrawerItems = [];
-        for (const dr of resolvedDrawerItems) {
-          const drawerBottomCm = Math.max(0, toNum(dr.y, 0));
-          const drawerHeightCm = Math.max(5, toNum(dr.height ?? dr.h, 18));
-          const drawerTopCm = drawerBottomCm + drawerHeightCm;
-          const hitShelf = shelfHeightsCm.some((shelfCm) => shelfCm > drawerBottomCm && shelfCm < drawerTopCm);
-          if (hitShelf) break;
-          safeDrawerItems.push({ y: drawerBottomCm, height: drawerHeightCm });
-        }
-
-        const tiroirs = safeDrawerItems.map((dr, di) => {
-          const drawerH = Math.max(10, dr.height * cmToPx);
-          const dy = intBottom - (dr.y + dr.height) * cmToPx;
-          return (
-            <g key={`dr-${i}-${di}`}
-              onClick={e => { e.stopPropagation(); if (isErase) onModuleErase(i, 'drawer'); }}
-              style={{ cursor: isErase ? 'pointer' : 'default' }}>
-              <rect x={x+2} y={dy+1} width={w-4} height={drawerH-2} fill={WOOD_FILL} stroke={WOOD_STROKE} strokeWidth="1" rx="1"/>
-              <line x1={x+2} y1={dy+1} x2={x+w-2} y2={dy+1} stroke={WOOD_STROKE} strokeWidth="0.5"/>
-              <rect x={x+w/2-14} y={dy+drawerH/2-3.5} width="28" height="7" fill="#9ca3af" stroke="#6b7280" strokeWidth="0.8" rx="3"/>
-              <ellipse cx={x+w/2} cy={dy+drawerH/2} rx="3.5" ry="2.5" fill="#6b7280"/>
-              {isErase && <rect x={x+2} y={dy+1} width={w-4} height={drawerH-2} fill="red" opacity="0.18" rx="1"/>}
-            </g>
-          );
-        });
-
-        const nd     = Math.min(nbDoors, 2);
-        const portes = Array.from({ length: nd }, (_, di) => {
-          const dw  = nd === 2 ? w / 2 : w;
-          const dx  = nd === 2 && di === 1 ? x + w / 2 : x;
-          const pad = Math.max(8, dw * 0.08);
-          const hx2 = di === 0 ? dx + dw - 14 : dx + 10;
-          return (
-            <g key={`door-${i}-${di}`}
-              onClick={e => { e.stopPropagation(); if (isErase) onModuleErase(i, 'door'); }}
-              style={{ cursor: isErase ? 'pointer' : 'default' }}>
-              <rect x={dx+2} y={intTop+2} width={dw-4} height={iH-4} fill="url(#pcGDoor)" stroke={WOOD_STROKE} strokeWidth="1.5" rx="1"/>
-              <rect x={dx+pad} y={intTop+pad} width={dw-2*pad} height={iH-2*pad} fill="none" stroke={WOOD_STROKE} strokeWidth="0.8" opacity="0.5"/>
-              <rect x={hx2-4} y={intTop+iH/2-10} width="8" height="20" fill="#a0a0a0" stroke="#666" strokeWidth="0.8" rx="3"/>
-              {isErase && <rect x={dx+2} y={intTop+2} width={dw-4} height={iH-4} fill="red" opacity="0.15" rx="1"/>}
-            </g>
-          );
-        });
-
-        const sliding = nbSliding > 0 ? (
-          <g
-            onClick={e => { e.stopPropagation(); if (isErase) onModuleErase(i, 'sliding'); }}
-            style={{ cursor: isErase ? 'pointer' : 'default' }}
-          >
-            <rect x={x+3} y={intTop+3} width={w-6} height={iH-6} fill="none" stroke="#60a5fa" strokeWidth="1.3" rx="1" />
-            <line x1={x+6} y1={intTop+8} x2={x+w-6} y2={intTop+8} stroke="#60a5fa" strokeWidth="1.5" />
-            <line x1={x+6} y1={intTop+iH-8} x2={x+w-6} y2={intTop+iH-8} stroke="#60a5fa" strokeWidth="1.5" />
-            <rect x={x+6} y={intTop+12} width={w*0.52} height={iH-24} fill="rgba(147,197,253,0.15)" stroke="#60a5fa" strokeWidth="1" />
-            <rect x={x+w*0.42-6} y={intTop+12} width={w*0.52} height={iH-24} fill="rgba(147,197,253,0.22)" stroke="#3b82f6" strokeWidth="1" />
-          </g>
-        ) : null;
-
-        const usedDrawerHeightPx = safeDrawerItems.reduce((acc, dr) => acc + Math.max(10, dr.height * cmToPx), 0);
-        const numY = intTop + Math.max(30, (iH - usedDrawerHeightPx) * 0.45);
-        const hitZone = (isPlace || isAdd) ? (
-          <rect key={`hit-${i}`} x={x} y={intTop} width={w} height={iH}
-            fill="transparent" style={{ cursor: 'cell' }}
-            onMouseDown={e => {
-              e.stopPropagation();
-              if (isPlace) { onFacadePointerDown(e, i); }
-              else { onModuleClick(i, activeTool); }
-            }}/>
-        ) : null;
-
-        return (
-          <g key={`mod-${i}`}>
-            <rect x={x} y={intTop} width={w} height={iH} fill="#faf5ed" stroke={WOOD_STROKE} strokeWidth="0.7"/>
-            {tiroirs}
-            {portes}
-            {sliding}
-            <circle cx={x+w/2} cy={numY} r="20" fill="none" stroke={DIM_COLOR} strokeWidth="2"/>
-            <text x={x+w/2} y={numY+6} textAnchor="middle" fill={DIM_COLOR} fontWeight="700" fontSize="17">{i+1}</text>
-            <line x1={x}   y1={mT+drawH+10} x2={x+w} y2={mT+drawH+10} stroke="#b45309" strokeWidth="1"/>
-            <line x1={x}   y1={mT+drawH+6}  x2={x}   y2={mT+drawH+14} stroke="#b45309" strokeWidth="1"/>
-            <line x1={x+w} y1={mT+drawH+6}  x2={x+w} y2={mT+drawH+14} stroke="#b45309" strokeWidth="1"/>
-            <text x={x+w/2} y={mT+drawH+26} textAnchor="middle" fill="#b45309" fontWeight="700" fontSize="11">{m.width.toFixed(2)} cm</text>
-            {hitZone}
-          </g>
-        );
-      })}
-
-      {facadeItems.map(item => {
-        const mr = mRects[item.modIdx];
-        if (!mr) return null;
-        const { x, w, intTop, intH: iH } = mr;
-        const ey = intTop + item.yRatio * iH;
-        if (item.type === 'shelf') {
-          return (
-            <g key={item.id}
-              style={{ cursor: isErase ? 'pointer' : 'grab' }}
-              onMouseDown={e => { e.stopPropagation(); if (!isErase) onItemPointerDown(e, item.id); }}
-              onClick={e => { e.stopPropagation(); if (isErase) onItemErase(item.id); }}>
-              <rect x={x} y={ey-3.5} width={w} height={6.5} fill={WOOD_FILL} stroke={WOOD_STROKE} strokeWidth="1"/>
-              <circle cx={x+9}   cy={ey} r="2.5" fill={WOOD_STROKE}/>
-              <circle cx={x+w-9} cy={ey} r="2.5" fill={WOOD_STROKE}/>
-              <rect x={x} y={ey-10} width={w} height="20" fill="transparent"/>
-              {isErase && <rect x={x} y={ey-8} width={w} height="16" fill="red" opacity="0.2"/>}
-            </g>
-          );
-        }
-        if (item.type === 'rod') {
-          return (
-            <g key={item.id}
-              style={{ cursor: isErase ? 'pointer' : 'grab' }}
-              onMouseDown={e => { e.stopPropagation(); if (!isErase) onItemPointerDown(e, item.id); }}
-              onClick={e => { e.stopPropagation(); if (isErase) onItemErase(item.id); }}>
-              <rect x={x+8}    y={ey-10} width="7"  height="18" fill="#6b7280" rx="2"/>
-              <rect x={x+w-15} y={ey-10} width="7"  height="18" fill="#6b7280" rx="2"/>
-              <line x1={x+16} y1={ey} x2={x+w-15} y2={ey} stroke="#4b5563" strokeWidth="6" strokeLinecap="round"/>
-              <line x1={x+16} y1={ey-2} x2={x+w-15} y2={ey-2} stroke="#d1d5db" strokeWidth="2" strokeLinecap="round" opacity="0.7"/>
-              <rect x={x+8} y={ey-12} width={w-20} height="24" fill="transparent"/>
-              {isErase && <rect x={x+8} y={ey-12} width={w-20} height="24" fill="red" opacity="0.18" rx="4"/>}
-            </g>
-          );
-        }
-        return null;
-      })}
-
-      <line x1={mL} y1={mT-26} x2={mL+drawW} y2={mT-26} stroke={DIM_COLOR} strokeWidth="1.5"/>
-      <line x1={mL}       y1={mT-32} x2={mL}       y2={mT-20} stroke={DIM_COLOR} strokeWidth="1.5"/>
-      <line x1={mL+drawW} y1={mT-32} x2={mL+drawW} y2={mT-20} stroke={DIM_COLOR} strokeWidth="1.5"/>
-      <text x={mL+drawW/2} y={mT-30} textAnchor="middle" fill={DIM_COLOR} fontSize="13" fontWeight="700">{cabW} cm</text>
-      <line x1={mL+drawW+24} y1={mT}       x2={mL+drawW+24} y2={mT+drawH} stroke={DIM_COLOR} strokeWidth="1.5"/>
-      <line x1={mL+drawW+18} y1={mT}       x2={mL+drawW+30} y2={mT}       stroke={DIM_COLOR} strokeWidth="1.5"/>
-      <line x1={mL+drawW+18} y1={mT+drawH} x2={mL+drawW+30} y2={mT+drawH} stroke={DIM_COLOR} strokeWidth="1.5"/>
-      <text x={mL+drawW+40} y={mT+drawH/2} textAnchor="middle" fill={DIM_COLOR} fontSize="13" fontWeight="700"
-        transform={`rotate(90 ${mL+drawW+40} ${mT+drawH/2})`}>{cabH} cm</text>
-
-      {globalSliding?.enabled && (
-        <g>
-          <line x1={mL+4} y1={mT+10} x2={mL+drawW-4} y2={mT+10} stroke="#38bdf8" strokeWidth="2" />
-          <line x1={mL+4} y1={mT+innerH-10} x2={mL+drawW-4} y2={mT+innerH-10} stroke="#38bdf8" strokeWidth="2" />
-          <text x={mL + drawW/2} y={mT + 24} textAnchor="middle" fill="#0ea5e9" fontSize="11" fontWeight="700">
-            {globalSliding.count} vantaux coulissants · H {globalSliding.heightCm} cm
-          </text>
-        </g>
-      )}
-    </g>
-  );
-}
 
 export default function SketchEditor({ image, scanImage, initialResult, draft, onDraftChange, onComplete, onCancel, onSave }) {
   const rawImg             = image || scanImage || null;
   const svgRef             = useRef(null);
   const facadeSvgRef       = useRef(null);
   const facadeContainerRef = useRef(null);
-  const onDraftChangeRef   = useRef(onDraftChange);
-  const drag               = useRef({ on: false, startX: 0, startY: 0, elStartX: 0, elStartY: 0 });
-  const facadeDrag         = useRef({ active: false, itemId: null, startY: 0, startYRatio: 0, modIdx: -1 });
-  useEffect(() => { onDraftChangeRef.current = onDraftChange; }, [onDraftChange]);
 
   const [facadePng, setFacadePng] = useState(null);
   const imgSrc               = facadePng || rawImg;
@@ -378,12 +55,6 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
   }, [initialResult]);
 
   // ─── Cache intelligent : restaurer uniquement le brouillon du même scan ─────
-  const hasFreshScanResult = Boolean(
-    initialResult && (
-      initialResult.cabinet ||
-      (Array.isArray(initialResult.pieces) && initialResult.pieces.length > 0)
-    )
-  );
   const savedState = (() => {
     try {
       if (draft?.state && Object.keys(draft.state).length > 0) return draft.state;
@@ -397,10 +68,7 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
   const [tool,          setTool]          = useState('drawer');
   const [baseView,      setBaseView]      = useState(imgSrc ? 'photo' : 'facade');
   const [elements,      setElements]      = useState(savedState?.elements || []);
-  const [draggingId,    setDraggingId]    = useState(null);
-  const [resizingId,    setResizingId]    = useState(null);
   const [imgSize,       setImgSize]       = useState({ w: 800, h: 600 });
-  const [viewport,      setViewport]      = useState({ x: 0, y: 0, w: 800, h: 600 });
   const [isNavMode,     setIsNavMode]     = useState(() => (typeof window !== 'undefined' ? window.innerWidth < MOBILE_BREAKPOINT_PX : false));
   const [isCompactMobile, setIsCompactMobile] = useState(() => (typeof window !== 'undefined' ? window.innerWidth < 640 : false));
   const [loading,       setLoading]       = useState(false);
@@ -430,9 +98,6 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
     count: 2,
     heightCm: Math.max(80, toNum(initialCab.height, 240) - toNum(initialCab.plinth, 0)),
   });
-  const panRef = useRef({ active: false, startX: 0, startY: 0, vX: 0, vY: 0 });
-  const pinchRef = useRef({ active: false, dist: 0, centerX: 0, centerY: 0, base: { x: 0, y: 0, w: 0, h: 0 } });
-
   const [widthInputs, setWidthInputs] = useState(
     () => (savedState?.facadeModules || normalizeModulesFromResult(initialResult, toNum(initialCab.width, 200)))
       .map(m => String(m.width))
@@ -570,86 +235,11 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
     };
   }, [cabinetDims, facadeModules, facadeItems, moduleDetails, globalSliding]);
 
-  const saveToStorage = useCallback(() => {
-    const payload = {
-      fingerprint: sketchFingerprint,
-      state: {
-        elements, cabinetDims, facadeModules, facadeItems, moduleDetails, generalNotes, joints,
-        globalSliding,
-      },
-    };
-    localStorage.setItem(LS_SKETCH_KEY, JSON.stringify(payload));
-    if (onDraftChangeRef.current) onDraftChangeRef.current(payload);
-  }, [elements, cabinetDims, facadeModules, facadeItems, moduleDetails, generalNotes, joints, globalSliding, sketchFingerprint]);
-
-  const facadeItemsRef = useRef(facadeItems);
-  useEffect(() => { facadeItemsRef.current = facadeItems; }, [facadeItems]);
-
-  useEffect(() => {
-    const payload = {
-      fingerprint: sketchFingerprint,
-      state: {
-        elements,
-        cabinetDims,
-        facadeModules,
-        facadeItems: facadeItemsRef.current,
-        moduleDetails,
-        generalNotes,
-        joints,
-        globalSliding,
-      },
-    };
-    try {
-      localStorage.setItem(LS_SKETCH_KEY, JSON.stringify(payload));
-      if (onDraftChangeRef.current) onDraftChangeRef.current(payload);
-    } catch {}
-  }, [
-    elements,
-    cabinetDims,
-    facadeModules,
-    facadeItems,
-    moduleDetails,
-    generalNotes,
-    joints,
-    globalSliding,
-    sketchFingerprint,
-  ]);
-  const handleSave = saveToStorage;
-  const remoteSaveSnapshot = useMemo(() => JSON.stringify({
-    cabinetDims,
-    facadeModules,
-    facadeItems,
-    moduleDetails,
-    generalNotes,
-    joints,
-    globalSliding,
-  }), [cabinetDims, facadeModules, facadeItems, moduleDetails, generalNotes, joints, globalSliding]);
-  const lastAutoSavedSnapshotRef = useRef('');
-  const autoSavingRef = useRef(false);
-  const [autoSaveBackoffMs, setAutoSaveBackoffMs] = useState(REMOTE_AUTOSAVE_INTERVAL_MS);
-  const triggerRemoteSave = useCallback(async () => {
-    handleSave();
-    if (!onSave || !currentCabinet || autoSavingRef.current) return;
-    autoSavingRef.current = true;
-    try {
-      await onSave(currentCabinet);
-      lastAutoSavedSnapshotRef.current = remoteSaveSnapshot;
-      setAutoSaveBackoffMs(REMOTE_AUTOSAVE_INTERVAL_MS);
-    } catch {
-      setAutoSaveBackoffMs((v) => Math.min(120000, Math.max(REMOTE_AUTOSAVE_INTERVAL_MS, v * 2)));
-    } finally {
-      autoSavingRef.current = false;
-    }
-  }, [handleSave, onSave, currentCabinet, remoteSaveSnapshot]);
-
-  useEffect(() => {
-    if (!onSave) return;
-    const timer = window.setTimeout(() => {
-      if (remoteSaveSnapshot === lastAutoSavedSnapshotRef.current) return;
-      void triggerRemoteSave();
-    }, autoSaveBackoffMs);
-    return () => window.clearTimeout(timer);
-  }, [onSave, remoteSaveSnapshot, triggerRemoteSave, autoSaveBackoffMs]);
+  const { triggerRemoteSave } = useSketchPersistence({
+    elements, cabinetDims, facadeModules, facadeItems,
+    moduleDetails, generalNotes, joints, globalSliding,
+    sketchFingerprint, onSave, onDraftChange, currentCabinet,
+  });
 
   const didAutoSwitchRef = useRef(false);
   useEffect(() => {
@@ -678,9 +268,6 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
     img.src = imgSrc;
   }, [imgSrc, baseView]);
   useEffect(() => {
-    setViewport({ x: 0, y: 0, w: imgSize.w, h: imgSize.h });
-  }, [imgSize.w, imgSize.h, baseView]);
-  useEffect(() => {
     if (typeof window === 'undefined') return;
     const onResize = () => setIsCompactMobile(window.innerWidth < 640);
     window.addEventListener('resize', onResize);
@@ -690,83 +277,27 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
   const FACADE_W = 1140;
   const FACADE_H = 700;
 
-  const getFacadeGeometry = useCallback(() => {
-    const drawW = imgSize.w - MARGIN.l - MARGIN.r;
-    const drawH = imgSize.h - MARGIN.t  - MARGIN.b;
-    const thPx  = thickness * (drawW / Math.max(1, cabinetDims.width));
-    const plPx  = cabinetDims.plinth * (drawH / Math.max(1, cabinetDims.height));
-    return computeMRects(facadeModules, joints, thPx, drawW, drawH, MARGIN.l, MARGIN.t, plPx);
-  }, [imgSize, thickness, cabinetDims, facadeModules, joints]);
+  const {
+    viewport,
+    setViewport,
+    handlePointerDown,
+    handlePointerMove,
+    handlePointerUp,
+    getSVGCoords,
+    resetViewport,
+    handleFacadePointerDown,
+    handleItemPointerDown,
+  } = useSketchGestures({
+    svgRef, imgSize, isNavMode, baseView, tool,
+    elements, facadeItems, setElements, setFacadeItems,
+    setEditingDimId, sketchFingerprint, cabinetDims,
+    facadeModules, moduleDetails, generalNotes, joints,
+    globalSliding, thickness,
+  });
 
-  const getSVGCoords = useCallback((e) => {
-    const svg = svgRef.current;
-    if (!svg) return { x: 0, y: 0 };
-    const rect   = svg.getBoundingClientRect();
-    const scaleX = viewport.w / rect.width;
-    const scaleY = viewport.h / rect.height;
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    return {
-      x: Math.max(0, Math.min(imgSize.w, viewport.x + (clientX - rect.left) * scaleX)),
-      y: Math.max(0, Math.min(imgSize.h, viewport.y + (clientY - rect.top)  * scaleY)),
-    };
-  }, [imgSize, viewport]);
-
-  const clampViewport = useCallback((next) => {
-    const minW = imgSize.w * 0.35;
-    const minH = imgSize.h * 0.35;
-    const w = Math.max(minW, Math.min(imgSize.w, next.w));
-    const h = Math.max(minH, Math.min(imgSize.h, next.h));
-    const x = Math.max(0, Math.min(imgSize.w - w, next.x));
-    const y = Math.max(0, Math.min(imgSize.h - h, next.y));
-    return { x, y, w, h };
-  }, [imgSize]);
-
-  const resetViewport = useCallback(() => {
+  useEffect(() => {
     setViewport({ x: 0, y: 0, w: imgSize.w, h: imgSize.h });
-  }, [imgSize]);
-
-  const handleFacadePointerDown = useCallback((e, modIdx) => {
-    e.stopPropagation();
-    const { y } = getSVGCoords(e);
-    const mRects = getFacadeGeometry();
-    const mr     = mRects[modIdx];
-    if (!mr) return;
-    const yRatio = clamp((y - mr.intTop) / mr.intH, 0.02, 0.98);
-    const newItem = { id: uid(), type: tool, modIdx, yRatio };
-    setFacadeItems(prev => [...prev, newItem]);
-    setFacadeItems(prev => {
-      const next = [...prev];
-      setTimeout(() => {
-        localStorage.setItem(LS_SKETCH_KEY, JSON.stringify({
-          fingerprint: sketchFingerprint,
-          state: {
-            elements,
-            cabinetDims,
-            facadeModules,
-            facadeItems: next,
-            moduleDetails,
-            generalNotes,
-            joints,
-            globalSliding,
-          },
-        }));
-      }, 0);
-      return next;
-    });
-    facadeDrag.current = { active: true, itemId: newItem.id, startY: y, startYRatio: yRatio, modIdx, intTop: mr.intTop, intH: mr.intH };
-  }, [tool, getSVGCoords, getFacadeGeometry, sketchFingerprint, elements, cabinetDims, facadeModules, moduleDetails, generalNotes, joints, globalSliding]);
-
-  const handleItemPointerDown = useCallback((e, itemId) => {
-    e.stopPropagation();
-    const { y } = getSVGCoords(e);
-    const item   = facadeItems.find(it => it.id === itemId);
-    if (!item) return;
-    const mRects = getFacadeGeometry();
-    const mr     = mRects[item.modIdx];
-    if (!mr) return;
-    facadeDrag.current = { active: true, itemId, startY: y, startYRatio: item.yRatio, modIdx: item.modIdx, intTop: mr.intTop, intH: mr.intH };
-  }, [getSVGCoords, getFacadeGeometry, facadeItems]);
+  }, [imgSize.w, imgSize.h, baseView, setViewport]);
 
   const handleModuleClick = useCallback((modIdx, activeTool) => {
     setFacadeModules(prev => {
@@ -811,180 +342,15 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
     setFacadeItems(prev => prev.filter(it => it.id !== itemId));
   }, []);
 
-  const handlePointerMove = useCallback((e) => {
-    if (pinchRef.current.active && e.touches && e.touches.length === 2) {
-      const svg = svgRef.current;
-      if (!svg) return;
-      const rect = svg.getBoundingClientRect();
-      const [t1, t2] = e.touches;
-      const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
-      if (dist <= 0) return;
-      const ratio = pinchRef.current.dist / dist;
-      const base = pinchRef.current.base;
-      const nextW = base.w * ratio;
-      const nextH = base.h * ratio;
-      const cxRatio = (pinchRef.current.centerX - rect.left) / Math.max(1, rect.width);
-      const cyRatio = (pinchRef.current.centerY - rect.top) / Math.max(1, rect.height);
-      const worldCX = base.x + cxRatio * base.w;
-      const worldCY = base.y + cyRatio * base.h;
-      setViewport(prev => clampViewport({
-        x: worldCX - cxRatio * nextW,
-        y: worldCY - cyRatio * nextH,
-        w: nextW,
-        h: nextH,
-      }));
-      return;
-    }
-    if (panRef.current.active) {
-      const svg = svgRef.current;
-      if (!svg) return;
-      const rect = svg.getBoundingClientRect();
-      const clientX = e.touches ? e.touches[0]?.clientX : e.clientX;
-      const clientY = e.touches ? e.touches[0]?.clientY : e.clientY;
-      if (typeof clientX !== 'number' || typeof clientY !== 'number') return;
-      const dxPx = clientX - panRef.current.startX;
-      const dyPx = clientY - panRef.current.startY;
-      const dxWorld = dxPx * (viewport.w / Math.max(1, rect.width));
-      const dyWorld = dyPx * (viewport.h / Math.max(1, rect.height));
-      setViewport(clampViewport({
-        x: panRef.current.vX - dxWorld,
-        y: panRef.current.vY - dyWorld,
-        w: viewport.w,
-        h: viewport.h,
-      }));
-      return;
-    }
-    if (facadeDrag.current.active) {
-      const { y } = getSVGCoords(e);
-      const { itemId, intTop, intH } = facadeDrag.current;
-      const yRatio = clamp((y - intTop) / intH, 0.02, 0.98);
-      setFacadeItems(prev => prev.map(it => it.id === itemId ? { ...it, yRatio } : it));
-      return;
-    }
-    if (!resizingId && !draggingId) return;
-    e.preventDefault();
-    const { x, y } = getSVGCoords(e);
-    if (resizingId) {
-      setElements(prev => prev.map(el => {
-        if (el.id !== resizingId) return el;
-        if (el.type === 'dim') return { ...el, x2: x, y2: y };
-        return { ...el, w: Math.max(10, x - el.x), h: Math.max(10, y - el.y) };
-      }));
-    } else if (draggingId) {
-      setElements(prev => prev.map(el => {
-        if (el.id !== draggingId) return el;
-        return { ...el, x: drag.current.elStartX + (x - drag.current.startX), y: drag.current.elStartY + (y - drag.current.startY) };
-      }));
-    }
-  }, [resizingId, draggingId, getSVGCoords, clampViewport, viewport]);
-
-  const handlePointerUp = useCallback(() => {
-    panRef.current.active = false;
-    pinchRef.current.active = false;
-    if (facadeDrag.current.active) {
-      facadeDrag.current.active = false;
-      setFacadeItems(prev => {
-        const next = [...prev];
-        localStorage.setItem(LS_SKETCH_KEY, JSON.stringify({
-          fingerprint: sketchFingerprint,
-          state: {
-            elements,
-            cabinetDims,
-            facadeModules,
-            facadeItems: next,
-            moduleDetails,
-            generalNotes,
-            joints,
-            globalSliding,
-          },
-        }));
-        return next;
-      });
-    } else {
-      facadeDrag.current.active = false;
-    }
-    if (resizingId) {
-      const el = elements.find(e => e.id === resizingId);
-      if (el?.type === 'dim') {
-        const dx = el.x2 - el.x1, dy = el.y2 - el.y1;
-        if (Math.sqrt(dx * dx + dy * dy) > 15) setEditingDimId(resizingId);
-      }
-    }
-    setResizingId(null); setDraggingId(null);
-  }, [resizingId, elements, sketchFingerprint, cabinetDims, facadeModules,
-      moduleDetails, generalNotes, joints, globalSliding]);
-
-  const handlePointerDown = useCallback((e) => {
-    if (e.touches && e.touches.length === 2) {
-      const [t1, t2] = e.touches;
-      pinchRef.current = {
-        active: true,
-        dist: Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY),
-        centerX: (t1.clientX + t2.clientX) / 2,
-        centerY: (t1.clientY + t2.clientY) / 2,
-        base: { ...viewport },
-      };
-      return;
-    }
-    if (isNavMode) {
-      const clientX = e.touches ? e.touches[0]?.clientX : e.clientX;
-      const clientY = e.touches ? e.touches[0]?.clientY : e.clientY;
-      if (typeof clientX !== 'number' || typeof clientY !== 'number') return;
-      panRef.current = { active: true, startX: clientX, startY: clientY, vX: viewport.x, vY: viewport.y };
-      return;
-    }
-    if (baseView === 'facade' && ['shelf','rod','drawer','door','sliding','erase'].includes(tool)) return;
-    if (tool === 'erase') return;
-    e.preventDefault();
-    const { x, y } = getSVGCoords(e);
-    if (tool === 'dim') {
-      const newEl = { id: uid(), type: 'dim', x1: x, y1: y, x2: x, y2: y, label: '' };
-      setElements(prev => [...prev, newEl]);
-      setResizingId(newEl.id);
-    } else if (tool === 'note') {
-      const text = prompt('Texte de la note :');
-      if (text) setElements(prev => [...prev, { id: uid(), type: 'note', x, y, text }]);
-    }
-  }, [tool, getSVGCoords, baseView, isNavMode, viewport]);
-
   const eraseElement = (id) => setElements(prev => prev.filter(el => el.id !== id));
 
-  const buildContextPrompt = useCallback(() => {
-    const dims  = elements.filter(e => e.type === 'dim');
-    const notes = elements.filter(e => e.type === 'note');
-    let ctx = '';
-    if (dimensionsFromWizard && cabinetDims.width > 0)
-      ctx += `DIMENSIONS IMPOSÉES :\n  width:${cabinetDims.width} cm  height:${cabinetDims.height} cm  plinth:${cabinetDims.plinth} cm\n\n`;
-    ctx += `MONTANTS (ép. panneau=${thickness} cm) :\n`;
-    joints.forEach((d, i) => ctx += `  M${i+1}|M${i+2}: ${d?'⬛⬛ DOUBLE':'▪️ simple'} → ${jointThickness(d,thickness).toFixed(1)} cm\n`);
-    const nD = joints.filter(Boolean).length;
-    ctx += `  Total joints=${totalJointsWidth.toFixed(1)} cm (${nD} double, ${joints.length-nD} simple)  Net=${totalInteriorWidth.toFixed(1)} cm\n\n`;
-    ctx += 'MODULES (façade éditée par l\'utilisateur) :\n';
-    facadeModules.forEach((m, i) => {
-      const items    = facadeItems.filter(it => Number(it.modIdx) === i);
-      const nbShelf  = items.filter(it => it.type === 'shelf').length;
-      const nbRod    = items.filter(it => it.type === 'rod').length;
-      const nbDrawers = typeof m.drawers === 'number' ? m.drawers : 0;
-      const nbDoors   = typeof m.doors   === 'number' ? m.doors   : 0;
-      const det = moduleDetails[i] || { hasBack: true, drawerParts: defaultDrawerParts() };
-      const dp = { ...defaultDrawerParts(), ...(det.drawerParts || {}) };
-      ctx += `  M${i+1}: L=${m.width.toFixed(2)}cm  tiroirs=${nbDrawers}  tablettes=${nbShelf}  tringles=${nbRod}  portes=${nbDoors}  coulissantes=${det.slidingDoors || 0}  fond=${det.hasBack ? 'oui' : 'non'}\n`;
-      if (nbDrawers > 0) {
-        const hList = Array.isArray(det.drawerHeights) ? det.drawerHeights.map(v => Math.max(5, toNum(v, 18))) : [];
-        ctx += `      hauteurs_tiroirs_cm=${hList.join(',') || 'auto'}\n`;
-        ctx += `      tiroir: facade=${dp.front ? 'oui' : 'non'} arriere=${dp.back ? 'oui' : 'non'} coteG=${dp.left ? 'oui' : 'non'} coteD=${dp.right ? 'oui' : 'non'} fond=${dp.bottom ? 'oui' : 'non'}\n`;
-      }
-    });
-    if (dims.length > 0) { ctx += 'COTES :\n'; dims.forEach(d => { if(d.label) ctx += `  ${d.label} cm\n`; }); }
-    if (notes.length > 0) { ctx += 'NOTES :\n'; notes.forEach((n,i) => ctx += `  ${i+1}. "${n.text}"\n`); }
-    if (generalNotes.trim()) ctx += `NOTES GÉNÉRALES : ${generalNotes.trim()}\n`;
-    if (globalSliding.enabled) {
-      ctx += `PORTES COULISSANTES GLOBALES: oui (vantaux=${globalSliding.count}, hauteur=${globalSliding.heightCm} cm)\n`;
-    }
-    ctx += `\nCOTES MEUBLE: L=${cabinetDims.width} H=${cabinetDims.height} plinthe=${cabinetDims.plinth} cm\n`;
-    ctx += `INSTRUCTION: Tiens compte des doubles montants pour les largeurs nettes.`;
-    return ctx;
-  }, [elements, dimensionsFromWizard, cabinetDims, thickness, joints, totalJointsWidth, totalInteriorWidth, facadeModules, facadeItems, moduleDetails, generalNotes, globalSliding]);
+  const getContextPrompt = useCallback(() => buildSketchContextPrompt({
+    elements, dimensionsFromWizard, cabinetDims, thickness, joints,
+    totalJointsWidth, totalInteriorWidth, facadeModules, facadeItems,
+    moduleDetails, generalNotes, globalSliding,
+  }), [elements, dimensionsFromWizard, cabinetDims, thickness, joints,
+       totalJointsWidth, totalInteriorWidth, facadeModules, facadeItems,
+       moduleDetails, generalNotes, globalSliding]);
 
   const handleRelancer = useCallback(async () => {
     setLoading(true);
@@ -1023,10 +389,11 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
         hasCabinet: !!currentCabinet
       });
       const SERVER = 'https://panelcut-server.vercel.app';
+      const prompt = getContextPrompt();
       let res = await fetch(`${SERVER}/api/refine`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: base64, mediaType: 'image/jpeg', userNotes: buildContextPrompt(), prompt: buildContextPrompt() }),
+        body: JSON.stringify({ image: base64, mediaType: 'image/jpeg', userNotes: prompt, prompt }),
       });
       if (res.status === 404 || res.status === 405) {
         res = await fetch(`${SERVER}/api/scan`, {
@@ -1061,7 +428,7 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
     } finally {
       setLoading(false);
     }
-  }, [onComplete, imgSize, elements, cabinetDims, facadeModules, facadeItems, generalNotes, joints, buildContextPrompt, currentCabinet]);
+  }, [onComplete, imgSize, elements, cabinetDims, facadeModules, facadeItems, generalNotes, joints, getContextPrompt, currentCabinet]);
 
   const renderElement = (el) => {
     if (el.type === 'dim') return (
@@ -1134,7 +501,7 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
         aria-hidden="true"
       >
         <rect width={FACADE_W} height={FACADE_H} fill="#f8fafc"/>
-        <FacadeRealisteSVG
+        <FacadeCanvas
           svgW={FACADE_W} svgH={FACADE_H}
           cabW={cabinetDims.width} cabH={cabinetDims.height}
           plinth={cabinetDims.plinth} thick={thickness}
@@ -1204,179 +571,32 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
         </div>
       )}
 
-      <div className="flex gap-2 p-2 bg-slate-800 overflow-x-auto border-b border-slate-700">
-        <div className="flex items-center gap-1 mr-2">
-          <button onClick={()=>setBaseView('photo')}
-            className={`px-3 py-1 rounded text-xs font-bold ${baseView==='photo'?'bg-blue-600 text-white':'bg-slate-700 text-slate-300'}`}>
-            {facadePng ? 'Façade SVG' : 'Photo'}
-          </button>
-          <button onClick={()=>setBaseView('facade')}
-            className={`px-3 py-1 rounded text-xs font-bold ${baseView==='facade'?'bg-blue-600 text-white':'bg-slate-700 text-slate-300'}`}>
-            Plan façade
-          </button>
-          <button onClick={() => setIsNavMode(v => !v)}
-            className={`px-3 py-1 rounded text-xs font-bold ${isNavMode ? 'bg-emerald-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
-            🖐️ Déplacer
-          </button>
-          <button onClick={resetViewport}
-            className="px-3 py-1 rounded text-xs font-bold bg-slate-700 text-slate-200">
-            🎯 Recentrer
-          </button>
-        </div>
-        {dimensionsFromWizard && (
-          <span className="flex items-center gap-1 px-2 py-1 rounded text-xs font-bold bg-green-700/30 text-green-400 border border-green-600/40">✓ Cotes</span>
-        )}
-        {TOOLS.map(t => (
-          <button key={t.id} onClick={()=>setTool(t.id)}
-            className={`flex items-center gap-1.5 ${isCompactMobile ? 'px-2 py-2' : 'px-3 py-2'} rounded text-sm font-medium transition ${
-              tool===t.id?'bg-slate-600 text-white ring-2 ring-offset-1 ring-offset-slate-800':'text-slate-400 hover:bg-slate-700'
-            }`}
-            style={tool===t.id?{borderColor:t.color,borderWidth:'2px'}:{}}>
-            <span>{t.icon}</span>
-            {!isCompactMobile && <span>{t.label}</span>}
-          </button>
-        ))}
-        {!isCompactMobile && <div className="ml-auto text-xs text-slate-400 self-center px-2 whitespace-nowrap">{hint}</div>}
-      </div>
-
-      <div className="bg-slate-900 border-b border-slate-700 p-2 flex flex-wrap gap-2 items-center text-xs">
-        <span className="text-slate-400">Cotes :</span>
-        <label className="text-slate-300">L <input value={cabinetDims.width} onChange={e=>setCabinetDims(v=>({...v,width:toNum(e.target.value,0)}))} className="w-20 ml-1 px-1 py-0.5 bg-slate-800 border border-slate-600 rounded"/> cm</label>
-        <label className="text-slate-300">H <input value={cabinetDims.height} onChange={e=>setCabinetDims(v=>({...v,height:toNum(e.target.value,0)}))} className="w-20 ml-1 px-1 py-0.5 bg-slate-800 border border-slate-600 rounded"/> cm</label>
-        <label className="text-slate-300">Plinthe <input value={cabinetDims.plinth} onChange={e=>setCabinetDims(v=>({...v,plinth:toNum(e.target.value,0)}))} className="w-20 ml-1 px-1 py-0.5 bg-slate-800 border border-slate-600 rounded"/> cm</label>
-        <span className="text-slate-500 ml-2">Modules :</span>
-        {facadeModules.map((m, i) => (
-          <label key={m.id || i} className="text-slate-300">M{i+1}
-            <input
-              value={widthInputs[i] ?? ''}
-              onChange={e => setWidthInputs(prev => prev.map((v, idx) => idx === i ? e.target.value : v))}
-              onBlur={() => commitWidth(i)}
-              onKeyDown={e => { if (e.key === 'Enter') { commitWidth(i); e.target.blur(); } }}
-              className="w-16 ml-1 px-1 py-0.5 bg-slate-800 border border-slate-600 rounded"
-            />
-          </label>
-        ))}
-      </div>
-
-      {facadeModules.length > 0 && (
-        <div className="bg-slate-900/95 border-b border-slate-700 px-3 py-2 flex flex-wrap items-center gap-3 text-xs">
-          <span className="text-cyan-300 font-bold">🚪↔️ Coulissantes meuble:</span>
-          <label className="flex items-center gap-1 text-slate-200">
-            <input
-              type="checkbox"
-              checked={globalSliding.enabled}
-              onChange={(e) => setGlobalSliding((v) => ({ ...v, enabled: e.target.checked }))}
-            />
-            Activer
-          </label>
-          {globalSliding.enabled && (
-            <>
-              <label className="text-slate-300">Vantaux
-                <input
-                  type="number"
-                  min="2"
-                  max="4"
-                  value={globalSliding.count}
-                  onChange={(e) => setGlobalSliding((v) => ({ ...v, count: Math.max(2, Math.min(4, toNum(e.target.value, 2))) }))}
-                  className="w-12 ml-1 px-1 py-0.5 bg-slate-800 border border-slate-600 rounded"
-                />
-              </label>
-              <label className="text-slate-300">H(cm)
-                <input
-                  type="number"
-                  min="40"
-                  value={globalSliding.heightCm}
-                  onChange={(e) => setGlobalSliding((v) => ({ ...v, heightCm: Math.max(40, toNum(e.target.value, 180)) }))}
-                  className="w-14 ml-1 px-1 py-0.5 bg-slate-800 border border-slate-600 rounded"
-                />
-              </label>
-            </>
-          )}
-
-          <span className="text-amber-300 font-bold">🧩 Détail menuiserie:</span>
-          <div className="flex items-center gap-1">
-            {facadeModules.map((_, i) => (
-              <button
-                key={`md-${i}`}
-                onClick={() => setSelectedModuleIdx(i)}
-                className={`px-2 py-1 rounded border ${selectedModuleIdx === i ? 'bg-amber-500/20 border-amber-400 text-amber-300' : 'bg-slate-800 border-slate-600 text-slate-300'}`}
-              >
-                M{i + 1}
-              </button>
-            ))}
-          </div>
-          <label className="flex items-center gap-1 text-slate-200">
-            <input
-              type="checkbox"
-              checked={moduleDetails[selectedModuleIdx]?.hasBack ?? true}
-              onChange={(e) => setModuleDetails(prev => prev.map((d, i) => i === selectedModuleIdx ? { ...d, hasBack: e.target.checked } : d))}
-            />
-            Fond module
-          </label>
-          <label className="flex items-center gap-1 text-slate-200">
-            <input
-              type="checkbox"
-              checked={(moduleDetails[selectedModuleIdx]?.slidingDoors || 0) > 0}
-              onChange={(e) => setModuleDetails(prev => prev.map((d, i) => {
-                if (i !== selectedModuleIdx) return d;
-                return { ...d, slidingDoors: e.target.checked ? 2 : 0 };
-              }))}
-            />
-            Portes coulissantes
-          </label>
-          <span className="text-slate-500">Tiroir :</span>
-          {[
-            ['front', 'Façade'],
-            ['back', 'Arrière'],
-            ['left', 'Côté G'],
-            ['right', 'Côté D'],
-            ['bottom', 'Fond'],
-          ].map(([key, label]) => (
-            <label key={key} className="flex items-center gap-1 text-slate-200">
-              <input
-                type="checkbox"
-                checked={moduleDetails[selectedModuleIdx]?.drawerParts?.[key] ?? true}
-                onChange={(e) => setModuleDetails(prev => prev.map((d, i) => {
-                  if (i !== selectedModuleIdx) return d;
-                  return {
-                    ...d,
-                    drawerParts: {
-                      ...defaultDrawerParts(),
-                      ...(d?.drawerParts || {}),
-                      [key]: e.target.checked,
-                    },
-                  };
-                }))}
-              />
-              {label}
-            </label>
-          ))}
-          {(facadeModules[selectedModuleIdx]?.drawers || 0) > 0 && (
-            <div className="flex items-center gap-1">
-              <span className="text-slate-500">Hauteurs (cm):</span>
-              {Array.from({ length: facadeModules[selectedModuleIdx]?.drawers || 0 }, (_, di) => (
-                <label key={`dh-${di}`} className="text-slate-300">
-                  #{di + 1}
-                  <input
-                    type="number"
-                    min="5"
-                    step="0.5"
-                    value={moduleDetails[selectedModuleIdx]?.drawerHeights?.[di] ?? 18}
-                    onChange={(e) => setModuleDetails(prev => prev.map((d, i) => {
-                      if (i !== selectedModuleIdx) return d;
-                      const curr = Array.isArray(d.drawerHeights) ? d.drawerHeights : [];
-                      const next = Array.from({ length: facadeModules[selectedModuleIdx]?.drawers || 0 }, (_, idx) => Math.max(5, toNum(curr[idx], 18)));
-                      next[di] = toNum(e.target.value, next[di] ?? 18);
-                      return { ...d, drawerHeights: next };
-                    }))}
-                    className="w-14 ml-1 px-1 py-0.5 bg-slate-800 border border-slate-600 rounded"
-                  />
-                </label>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+      <SketchToolbar
+        activeTool={tool}
+        onToolChange={setTool}
+        baseView={baseView}
+        onViewChange={setBaseView}
+        facadePng={facadePng}
+        isNavMode={isNavMode}
+        onNavModeChange={setIsNavMode}
+        onResetViewport={resetViewport}
+        isCompactMobile={isCompactMobile}
+        hint={hint}
+        dimensionsFromWizard={dimensionsFromWizard}
+        cabinetDims={cabinetDims}
+        onCabinetDimsChange={setCabinetDims}
+        facadeModules={facadeModules}
+        widthInputs={widthInputs}
+        onWidthInputChange={(i, val) => setWidthInputs(prev => prev.map((v, idx) => idx === i ? val : v))}
+        onCommitWidth={commitWidth}
+        globalSliding={globalSliding}
+        onGlobalSlidingChange={setGlobalSliding}
+        selectedModuleIdx={selectedModuleIdx}
+        onSelectModuleIdx={setSelectedModuleIdx}
+        moduleDetails={moduleDetails}
+        onModuleDetailsChange={setModuleDetails}
+        onSave={() => { void triggerRemoteSave(); }}
+      />
 
       <div className="flex-1 overflow-auto bg-slate-950 flex justify-center p-4">
         <svg ref={svgRef} width={imgSize.w} height={imgSize.h}
@@ -1391,7 +611,7 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
             <image href={imgSrc} width={imgSize.w} height={imgSize.h} preserveAspectRatio="xMidYMid meet"/>
           )}
           {baseView === 'facade' && (
-            <FacadeRealisteSVG
+            <FacadeCanvas
               svgW={imgSize.w} svgH={imgSize.h}
               cabW={cabinetDims.width} cabH={cabinetDims.height}
               plinth={cabinetDims.plinth} thick={thickness}
@@ -1417,32 +637,6 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
           placeholder="📝 Notes pour Claude (ex: 2 tiroirs en bas du module 3, porte vitrée à gauche...)"
           className="w-full h-16 px-3 py-2 bg-slate-800 border border-slate-600 rounded text-sm text-slate-200 placeholder-slate-500 resize-none"/>
       </div>
-
-      {isCompactMobile && (
-        <div className="fixed bottom-4 right-3 z-[60] flex flex-col gap-2">
-          <button
-            onClick={() => setIsNavMode(v => !v)}
-            className={`w-11 h-11 rounded-full border shadow-xl text-lg ${isNavMode ? 'bg-emerald-600 text-white border-emerald-300/40' : 'bg-slate-800 text-slate-100 border-white/20'}`}
-            title="Mode déplacement"
-          >
-            🖐️
-          </button>
-          <button
-            onClick={resetViewport}
-            className="w-11 h-11 rounded-full border border-white/20 bg-slate-800 text-slate-100 shadow-xl text-lg"
-            title="Recentrer"
-          >
-            🎯
-          </button>
-          <button
-            onClick={() => { void triggerRemoteSave(); }}
-            className="w-11 h-11 rounded-full border border-green-300/30 bg-green-700 text-white shadow-xl text-lg"
-            title="Sauvegarder"
-          >
-            💾
-          </button>
-        </div>
-      )}
 
       {editingDimId && (() => {
         const dim = elements.find(e=>e.id===editingDimId);
