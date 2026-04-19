@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { exportPDF } from '../pdfExport';
 import html2canvas from 'html2canvas';
 import { Download, Scissors, RotateCw, Layers, ChevronLeft, ChevronRight, List, Box, Maximize2, Minimize2 } from 'lucide-react';
@@ -163,20 +163,25 @@ function CutList({ panel }) {
 }
 
 // ── TabBar : 3 onglets clairs
-function TabBar({ active, onChange }) {
+function TabBar({ active, onChange, show3dBadge = false }) {
   const tabs = [
     { id: 'plan',    label: 'Façade + Coupes', icon: <Layers className="w-4 h-4" /> },
     { id: 'planches', label: 'Planches',       icon: <List   className="w-4 h-4" /> },
-    { id: '3d',      label: 'Vue 3D client',   icon: <Box    className="w-4 h-4" /> },
+    { id: '3d',      label: 'Vue 3D client',   icon: <Box    className="w-4 h-4" />, badge: show3dBadge },
   ];
   return (
     <div className="flex bg-[#111] border border-white/5 rounded-xl p-1 gap-1 overflow-x-auto">
       {tabs.map(t => (
         <button key={t.id} onClick={() => onChange(t.id)}
-          className={'flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ' +
+          className={'relative flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ' +
             (active === t.id ? 'bg-orange-600 text-white shadow-lg shadow-orange-900/30' : 'text-slate-400 hover:text-white')}
         >
           {t.icon}{t.label}
+          {t.badge && (
+            <span className="absolute -top-1 -right-1 bg-emerald-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full leading-none uppercase tracking-wide shadow">
+              NEW
+            </span>
+          )}
         </button>
       ))}
     </div>
@@ -192,7 +197,19 @@ export default function Results({ t, results, project }) {
   const [isCapturingPdf, setIsCapturingPdf] = useState(false);
   const facadeCaptureRef = useRef(null);
   const viewerCaptureRef = useRef(null);
+  const view3dRef = useRef(null);
   const colorMap = {};
+
+  // Badge "NOUVEAU" pour l'onglet Vue 3D client
+  const badgeKey = 'pc_3d_badge_' + (project.name || '');
+  const [show3dBadge, setShow3dBadge] = useState(() => !localStorage.getItem(badgeKey));
+
+  useEffect(() => {
+    if (tab === '3d' && show3dBadge) {
+      localStorage.setItem(badgeKey, '1');
+      setShow3dBadge(false);
+    }
+  }, [tab, show3dBadge, badgeKey]);
 
   // Tringles (rods) excluded from optimization
   const rodPieces = (project.pieces || []).filter(isRodPiece);
@@ -235,7 +252,13 @@ export default function Results({ t, results, project }) {
     };
     try {
       const facadeImage = await capture(facadeCaptureRef.current, 200);
-      const view3dImage = await capture(viewerCaptureRef.current, 500);
+      let view3dImage = null;
+      if (view3dRef.current?.triggerScreenshot) {
+        await new Promise(r => setTimeout(r, 500));
+        view3dImage = await view3dRef.current.triggerScreenshot();
+      } else {
+        view3dImage = await capture(viewerCaptureRef.current, 500);
+      }
       exportPDF(results, project, { facadeImage, view3dImage });
     } catch {
       exportPDF(results, project);
@@ -258,7 +281,7 @@ export default function Results({ t, results, project }) {
   return (
     <div className="min-h-screen bg-[#050505] text-slate-200 pb-32 font-sans">
       <div className="sticky top-16 z-20 bg-[#050505]/95 backdrop-blur-xl pt-3 pb-2 px-4">
-        <TabBar active={tab} onChange={setTab} />
+        <TabBar active={tab} onChange={setTab} show3dBadge={show3dBadge} />
       </div>
 
       <div className="px-4 py-4 max-w-7xl mx-auto">
@@ -381,7 +404,7 @@ export default function Results({ t, results, project }) {
                     <Maximize2 className="w-3.5 h-3.5" /> Plein écran
                   </button>
                 </div>
-                <ProfessionalRealisticViewer cabinet={cabinet} name={project.name} presentationMode={presentation3D} />
+                <ProfessionalRealisticViewer ref={view3dRef} cabinet={cabinet} name={project.name} presentationMode={presentation3D} />
               </>
             ) : (
               <div className="flex flex-col items-center justify-center py-16 gap-4 text-center">

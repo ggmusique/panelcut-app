@@ -1,4 +1,4 @@
-import React, { useMemo, Suspense, useState, useEffect } from 'react';
+import React, { useMemo, Suspense, useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, Environment, ContactShadows } from '@react-three/drei';
 import { EffectComposer, N8AO, Bloom, Vignette } from '@react-three/postprocessing';
@@ -721,20 +721,107 @@ function Scene({ cabinet, modules, isCapturing = false, isMobile = false }) {
 
       {/* Post-processing (désactivé sur mobile — N8AO est très coûteux) */}
       {!isMobile && <PostEffects />}
-
-      {/* Camera controls */}
-      <OrbitControls
-        makeDefault
-        target={[0, Hm * 0.45, -roomD / 2 + Dm + 0.05]}
-        minDistance={0.4}
-        maxDistance={camDistance * 3}
-        minPolarAngle={0.15}
-        maxPolarAngle={Math.PI / 2 - 0.05}
-        enablePan
-        enableDamping
-        dampingFactor={0.06}
-      />
     </>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   VIEW PRESETS
+   ═══════════════════════════════════════════════════════════════ */
+
+const VIEW_PRESETS = [
+  { id: 'angle',    label: 'Vue 3/4',   icon: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+      <path d="M3 17L12 22L21 17V7L12 2L3 7V17Z" />
+      <path d="M12 22V12M3 7L12 12L21 7" />
+    </svg>
+  ) },
+  { id: 'face',     label: 'Face',      icon: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <line x1="12" y1="3" x2="12" y2="21" strokeOpacity="0.4" />
+      <line x1="3" y1="12" x2="21" y2="12" strokeOpacity="0.4" />
+    </svg>
+  ) },
+  { id: 'left',     label: 'Côté G',   icon: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+      <rect x="6" y="4" width="12" height="16" rx="2" />
+      <path d="M6 12H2M2 12L5 9M2 12L5 15" />
+    </svg>
+  ) },
+  { id: 'right',    label: 'Côté D',   icon: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+      <rect x="6" y="4" width="12" height="16" rx="2" />
+      <path d="M18 12H22M22 12L19 9M22 12L19 15" />
+    </svg>
+  ) },
+  { id: 'top',      label: 'Dessus',   icon: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+      <rect x="4" y="8" width="16" height="12" rx="2" />
+      <path d="M12 8V4M12 4L9 7M12 4L15 7" />
+    </svg>
+  ) },
+  { id: 'interior', label: 'Intérieur', icon: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M2 12C2 12 5 5 12 5C19 5 22 12 22 12C22 12 19 19 12 19C5 19 2 12 2 12Z" />
+    </svg>
+  ) },
+];
+
+function getCameraPreset(preset, Wm, Hm, Dm) {
+  if (preset === 'angle')    return { pos: [Wm * 0.6, Hm * 0.55, Dm * 1.8], fov: 40 };
+  if (preset === 'face')     return { pos: [0, Hm * 0.45, Dm * 2.2], fov: 40 };
+  if (preset === 'left')     return { pos: [-Wm * 1.2, Hm * 0.45, Dm * 0.8], fov: 40 };
+  if (preset === 'right')    return { pos: [Wm * 1.2, Hm * 0.45, Dm * 0.8], fov: 40 };
+  if (preset === 'top')      return { pos: [0, Hm * 2.5, Dm * 0.5], fov: 40 };
+  if (preset === 'interior') return { pos: [0, Hm * 0.4, 0], fov: 90 };
+  return { pos: [Wm * 0.6, Hm * 0.55, Dm * 1.8], fov: 40 };
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   SCENE CONTROLS — inside Canvas, handles OrbitControls + camera preset + gl ref
+   ═══════════════════════════════════════════════════════════════ */
+
+function SceneControls({ viewPreset, Wm, Hm, Dm, cabZ, camDist, autoRotate, glCaptureRef }) {
+  const { camera, gl, scene } = useThree();
+  const orbitRef = useRef();
+  const appliedPreset = useRef(null);
+
+  useEffect(() => {
+    if (appliedPreset.current === viewPreset) return;
+    appliedPreset.current = viewPreset;
+    const { pos, fov } = getCameraPreset(viewPreset, Wm, Hm, Dm);
+    camera.position.set(pos[0], pos[1], pos[2]);
+    camera.fov = fov;
+    camera.updateProjectionMatrix();
+    if (orbitRef.current) {
+      orbitRef.current.target.set(0, Hm * 0.45, cabZ);
+      orbitRef.current.update();
+    }
+  }, [viewPreset, Wm, Hm, Dm, cabZ, camera]);
+
+  useEffect(() => {
+    glCaptureRef.current = { gl, scene, camera, orbit: orbitRef };
+  }, [gl, scene, camera, glCaptureRef]);
+
+  const maxPolar = viewPreset === 'interior' ? Math.PI * 0.9 : Math.PI / 2 - 0.05;
+
+  return (
+    <OrbitControls
+      ref={orbitRef}
+      makeDefault
+      target={[0, Hm * 0.45, cabZ]}
+      minDistance={0.4}
+      maxDistance={camDist * 3}
+      minPolarAngle={0.15}
+      maxPolarAngle={maxPolar}
+      enablePan
+      enableDamping
+      dampingFactor={0.06}
+      autoRotate={autoRotate}
+      autoRotateSpeed={0.4}
+    />
   );
 }
 
@@ -742,13 +829,10 @@ function Scene({ cabinet, modules, isCapturing = false, isMobile = false }) {
    MAIN EXPORT
    ═══════════════════════════════════════════════════════════════ */
 
-function getCameraPreset(preset, camDist, Hm) {
-  if (preset === 'face') return [0, Hm * 0.45, camDist * 1.2];
-  if (preset === 'left') return [-camDist * 0.9, Hm * 0.45, camDist * 0.55];
-  return [camDist * 0.35, Hm * 0.5, camDist * 1.1];
-}
-
-export default function ProfessionalRealisticViewer({ cabinet, name, fullScreen = false, presentationMode = false, isCapturing = false }) {
+const ProfessionalRealisticViewer = forwardRef(function ProfessionalRealisticViewer(
+  { cabinet, name, fullScreen = false, presentationMode = false, isCapturing = false },
+  ref
+) {
   if (!cabinet || !cabinet.width || !cabinet.height) {
     return (
       <div className="w-full h-[700px] flex items-center justify-center bg-gray-100 rounded-2xl text-gray-400 text-base">
@@ -765,60 +849,153 @@ export default function ProfessionalRealisticViewer({ cabinet, name, fullScreen 
   const D  = Number(cabinet.depth)  || 60;
   const Hm = H / 100;
   const Wm = W / 100;
+  const Dm = D / 100;
   const camDist = Math.max(Wm, Hm) * 1.6;
+
+  const roomD = Math.max(Dm * 3.5, 3.5);
+  const cabZ  = -roomD / 2 + Dm + 0.05;
+
   const [viewPreset, setViewPreset] = useState('angle');
+  const [autoRotate, setAutoRotate] = useState(presentationMode);
+  const [userStoppedRotation, setUserStoppedRotation] = useState(false);
+  const glCaptureRef = useRef(null);
+
+  useEffect(() => {
+    setAutoRotate(presentationMode && !userStoppedRotation);
+  }, [presentationMode, userStoppedRotation]);
+
+  const handleStopRotation = () => {
+    setUserStoppedRotation(true);
+    setAutoRotate(false);
+  };
+
+  useImperativeHandle(ref, () => ({
+    triggerScreenshot: async () => {
+      const wasRotating = autoRotate;
+      setAutoRotate(false);
+      await new Promise(r => requestAnimationFrame(r));
+      const refs = glCaptureRef.current;
+      if (!refs) return null;
+      const { gl, scene, camera } = refs;
+      const oldDpr = gl.getPixelRatio();
+      gl.setPixelRatio(Math.min(3, (window.devicePixelRatio || 1) * 2));
+      gl.render(scene, camera);
+      const data = gl.domElement.toDataURL('image/png', 1.0);
+      gl.setPixelRatio(oldDpr);
+      if (wasRotating) setAutoRotate(true);
+      return data;
+    },
+  }), [autoRotate]);
+
+  const { pos: initPos, fov: initFov } = getCameraPreset(isCapturing ? 'face' : 'angle', Wm, Hm, Dm);
 
   return (
-    <div
-      className={`relative w-full overflow-hidden shadow-2xl ${fullScreen ? 'rounded-none' : 'rounded-2xl'}`}
-      style={{ height: fullScreen ? '100dvh' : 750, background: isCapturing ? '#ffffff' : undefined }}
-      onWheel={e => e.stopPropagation()}
-    >
-      <Canvas
-        key={`${viewPreset}-${isCapturing ? 'cap' : 'std'}`}
-        shadows
-        camera={{
-          position: getCameraPreset(isCapturing ? 'face' : 'angle', camDist, Hm),
-          fov: 40,
-          near: 0.01,
-          far: 100,
-        }}
-        gl={{
-          antialias: true,
-          toneMapping: THREE.ACESFilmicToneMapping,
-          toneMappingExposure: isCapturing ? 1.3 : 1.1,
-          outputColorSpace: THREE.SRGBColorSpace,
-          preserveDrawingBuffer: isCapturing,
-        }}
-        dpr={isMobile ? [1, 1.5] : [1, 2]}
+    <div className={`relative w-full ${fullScreen ? '' : ''}`} onWheel={e => e.stopPropagation()}>
+      <div
+        className={`relative w-full overflow-hidden shadow-2xl ${fullScreen ? 'rounded-none' : 'rounded-2xl'}`}
+        style={{ height: fullScreen ? '100dvh' : 620, background: isCapturing ? '#ffffff' : undefined }}
       >
-        <Suspense fallback={null}>
-          <Scene cabinet={cabinet} name={name} modules={modules} isCapturing={isCapturing} isMobile={isMobile} />
-        </Suspense>
-      </Canvas>
+        <Canvas
+          shadows
+          camera={{ position: initPos, fov: initFov, near: 0.01, far: 100 }}
+          gl={{
+            antialias: true,
+            toneMapping: THREE.ACESFilmicToneMapping,
+            toneMappingExposure: isCapturing ? 1.3 : 1.1,
+            outputColorSpace: THREE.SRGBColorSpace,
+            preserveDrawingBuffer: true,
+          }}
+          dpr={isMobile ? [1, 1.5] : [1, 2]}
+        >
+          <SceneControls
+            viewPreset={viewPreset}
+            Wm={Wm} Hm={Hm} Dm={Dm}
+            cabZ={cabZ}
+            camDist={camDist}
+            autoRotate={autoRotate}
+            glCaptureRef={glCaptureRef}
+          />
+          <Suspense fallback={null}>
+            <Scene cabinet={cabinet} modules={modules} isCapturing={isCapturing} isMobile={isMobile} />
+          </Suspense>
+        </Canvas>
 
-      {/* UI Overlays */}
-      {!presentationMode && !isCapturing && (
-        <>
-          <div className="absolute top-4 left-4 z-20 bg-white/90 backdrop-blur-sm px-4 py-3 rounded-xl shadow-md border border-gray-100">
-            <div className="text-sm font-bold text-gray-800 flex items-center gap-1.5">
-              🌟 Vue Réaliste — {name || 'Meuble'} ({modules.length} modules)
+        {/* Presentation mode overlay */}
+        {presentationMode && !isCapturing && (
+          <>
+            <div className="absolute top-0 left-0 right-0 z-20 flex justify-center pt-5 pointer-events-none">
+              <div className="bg-white/90 backdrop-blur-sm px-6 py-2.5 rounded-xl shadow-md border border-gray-100 text-center">
+                <span className="text-base font-bold text-gray-800">{name || 'Meuble'}</span>
+              </div>
             </div>
-            <div className="text-xs text-gray-500 mt-1">
-              {W} × {H} × {D} cm • Tourner / zoomer avec la souris
+            {autoRotate && (
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20">
+                <button
+                  onClick={handleStopRotation}
+                  className="flex items-center gap-2 px-4 py-2 bg-black/60 text-white text-xs font-bold rounded-lg border border-white/20 hover:bg-black/80 transition-colors backdrop-blur-sm"
+                >
+                  ⏹ Arrêter la rotation
+                </button>
+              </div>
+            )}
+            {!autoRotate && userStoppedRotation && (
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20">
+                <button
+                  onClick={() => { setUserStoppedRotation(false); setAutoRotate(true); }}
+                  className="flex items-center gap-2 px-4 py-2 bg-black/60 text-white text-xs font-bold rounded-lg border border-white/20 hover:bg-black/80 transition-colors backdrop-blur-sm"
+                >
+                  ▶ Reprendre la rotation
+                </button>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Technical overlays */}
+        {!presentationMode && !isCapturing && (
+          <>
+            <div className="absolute top-4 left-4 z-20 bg-white/90 backdrop-blur-sm px-4 py-3 rounded-xl shadow-md border border-gray-100">
+              <div className="text-sm font-bold text-gray-800 flex items-center gap-1.5">
+                🌟 Vue Réaliste — {name || 'Meuble'} ({modules.length} modules)
+              </div>
+              <div className="text-xs text-gray-500 mt-1">
+                {W} × {H} × {D} cm • Tourner / zoomer avec la souris
+              </div>
             </div>
-          </div>
 
-          <div className="absolute bottom-4 right-4 z-20 bg-white/90 backdrop-blur-sm px-3 py-2 rounded-lg shadow-md border border-gray-100 text-xs text-gray-500">
-            🖱️ Clic gauche : tourner • Molette : zoom • Clic droit : déplacer
-          </div>
+            <div className="absolute bottom-4 right-4 z-20 bg-white/90 backdrop-blur-sm px-3 py-2 rounded-lg shadow-md border border-gray-100 text-xs text-gray-500">
+              🖱️ Clic gauche : tourner • Molette : zoom • Clic droit : déplacer
+            </div>
 
-          <div className="absolute bottom-4 left-4 z-20 bg-white/90 backdrop-blur-sm px-3 py-2 rounded-lg shadow-md border border-gray-100 text-xs text-gray-500">
-            Total: {(W / 100).toFixed(2)} m linéaires
-          </div>
-        </>
+            <div className="absolute bottom-4 left-4 z-20 bg-white/90 backdrop-blur-sm px-3 py-2 rounded-lg shadow-md border border-gray-100 text-xs text-gray-500">
+              Total: {(W / 100).toFixed(2)} m linéaires
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* View preset buttons — 3×2 grid, shown below canvas */}
+      {!isCapturing && (
+        <div className="grid grid-cols-3 gap-1.5 mt-2 px-0.5">
+          {VIEW_PRESETS.map(v => (
+            <button
+              key={v.id}
+              onClick={() => setViewPreset(v.id)}
+              className={`flex items-center justify-center gap-1.5 py-2 px-1 rounded-lg text-xs font-semibold transition-all border ${
+                viewPreset === v.id
+                  ? 'bg-orange-600 text-white border-orange-500 shadow shadow-orange-900/30'
+                  : 'bg-white/5 text-slate-400 border-white/10 hover:bg-white/10 hover:text-white'
+              }`}
+            >
+              {v.icon}
+              <span>{v.label}</span>
+            </button>
+          ))}
+        </div>
       )}
-
     </div>
   );
-}
+});
+
+export default ProfessionalRealisticViewer;
+
