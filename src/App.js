@@ -467,7 +467,7 @@ export default function App() {
             {screen === SCREENS.AUTH     && <AuthScreen onSkip={() => setScreen(SCREENS.HISTORY)} />}
             {screen === SCREENS.PIECES   && <PiecesList t={tr} project={project} onChange={setProject} onOptimize={handleOptimize} computing={computing} />}
             {screen === SCREENS.RESULTS  && results && results.panels && results.panels.length > 0
-              ? <Results t={tr} results={results} project={project} />
+              ? <Results t={tr} results={results} project={project} onFinishChange={finish => setProject(p => ({ ...p, finish }))} />
               : screen === SCREENS.RESULTS && (
                 <div className="flex flex-col items-center justify-center min-h-[60vh] gap-6 p-8">
                   <div className="text-5xl">⚠️</div>
