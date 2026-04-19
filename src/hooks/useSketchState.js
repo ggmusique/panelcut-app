@@ -59,6 +59,7 @@ export function useSketchState({ initialResult, draft, konvaEditorRef, onComplet
   const [elements,      setElements]      = useState(savedState?.elements || []);
   const [loading,       setLoading]       = useState(false);
   const [error,         setError]         = useState(null);
+  const [capturing,     setCapturing]     = useState(false);
   const [generalNotes,  setGeneralNotes]  = useState(savedState?.generalNotes || '');
   const [cabinetDims,   setCabinetDims]   = useState(
     savedState?.cabinetDims || {
@@ -287,9 +288,16 @@ export function useSketchState({ initialResult, draft, konvaEditorRef, onComplet
     setLoading(true);
     setError(null);
     try {
-      await new Promise(resolve => requestAnimationFrame(resolve));
+      // Show "Capture en cours…" indicator only if the two render frames take > 100 ms.
+      const captureTimer = setTimeout(() => setCapturing(true), 100);
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+      clearTimeout(captureTimer);
+
       const dataUrl = konvaEditorRef.current?.exportDataUrl();
-      if (!dataUrl) throw new Error('Éditeur Konva non initialisé');
+      if (!dataUrl) {
+        setError('Capture du canvas impossible — réessaie');
+        return;
+      }
       const base64 = dataUrl.split(',')[1];
       console.log('🚀 RELANCER DATA:', {
         hasImage: !!base64,
@@ -332,6 +340,7 @@ export function useSketchState({ initialResult, draft, konvaEditorRef, onComplet
       console.error('💥 RELANCER FULL ERROR:', err.response?.data || err.message);
       setError(err.message);
     } finally {
+      setCapturing(false);
       setLoading(false);
     }
   }, [onComplete, elements, cabinetDims, facadeModules, facadeItems,
@@ -350,6 +359,7 @@ export function useSketchState({ initialResult, draft, konvaEditorRef, onComplet
     widthInputs,   setWidthInputs,
     loading,
     error,
+    capturing,
     // memos
     currentCabinet,
     sketchFingerprint,
