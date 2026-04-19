@@ -124,7 +124,8 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
   const stageRef     = useRef(null);
 
   useImperativeHandle(ref, () => ({
-    exportPng: () => stageRef.current?.toDataURL({ mimeType: 'image/jpeg', quality: 0.85 }) ?? null,
+    // Returns a JPEG data URL of the current Konva stage content.
+    exportDataUrl: () => stageRef.current?.toDataURL({ mimeType: 'image/jpeg', quality: 0.85 }) ?? null,
   }), []);
   const [stageSize, setStageSize] = useState({ w: svgW, h: svgH });
 

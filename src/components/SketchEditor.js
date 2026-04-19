@@ -357,8 +357,8 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
     setError(null);
     try {
       await new Promise(resolve => requestAnimationFrame(resolve));
-      const dataUrl = konvaEditorRef.current?.exportPng();
-      if (!dataUrl) throw new Error('Éditeur Konva non disponible (passez en vue façade)');
+      const dataUrl = konvaEditorRef.current?.exportDataUrl();
+      if (!dataUrl) throw new Error('Éditeur Konva non initialisé');
       const base64 = dataUrl.split(',')[1];
       console.log('🚀 RELANCER DATA:', {
         hasImage: !!base64,

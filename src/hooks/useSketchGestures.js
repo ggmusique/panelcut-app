@@ -98,6 +98,8 @@ export function useSketchGestures({
     const mr     = mRects[modIdx];
     if (!mr) return;
     let yRatio;
+    // In Konva mode, item dragging is handled internally by FacadeKonvaItems
+    // (Konva's built-in draggable), so startY is not used for drag tracking.
     let startY = 0;
     if (e._konvaYRatio !== undefined) {
       yRatio = e._konvaYRatio;
