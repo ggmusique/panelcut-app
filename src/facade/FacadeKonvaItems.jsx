@@ -8,7 +8,7 @@
  * - onItemMove réellement appelé et branché sur le state parent
  * - Tiroirs : hauteurs px calculées depuis les vraies hauteurs cm via cmToPx
  */
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { Group, Rect, Line, Circle, Ellipse } from 'react-konva';
 import {
   WOOD_STROKE,
