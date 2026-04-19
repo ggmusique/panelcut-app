@@ -34,9 +34,9 @@ function ShelfItem({ item, intLeft, intTop, intBottom, iW, iH, isEraseTool, onIt
   const ey = intTop + clamp(toNum(item.yRatio, 0.5), 0, 1) * iH;
 
   // dragBoundFunc reçoit la position absolue du nœud dans le coordinate space du parent Layer.
-  // On contraint Y entre intTop et intBottom (coordonnées absolues du canvas).
+  // On contraint Y entre intTop et intBottom et on fixe X à 0 pour éviter la dérive horizontale.
   const dragBoundFunc = useCallback((pos) => ({
-    x: pos.x, // pas de contrainte X, on la remet après
+    x: 0,
     y: clamp(pos.y, intTop, intBottom),
   }), [intTop, intBottom]);
 
@@ -51,6 +51,7 @@ function ShelfItem({ item, intLeft, intTop, intBottom, iW, iH, isEraseTool, onIt
 
   return (
     <Group
+      x={0}
       y={ey}
       draggable={!isEraseTool}
       dragBoundFunc={dragBoundFunc}
@@ -89,7 +90,7 @@ function RodItem({ item, intLeft, intTop, intBottom, iW, iH, isEraseTool, onItem
   const ey = intTop + clamp(toNum(item.yRatio, 0.32), 0, 1) * iH;
 
   const dragBoundFunc = useCallback((pos) => ({
-    x: pos.x,
+    x: 0,
     y: clamp(pos.y, intTop, intBottom),
   }), [intTop, intBottom]);
 
@@ -102,6 +103,7 @@ function RodItem({ item, intLeft, intTop, intBottom, iW, iH, isEraseTool, onItem
 
   return (
     <Group
+      x={0}
       y={ey}
       draggable={!isEraseTool}
       dragBoundFunc={dragBoundFunc}
@@ -268,7 +270,7 @@ export default function FacadeKonvaItems({
 }) {
   if (!moduleRect) return null;
 
-  const { modIdx = 0, intX, intY, intW, intH } = moduleRect;
+  const { modIdx = 0, intX, intY, intW, intH, cabInteriorCm = 0 } = moduleRect;
   const intLeft   = toNum(intX);
   const intTop    = toNum(intY);
   const iW        = toNum(intW);
@@ -293,30 +295,35 @@ export default function FacadeKonvaItems({
     ? rawDrawerItems.length
     : toNum(mod.drawers, toNum(module?.drawers, 0));
 
-  // cmToPx : convertit une hauteur cm en pixels en utilisant la proportion iH/cabH
-  // On utilise moduleDetail.height si disponible, sinon estimation depuis iH
-  const cabInteriorH = toNum(mod.height ?? module?.height, 0);
+  // cmToPx : convertit une hauteur cm en pixels en utilisant la hauteur intérieure réelle
+  // du meuble (cabInteriorCm transmis depuis FacadeKonvaEditor via moduleRect).
+  // Sans cette valeur, chaque tiroir aurait une hauteur proportionnelle à la somme des
+  // hauteurs des tiroirs (et non à la hauteur totale du module), ce qui les ferait remplir
+  // tout l'espace disponible.
+  const cabIntH  = toNum(cabInteriorCm);
+  const cmToPx   = cabIntH > 0 ? iH / cabIntH : null;
 
   const drawerRects = (() => {
     if (drawerCount === 0) return [];
 
     if (rawDrawerItems) {
-      // Hauteurs réelles en cm → px via proportion
-      const totalCm = rawDrawerItems.reduce((s, d) => s + toNum(d.h ?? d.height, 18), 0) || 1;
       let cursor = intBottom;
       return [...rawDrawerItems]
         .sort((a, b) => toNum(a.y) - toNum(b.y))
         .map((d) => {
           const hCm = toNum(d.h ?? d.height, 18);
-          // Proportion sur iH total (méthode sûre même sans cabInteriorH)
-          const hPx = Math.max(14, (hCm / totalCm) * iH);
+          // Utilise l'échelle cm→px réelle si disponible, sinon proportion sur la hauteur totale
+          const totalCm = rawDrawerItems.reduce((s, x) => s + toNum(x.h ?? x.height, 18), 0) || 1;
+          const hPx = cmToPx != null
+            ? Math.max(14, hCm * cmToPx)
+            : Math.max(14, (hCm / totalCm) * iH);
           const top = cursor - hPx;
           cursor    = top;
           return { hCm, hPx, top };
         });
     }
 
-    // Distribués équitablement depuis le bas
+    // Distribués équitablement depuis le bas (fallback sans drawerItems)
     const evenH = iH / drawerCount;
     return Array.from({ length: drawerCount }, (_, di) => ({
       hCm: 0,

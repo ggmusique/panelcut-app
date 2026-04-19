@@ -1,3 +1,5 @@
+import { defaultDrawerParts } from '../utils/sketchEditorConstants';
+
 const TOOLS = [
   { id: 'drawer', icon: '🗄️', label: 'Tiroir',       color: '#fbbf24' },
   { id: 'shelf',  icon: '📦', label: 'Tablette',     color: '#34d399' },

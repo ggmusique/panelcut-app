@@ -44,9 +44,10 @@ function _normalizeYList(value) {
 /** Détecte la présence d'une tringle depuis tous les formats possibles */
 function _hasRodFlag(m) {
   if (Array.isArray(m?.rods) && m.rods.length > 0) return true;
+  // NOTE: ne pas inclure `m?.rods` ici — un tableau vide [] est truthy en JS
+  // et déclencherait un faux positif pour les modules sans tringle.
   return Boolean(
     m?.rod ??
-    m?.rods ??
     m?.tringle ??
     m?.hanging ??
     m?.penderie
