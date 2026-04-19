@@ -205,6 +205,7 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
 
     const onMouseDown = (e) => {
       if (e.button !== 0) return;
+      if (!isNavMode) return;  // vérification rapide avant les calculs Konva
       const stage = stageRef.current;
       if (!stage) return;
       const pos   = stage.getPointerPosition();
@@ -216,7 +217,6 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
         if (node.draggable?.()) return; // cède le contrôle au drag Konva
         node = node.parent;
       }
-      if (!isNavMode) return;
       mousePanRef.current = {
         active: true,
         startX: e.clientX,
@@ -254,7 +254,7 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
       el.removeEventListener('mouseup',   stopPan);
       el.removeEventListener('mouseleave', stopPan);
     };
-  }, [isNavMode]);
+  }, [isNavMode, setPosition]);
 
   // Curseur selon le mode
   useEffect(() => {
