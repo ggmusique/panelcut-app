@@ -640,7 +640,7 @@ function SceneBg({ isCapturing }) {
    SCENE
    ═══════════════════════════════════════════════════════════════ */
 
-function Scene({ cabinet, modules, isCapturing = false }) {
+function Scene({ cabinet, modules, isCapturing = false, isMobile = false }) {
   const mats = useMaterials();
 
   const W  = Number(cabinet.width)     || 0;
@@ -661,53 +661,36 @@ function Scene({ cabinet, modules, isCapturing = false }) {
     <>
       <SceneBg isCapturing={isCapturing} />
 
-      {/* ── Lighting (3-point + ambient) ── */}
-      <ambientLight intensity={isCapturing ? 0.75 : 0.45} color="#fff5eb" />
+      {/* ── Lighting (showroom 3-point + ambient) ── */}
+      <ambientLight intensity={isCapturing ? 0.75 : 0.25} color="#fff5eb" />
 
-      {/* Key light (warm, top-right) */}
-      <directionalLight
-        position={[3, 5, 4]}
-        intensity={isCapturing ? 2.2 : 1.6}
+      {/* Key light (SpotLight — ombres nettes et localisées) */}
+      <spotLight
+        position={[Wm * 1.2, Hm * 2.5, Dm * 3]}
+        intensity={isCapturing ? 3.5 : 2.8}
+        angle={0.55}
+        penumbra={0.4}
         color="#fff8f0"
         castShadow
-        shadow-mapSize-width={4096}
-        shadow-mapSize-height={4096}
-        shadow-camera-far={25}
-        shadow-camera-left={-6}
-        shadow-camera-right={6}
-        shadow-camera-top={6}
-        shadow-camera-bottom={-2}
-        shadow-bias={-0.00008}
-        shadow-normalBias={0.02}
+        shadow-mapSize-width={isMobile ? 1024 : 2048}
+        shadow-mapSize-height={isMobile ? 1024 : 2048}
+        shadow-bias={-0.0001}
       />
 
-      {/* Fill light (cool, left) */}
-      <directionalLight position={[-3, 3.5, 2]} intensity={isCapturing ? 0.55 : 0.3} color="#e8eeff" />
+      {/* Fill light (cool-blue, left + slightly behind) */}
+      <directionalLight position={[-Wm * 2, Hm * 1.5, -Dm]} intensity={0.45} color="#d0e8ff" />
 
-      {/* Rim / back light */}
-      <directionalLight position={[0, 4, -3]} intensity={isCapturing ? 0.28 : 0.15} color="#ffe8d0" />
+      {/* Rim / contour light (halo sur le dessus, détache du mur) */}
+      <directionalLight position={[0, Hm * 3, -Dm * 2]} intensity={0.3} color="#fff5eb" />
 
       {/* Room ceiling light */}
       <pointLight position={[0, roomH - 0.08, roomD * 0.15]} intensity={0.8} color="#fff5eb" distance={roomH * 3} decay={1.5} />
-
-      {/* Spot focused on cabinet */}
-      <spotLight
-        position={[0, roomH - 0.1, Dm * 2]}
-        angle={0.65}
-        penumbra={0.6}
-        intensity={0.9}
-        color="#fff8f0"
-        castShadow
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
-        shadow-bias={-0.0001}
-      />
 
       {/* Subtle warm bounce from floor */}
       <hemisphereLight skyColor="#f0ece6" groundColor="#c8a882" intensity={0.25} />
 
       {/* Environment reflections */}
-      <Environment preset="apartment" />
+      <Environment preset="studio" background={false} />
 
       {/* Room */}
       <Room roomW={roomW} roomH={roomH} roomD={roomD} mats={mats} />
@@ -736,8 +719,8 @@ function Scene({ cabinet, modules, isCapturing = false }) {
         color="#2a1a0a"
       />
 
-      {/* Post-processing */}
-      <PostEffects />
+      {/* Post-processing (désactivé sur mobile — N8AO est très coûteux) */}
+      {!isMobile && <PostEffects />}
 
       {/* Camera controls */}
       <OrbitControls
@@ -774,6 +757,8 @@ export default function ProfessionalRealisticViewer({ cabinet, name, fullScreen 
     );
   }
 
+  const isMobile = window.innerWidth < 768 || navigator.maxTouchPoints > 0;
+
   const modules = useMemo(() => normalizeCabinetModules(cabinet), [cabinet]);
   const W  = Number(cabinet.width)  || 0;
   const H  = Number(cabinet.height) || 0;
@@ -805,10 +790,10 @@ export default function ProfessionalRealisticViewer({ cabinet, name, fullScreen 
           outputColorSpace: THREE.SRGBColorSpace,
           preserveDrawingBuffer: isCapturing,
         }}
-        dpr={[1, 2]}
+        dpr={isMobile ? [1, 1.5] : [1, 2]}
       >
         <Suspense fallback={null}>
-          <Scene cabinet={cabinet} name={name} modules={modules} isCapturing={isCapturing} />
+          <Scene cabinet={cabinet} name={name} modules={modules} isCapturing={isCapturing} isMobile={isMobile} />
         </Suspense>
       </Canvas>
 
