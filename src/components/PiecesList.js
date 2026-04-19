@@ -186,7 +186,7 @@ export default function PiecesList({ t, project, onChange, onOptimize, computing
                   </div>
                 )}
                 <div className="text-sm text-slate-300">
-                  Panneau <span className="text-white font-bold">{project.panel.w}×{project.panel.h}</span> cm
+                  Panneau <span className="text-white font-bold">{project.panel?.w}×{project.panel?.h}</span> cm
                 </div>
                 <button
                   className={`w-full px-4 py-3 rounded-xl font-bold text-white shadow-lg transition-all ${

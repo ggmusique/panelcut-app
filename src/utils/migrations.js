@@ -1,4 +1,4 @@
-export const STORAGE_SCHEMA_VERSION = 2;
+export const STORAGE_SCHEMA_VERSION = 3;
 
 /**
  * Migrate a stored project object to the current schema version.
@@ -25,6 +25,15 @@ export function migrateStoredProject(stored) {
       if (project.sketchDraft === undefined) project.sketchDraft = null;
       if (project.cabinet === undefined) project.cabinet = null;
       project._schemaVersion = 2;
+    }
+
+    // v2 → v3 : add panel field introduced in schema v3
+    if (project._schemaVersion < 3) {
+      console.warn('[migrations] Migrating project from v2 → v3');
+      if (project.panel === undefined || project.panel === null) {
+        project.panel = { w: 244, h: 122, thickness: 1.8, label: 'MDF 18mm' };
+      }
+      project._schemaVersion = 3;
     }
 
     return project;
