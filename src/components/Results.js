@@ -227,16 +227,15 @@ export default function Results({ t, results, project }) {
   const prevPanel = () => setCurrentPanel(p => Math.max(0, p - 1));
   const handleExportPdf = async () => {
     setIsCapturingPdf(true);
-    const capture = async (node) => {
+    const capture = async (node, waitMs = 200) => {
       if (!node) return null;
-      await new Promise((r) => setTimeout(r, 200));
-      const canvas = await html2canvas(node, { backgroundColor: '#ffffff', scale: 2, useCORS: true });
+      await new Promise((r) => setTimeout(r, waitMs));
+      const canvas = await html2canvas(node, { backgroundColor: '#ffffff', scale: 3, useCORS: true, allowTaint: true });
       return canvas.toDataURL('image/png');
     };
     try {
-      await new Promise((r) => setTimeout(r, 80));
-      const facadeImage = await capture(facadeCaptureRef.current);
-      const view3dImage = await capture(viewerCaptureRef.current);
+      const facadeImage = await capture(facadeCaptureRef.current, 200);
+      const view3dImage = await capture(viewerCaptureRef.current, 500);
       exportPDF(results, project, { facadeImage, view3dImage });
     } catch {
       exportPDF(results, project);
@@ -435,7 +434,7 @@ export default function Results({ t, results, project }) {
             <CabinetElevationFront cabinet={cabinet} name={project.name} />
           </div>
           <div ref={viewerCaptureRef} className="w-[1120px] h-[760px] bg-white p-2">
-            <ProfessionalRealisticViewer cabinet={cabinet} name={project.name} presentationMode />
+            <ProfessionalRealisticViewer cabinet={cabinet} name={project.name} presentationMode isCapturing />
           </div>
         </div>
       )}
