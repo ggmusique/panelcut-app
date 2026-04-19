@@ -167,6 +167,8 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
   const lastDist      = useRef(null);
   const isPinching    = useRef(false);
   const touchStartPos = useRef(null);
+  // Pan souris (PC)
+  const mousePanRef   = useRef({ active: false, startX: 0, startY: 0, stageX: 0, stageY: 0 });
 
   // Non-passive wheel listener so we can call preventDefault()
   useEffect(() => {
@@ -195,6 +197,71 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
   }, []);
+
+  // Pan souris (bouton gauche sur fond, uniquement en mode Select)
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const onMouseDown = (e) => {
+      if (e.button !== 0) return;
+      if (!isNavMode) return;  // vérification rapide avant les calculs Konva
+      const stage = stageRef.current;
+      if (!stage) return;
+      const pos   = stage.getPointerPosition();
+      if (!pos) return;
+      // N'active le pan que si l'on clique sur le fond (aucun nœud draggable)
+      const shape = stage.getIntersection(pos);
+      let node = shape;
+      while (node && node !== stage) {
+        if (node.draggable?.()) return; // cède le contrôle au drag Konva
+        node = node.parent;
+      }
+      mousePanRef.current = {
+        active: true,
+        startX: e.clientX,
+        startY: e.clientY,
+        stageX: stage.x(),
+        stageY: stage.y(),
+      };
+      el.style.cursor = 'grabbing';
+    };
+
+    const onMouseMove = (e) => {
+      if (!mousePanRef.current.active) return;
+      const dx = e.clientX - mousePanRef.current.startX;
+      const dy = e.clientY - mousePanRef.current.startY;
+      setPosition({
+        x: mousePanRef.current.stageX + dx,
+        y: mousePanRef.current.stageY + dy,
+      });
+    };
+
+    const stopPan = () => {
+      if (mousePanRef.current.active) {
+        mousePanRef.current.active = false;
+        el.style.cursor = isNavMode ? 'grab' : 'default';
+      }
+    };
+
+    el.addEventListener('mousedown', onMouseDown);
+    el.addEventListener('mousemove', onMouseMove);
+    el.addEventListener('mouseup',   stopPan);
+    el.addEventListener('mouseleave', stopPan);
+    return () => {
+      el.removeEventListener('mousedown', onMouseDown);
+      el.removeEventListener('mousemove', onMouseMove);
+      el.removeEventListener('mouseup',   stopPan);
+      el.removeEventListener('mouseleave', stopPan);
+    };
+  }, [isNavMode, setPosition]);
+
+  // Curseur selon le mode
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || mousePanRef.current.active) return;
+    el.style.cursor = isNavMode ? 'grab' : 'default';
+  }, [isNavMode]);
 
   const { w: stageW, h: stageH } = stageSize;
 

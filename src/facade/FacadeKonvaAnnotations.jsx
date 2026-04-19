@@ -580,13 +580,15 @@ export default function FacadeKonvaAnnotations({
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <Group>
-      {/* ── Transparent overlay to capture stage events ── */}
+      {/* ── Transparent overlay to capture stage events ──
+           Utilise une taille généreuse pour couvrir n'importe quel niveau de zoom
+           (à scale < 1 l'espace contenu est plus grand que stageWidth/stageHeight). */}
       {(isDim || isNote) && (
         <Rect
-          x={0}
-          y={0}
-          width={stageWidth}
-          height={stageHeight}
+          x={-20000}
+          y={-20000}
+          width={40000}
+          height={40000}
           fill="transparent"
           onMouseDown={handleStageMouseDown}
           onMouseMove={handleStageMouseMove}
