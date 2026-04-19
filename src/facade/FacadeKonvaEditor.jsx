@@ -2,6 +2,7 @@ import React, { useRef, useState, useEffect, useMemo, useCallback, useImperative
 import { Stage, Layer, Rect, Line, Text, Group, Circle } from 'react-konva';
 import { WOOD_STROKE, DIM_COLOR } from './konvaTheme';
 import FacadeKonvaItems from './FacadeKonvaItems';
+import FacadeKonvaAnnotations from './FacadeKonvaAnnotations';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -126,11 +127,16 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
   joints          = [],
   cabinetModules  = [],
   globalSliding,
+  elements        = [],
   onFacadePointerDown,
   onItemPointerDown,
+  onItemMove,
   onItemErase,
   onModuleClick,
   onModuleErase,
+  onElementAdd,
+  onElementUpdate,
+  onElementRemove,
   activeTool      = 'select',
 }, ref) {
   // ── 1. RESPONSIVE RESIZE ───────────────────────────────────────────────────
@@ -138,8 +144,8 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
   const stageRef     = useRef(null);
 
   useImperativeHandle(ref, () => ({
-    // Returns a JPEG data URL of the current Konva stage content.
-    exportDataUrl: () => stageRef.current?.toDataURL({ mimeType: 'image/jpeg', quality: 0.85 }) ?? null,
+    // Returns a PNG data URL (high-res, pixelRatio 3) of the current Konva stage content.
+    exportDataUrl: () => stageRef.current?.toDataURL({ mimeType: 'image/png', pixelRatio: 3 }) ?? null,
   }), []);
   const [stageSize, setStageSize] = useState({ w: svgW, h: svgH });
 
@@ -484,12 +490,7 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
                   module={m}
                   moduleDetail={cabinetModules[i] || null}
                   isEraseTool={isErase}
-                  onItemMove={() => {
-                    // Item drag is handled internally by FacadeKonvaItems via Konva's
-                    // built-in draggable. The parent state is updated through
-                    // onItemRemove / onRemoveElement; there is no yRatio callback here
-                    // because FacadeKonvaItems commits the new yRatio itself.
-                  }}
+                  onItemMove={onItemMove}
                   onItemRemove={(itemId) => onItemErase?.(itemId)}
                   onRemoveElement={(modIdx, type) => onModuleErase?.(modIdx, type)}
                 />
@@ -629,6 +630,18 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
               />
             </Group>
           )}
+
+          {/* ── ANNOTATIONS (cotes et notes) ── */}
+          <FacadeKonvaAnnotations
+            elements={elements}
+            stageWidth={stageW}
+            stageHeight={stageH}
+            activeTool={activeTool}
+            onElementAdd={onElementAdd}
+            onElementUpdate={onElementUpdate}
+            onElementRemove={onElementRemove}
+            stageRef={stageRef}
+          />
 
         </Layer>
       </Stage>

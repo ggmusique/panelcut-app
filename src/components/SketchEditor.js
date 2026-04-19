@@ -342,6 +342,14 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
     setFacadeItems(prev => prev.filter(it => it.id !== itemId));
   }, []);
 
+  const handleItemMove = useCallback((itemId, newYRatio) => {
+    setFacadeItems(prev => prev.map(it => it.id === itemId ? { ...it, yRatio: newYRatio } : it));
+  }, []);
+
+  const handleElementAdd    = useCallback((el) => setElements(prev => [...prev, el]), []);
+  const handleElementUpdate = useCallback((el) => setElements(prev => prev.map(e => e.id === el.id ? el : e)), []);
+  const handleElementRemove = useCallback((id) => setElements(prev => prev.filter(e => e.id !== id)), []);
+
   const eraseElement = (id) => setElements(prev => prev.filter(el => el.id !== id));
 
   const getContextPrompt = useCallback(() => buildSketchContextPrompt({
@@ -370,13 +378,13 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
       let res = await fetch(`${SERVER}/api/refine`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: base64, mediaType: 'image/jpeg', userNotes: prompt, prompt }),
+        body: JSON.stringify({ image: base64, mediaType: 'image/png', userNotes: prompt, prompt }),
       });
       if (res.status === 404 || res.status === 405) {
         res = await fetch(`${SERVER}/api/scan`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ image: base64, mediaType: 'image/jpeg' }),
+          body: JSON.stringify({ image: base64, mediaType: 'image/png' }),
         });
       }
       if (!res.ok) throw new Error(`Erreur serveur (${res.status})`);
@@ -573,11 +581,16 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
             facadeItems={facadeItems}
             joints={joints}
             globalSliding={globalSliding}
+            elements={elements}
             onFacadePointerDown={handleFacadePointerDown}
             onItemPointerDown={handleItemPointerDown}
+            onItemMove={handleItemMove}
             onItemErase={handleItemErase}
             onModuleClick={handleModuleClick}
             onModuleErase={handleModuleErase}
+            onElementAdd={handleElementAdd}
+            onElementUpdate={handleElementUpdate}
+            onElementRemove={handleElementRemove}
             activeTool={tool}
           />
         )}
