@@ -474,7 +474,9 @@ export default function FacadeKonvaAnnotations({
     if (!isDim) return;
     e.cancelBubble = true;
     const stage = e.target.getStage();
-    const pos   = stage?.getPointerPosition();
+    // getRelativePointerPosition accounts for Stage scale/pan; fall back to
+    // getPointerPosition when the method is not available (old Konva versions).
+    const pos   = stage?.getRelativePointerPosition?.() ?? stage?.getPointerPosition();
     if (!pos) return;
     setDrawing(true);
     setDimStart(pos);
@@ -484,7 +486,7 @@ export default function FacadeKonvaAnnotations({
   const handleStageMouseMove = useCallback((e) => {
     if (!isDim || !drawing) return;
     const stage = e.target.getStage();
-    const pos   = stage?.getPointerPosition();
+    const pos   = stage?.getRelativePointerPosition?.() ?? stage?.getPointerPosition();
     if (!pos) return;
     setDimPreview(pos);
   }, [isDim, drawing]);
@@ -495,7 +497,7 @@ export default function FacadeKonvaAnnotations({
     setDrawing(false);
 
     const stage = e.target.getStage();
-    const pos   = stage?.getPointerPosition();
+    const pos   = stage?.getRelativePointerPosition?.() ?? stage?.getPointerPosition();
     if (!pos || !dimStart) return;
 
     // Skip degenerate dims (same point)
@@ -535,7 +537,7 @@ export default function FacadeKonvaAnnotations({
     if (!isNote) return;
     e.cancelBubble = true;
     const stage = e.target.getStage();
-    const pos   = stage?.getPointerPosition();
+    const pos   = stage?.getRelativePointerPosition?.() ?? stage?.getPointerPosition();
     if (!pos) return;
     const cr    = stage?.container().getBoundingClientRect();
     noteStagePos.current = pos;

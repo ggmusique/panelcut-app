@@ -306,7 +306,9 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
     if (!onFacadePointerDown) return;
     konvaEvt.cancelBubble = true;
     const stage = konvaEvt.target.getStage();
-    const pos   = stage?.getPointerPosition();
+    // getRelativePointerPosition returns coordinates in the Stage's logical
+    // coordinate space, correctly accounting for zoom (scaleX/Y) and pan (x/y).
+    const pos   = stage?.getRelativePointerPosition?.() ?? stage?.getPointerPosition();
     if (!pos) return;
     const yRatio = Math.max(0.02, Math.min(0.98, (pos.y - intTop) / intH));
     // Synthetic event: includes screen coords + pre-computed yRatio
@@ -466,12 +468,16 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
             const numY   = intTop + Math.min(Math.max(BADGE_MIN_OFFSET, iH * BADGE_MIDDLE_FRAC), iH * BADGE_MAX_FRAC);
             const annotY = annotBaseY + 10 * scaleRatio;
 
+            // Cabinet interior height in cm — needed to convert drawer cm heights to px
+            const cabInteriorCm = toNum(cabH) - toNum(plinth);
+
             // Rect descriptor for FacadeKonvaItems
             const moduleRect = {
               modIdx: i,
               x, y: intTop, w, h: iH,
               intX: x, intY: intTop, intW: w, intH: iH,
               widthCm: m.width,
+              cabInteriorCm,
             };
 
             return (
@@ -483,7 +489,35 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
                   listening={false}
                 />
 
-                {/* Interior elements: drawers, doors, shelves, rods */}
+                {/* ── Interaction hit zones (rendered BEFORE items so items
+                     have higher z-order and receive pointer events first) ── */}
+                {isPlace && (
+                  <Rect
+                    x={x} y={intTop} width={w} height={iH}
+                    fill="transparent"
+                    style={{ cursor: 'cell' }}
+                    onMouseDown={(e) => handleModulePlace(e, i, intTop, iH)}
+                    onTouchStart={(e) => handleModulePlace(e, i, intTop, iH)}
+                  />
+                )}
+                {isAdd && (
+                  <Rect
+                    x={x} y={intTop} width={w} height={iH}
+                    fill="transparent"
+                    style={{ cursor: 'cell' }}
+                    onClick={(e) => {
+                      e.cancelBubble = true;
+                      onModuleClick?.(i, activeTool);
+                    }}
+                    onTap={(e) => {
+                      e.cancelBubble = true;
+                      onModuleClick?.(i, activeTool);
+                    }}
+                  />
+                )}
+
+                {/* Interior elements: drawers, doors, shelves, rods
+                     (rendered AFTER hit zones → higher z-order → events reach items first) */}
                 <FacadeKonvaItems
                   moduleRect={moduleRect}
                   facadeItems={facadeItems}
@@ -532,32 +566,6 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
                   fill="#b45309" fontStyle="bold" fontSize={11 * scaleRatio}
                   listening={false}
                 />
-
-                {/* ── Interaction hit zone ── */}
-                {isPlace && (
-                  <Rect
-                    x={x} y={intTop} width={w} height={iH}
-                    fill="transparent"
-                    style={{ cursor: 'cell' }}
-                    onMouseDown={(e) => handleModulePlace(e, i, intTop, iH)}
-                    onTouchStart={(e) => handleModulePlace(e, i, intTop, iH)}
-                  />
-                )}
-                {isAdd && (
-                  <Rect
-                    x={x} y={intTop} width={w} height={iH}
-                    fill="transparent"
-                    style={{ cursor: 'cell' }}
-                    onClick={(e) => {
-                      e.cancelBubble = true;
-                      onModuleClick?.(i, activeTool);
-                    }}
-                    onTap={(e) => {
-                      e.cancelBubble = true;
-                      onModuleClick?.(i, activeTool);
-                    }}
-                  />
-                )}
               </Group>
             );
           })}
