@@ -873,7 +873,8 @@ const ProfessionalRealisticViewer = forwardRef(function ProfessionalRealisticVie
     triggerScreenshot: async () => {
       const wasRotating = autoRotate;
       setAutoRotate(false);
-      await new Promise(r => requestAnimationFrame(r));
+      // Wait two frames to ensure the scene has fully rendered
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
       const refs = glCaptureRef.current;
       if (!refs) return null;
       const { gl, scene, camera } = refs;
@@ -890,7 +891,7 @@ const ProfessionalRealisticViewer = forwardRef(function ProfessionalRealisticVie
   const { pos: initPos, fov: initFov } = getCameraPreset(isCapturing ? 'face' : 'angle', Wm, Hm, Dm);
 
   return (
-    <div className={`relative w-full ${fullScreen ? '' : ''}`} onWheel={e => e.stopPropagation()}>
+    <div className={`relative w-full`} onWheel={e => e.stopPropagation()}>
       <div
         className={`relative w-full overflow-hidden shadow-2xl ${fullScreen ? 'rounded-none' : 'rounded-2xl'}`}
         style={{ height: fullScreen ? '100dvh' : 620, background: isCapturing ? '#ffffff' : undefined }}

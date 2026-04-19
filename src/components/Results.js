@@ -179,7 +179,7 @@ function TabBar({ active, onChange, show3dBadge = false }) {
           {t.icon}{t.label}
           {t.badge && (
             <span className="absolute -top-1 -right-1 bg-emerald-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full leading-none uppercase tracking-wide shadow">
-              NEW
+              NOUVEAU
             </span>
           )}
         </button>
