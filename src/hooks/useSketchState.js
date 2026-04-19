@@ -366,5 +366,3 @@ export function useSketchState({ initialResult, draft, konvaEditorRef, onComplet
     handleElementRemove,
   };
 }
-
-useSketchState.displayName = 'useSketchState';
