@@ -10,16 +10,27 @@ import { normalizeCabinetModules } from '../utils/normalizeCabinetModules';
    ═══════════════════════════════════════════════════════════════ */
 
 function createWoodCanvas({
-  width = 1024, height = 1024,
+  width = 2048, height = 2048,
   baseR = 205, baseG = 175, baseB = 140,
   grainR = 165, grainG = 135, grainB = 95,
-  density = 90, knots = 2, noiseAmt = 12,
+  density = 150, knots = 2, noiseAmt = 12,
 } = {}) {
   const c = document.createElement('canvas');
   c.width = width; c.height = height;
   const ctx = c.getContext('2d');
   ctx.fillStyle = `rgb(${baseR},${baseG},${baseB})`;
   ctx.fillRect(0, 0, width, height);
+
+  // Zone tint variation: 6 vertical bands, each ±8% tint
+  const bandW = width / 6;
+  for (let b = 0; b < 6; b++) {
+    const factor = 1 + (Math.random() * 0.16 - 0.08);
+    const br = Math.max(0, Math.min(255, Math.round(baseR * factor)));
+    const bg = Math.max(0, Math.min(255, Math.round(baseG * factor)));
+    const bb = Math.max(0, Math.min(255, Math.round(baseB * factor)));
+    ctx.fillStyle = `rgba(${br},${bg},${bb},0.35)`;
+    ctx.fillRect(b * bandW, 0, bandW, height);
+  }
 
   // Pixel noise
   const img = ctx.getImageData(0, 0, width, height);
@@ -32,15 +43,15 @@ function createWoodCanvas({
   }
   ctx.putImageData(img, 0, 0);
 
-  // Grain lines (horizontal)
+  // Grain lines (full-width with sinusoidal curve)
   for (let i = 0; i < density; i++) {
     ctx.beginPath();
     ctx.strokeStyle = `rgba(${grainR},${grainG},${grainB},${0.03 + Math.random() * 0.1})`;
     ctx.lineWidth = 0.3 + Math.random() * 2.2;
-    let y = Math.random() * height;
-    ctx.moveTo(0, y);
-    for (let x = 0; x < width; x += 6) {
-      y += (Math.random() - 0.5) * 1.8;
+    const baseY = Math.random() * height;
+    ctx.moveTo(0, baseY);
+    for (let x = 6; x <= width; x += 6) {
+      const y = baseY + 3 * Math.sin(x / 200) + (Math.random() - 0.5) * 1.8;
       ctx.lineTo(x, y);
     }
     ctx.stroke();
@@ -63,16 +74,21 @@ function createWoodCanvas({
     ctx.fillStyle = `rgba(${grainR - 40},${grainG - 40},${grainB - 40},0.3)`;
     ctx.fill();
   }
+
+  // Varnish: thin white semi-transparent layer over grain
+  ctx.fillStyle = 'rgba(255,255,255,0.04)';
+  ctx.fillRect(0, 0, width, height);
+
   return c;
 }
 
-function createFloorCanvas(width = 2048, height = 2048) {
+function createFloorCanvas(width = 4096, height = 4096) {
   const c = document.createElement('canvas');
   c.width = width; c.height = height;
   const ctx = c.getContext('2d');
-  const plankW = width / 8;
+  const plankW = width / 12;
 
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < 12; i++) {
     const x = i * plankW;
     const r = 178 + Math.random() * 28;
     const g = 148 + Math.random() * 22;
@@ -89,10 +105,9 @@ function createFloorCanvas(width = 2048, height = 2048) {
       for (let xx = x + 2; xx < x + plankW - 2; xx += 8) { yy += (Math.random() - 0.5) * 1.5; ctx.lineTo(xx, yy); }
       ctx.stroke();
     }
-    // Plank gaps
-    ctx.fillStyle = 'rgba(40, 32, 24, 0.55)';
-    ctx.fillRect(x, 0, 1.2, height);
-    ctx.fillRect(x + plankW - 1.2, 0, 1.2, height);
+    // Sharp plank joints (2px black, opacity 0.7)
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(x, 0, 2, height);
   }
 
   // Subtle noise
@@ -159,7 +174,7 @@ function useMaterials() {
     };
 
     // Main wood (light sonoma oak)
-    const mainCanvas = createWoodCanvas({ baseR: 210, baseG: 180, baseB: 148, grainR: 170, grainG: 140, grainB: 100, density: 100, knots: 3 });
+    const mainCanvas = createWoodCanvas({ baseR: 210, baseG: 180, baseB: 148, grainR: 170, grainG: 140, grainB: 100, density: 150, knots: 3 });
     const mainTex    = mkTex(mainCanvas);
     const mainBump   = mkTex(createBumpCanvas(mainCanvas));
 
@@ -186,9 +201,10 @@ function useMaterials() {
     const wallTex    = mkTex(wallCanvas, 2, 2);
 
     return {
-      wood: new THREE.MeshStandardMaterial({
+      wood: new THREE.MeshPhysicalMaterial({
         map: mainTex, bumpMap: mainBump, bumpScale: 0.0025,
-        roughness: 0.58, metalness: 0.0, envMapIntensity: 0.3,
+        roughness: 0.42, metalness: 0.0, envMapIntensity: 0.55,
+        clearcoat: 0.3, clearcoatRoughness: 0.1,
       }),
       interior: new THREE.MeshStandardMaterial({
         map: intTex, roughness: 0.50, metalness: 0.0, envMapIntensity: 0.2,
@@ -196,15 +212,16 @@ function useMaterials() {
       back: new THREE.MeshStandardMaterial({
         map: backTex, roughness: 0.70, metalness: 0.0, envMapIntensity: 0.15,
       }),
-      drawer: new THREE.MeshStandardMaterial({
+      drawer: new THREE.MeshPhysicalMaterial({
         map: drawerTex, bumpMap: drawerBump, bumpScale: 0.002,
         roughness: 0.52, metalness: 0.02, envMapIntensity: 0.3,
+        clearcoat: 0.5, clearcoatRoughness: 0.05,
       }),
       handle: new THREE.MeshStandardMaterial({
-        color: '#666', roughness: 0.12, metalness: 0.88, envMapIntensity: 0.8,
+        color: '#b8b8b8', roughness: 0.15, metalness: 0.95, envMapIntensity: 1.2,
       }),
       rod: new THREE.MeshStandardMaterial({
-        color: '#c0c0c0', roughness: 0.08, metalness: 0.92, envMapIntensity: 0.9,
+        color: '#d4d4d4', roughness: 0.05, metalness: 0.98, envMapIntensity: 1.5,
       }),
       plinth: new THREE.MeshStandardMaterial({
         color: '#888', roughness: 0.75, metalness: 0.05,
@@ -216,7 +233,7 @@ function useMaterials() {
       }),
       floor: new THREE.MeshStandardMaterial({
         map: floorTex, bumpMap: floorBump, bumpScale: 0.0015,
-        roughness: 0.45, metalness: 0.02, envMapIntensity: 0.25,
+        roughness: 0.38, metalness: 0.02, envMapIntensity: 0.25,
       }),
       wall: new THREE.MeshStandardMaterial({
         map: wallTex, roughness: 0.95, metalness: 0.0, envMapIntensity: 0.1,
