@@ -10,6 +10,18 @@ const MARGIN = { l: 65, r: 52, t: 55, b: 65 };
 
 const DOUBLE_COLOR = '#d97706';
 
+// Module number badge geometry
+const BADGE_RADIUS      = 20;
+const BADGE_STROKE_W    = 2;
+const BADGE_FONT_SIZE   = 17;
+const BADGE_MIN_OFFSET  = 30;   // minimum top offset inside module
+const BADGE_MIDDLE_FRAC = 0.45; // fraction of module height for the preferred center
+const BADGE_MAX_FRAC    = 0.70; // maximum fraction to keep badge away from bottom
+
+// Double-separator label geometry
+const DOUBLE_LABEL_OFFSET = 10;
+const DOUBLE_LABEL_WIDTH  = 20;
+
 const toNum = (v, d = 0) => { const n = Number(v); return Number.isFinite(n) ? n : d; };
 
 // ── Geometry ──────────────────────────────────────────────────────────────────
@@ -114,6 +126,7 @@ export default function FacadeKonvaEditor({
 
   useEffect(() => {
     const obs = new ResizeObserver((entries) => {
+      if (!entries.length) return;
       const { width } = entries[0].contentRect;
       const ratio = svgH / svgW;
       setStageSize({ w: width, h: Math.round(width * ratio) });
@@ -292,8 +305,8 @@ export default function FacadeKonvaEditor({
                     stroke={DOUBLE_COLOR} strokeWidth={1.5} dash={[4, 3]} opacity={0.9}
                   />
                   <Text
-                    x={sepX + thPx - 10} y={mT + innerH + 28 * scaleRatio}
-                    width={20} text="⬛⬛"
+                    x={sepX + thPx - DOUBLE_LABEL_OFFSET} y={mT + innerH + 28 * scaleRatio}
+                    width={DOUBLE_LABEL_WIDTH} text="⬛⬛"
                     align="center" fill={DOUBLE_COLOR} fontSize={9 * scaleRatio} fontStyle="bold"
                   />
                 </Group>
@@ -312,7 +325,7 @@ export default function FacadeKonvaEditor({
 
           {/* ── MODULES ── */}
           {mRects.map(({ x, w, m, i, intTop, intH: iH, intBottom }) => {
-            const numY   = intTop + Math.min(Math.max(30, iH * 0.45), iH * 0.7);
+            const numY   = intTop + Math.min(Math.max(BADGE_MIN_OFFSET, iH * BADGE_MIDDLE_FRAC), iH * BADGE_MAX_FRAC);
             const annotY = annotBaseY + 10 * scaleRatio;
 
             // Rect descriptor for FacadeKonvaItems
@@ -339,10 +352,11 @@ export default function FacadeKonvaEditor({
                   module={m}
                   moduleDetail={cabinetModules[i] || null}
                   isEraseTool={isErase}
-                  onItemMove={(itemId, newYRatio) => {
-                    // Item was dragged via Konva's built-in draggable;
-                    // propagate as if it came from onItemPointerDown.
-                    // Actual yRatio update is handled inside FacadeKonvaItems.
+                  onItemMove={() => {
+                    // Item drag is handled internally by FacadeKonvaItems via Konva's
+                    // built-in draggable. The parent state is updated through
+                    // onItemRemove / onRemoveElement; there is no yRatio callback here
+                    // because FacadeKonvaItems commits the new yRatio itself.
                   }}
                   onItemRemove={(itemId) => onItemErase?.(itemId)}
                   onRemoveElement={(modIdx, type) => onModuleErase?.(modIdx, type)}
@@ -351,16 +365,16 @@ export default function FacadeKonvaEditor({
                 {/* Module number badge */}
                 <Circle
                   x={x + w / 2} y={numY}
-                  radius={20}
-                  fill="transparent" stroke={DIM_COLOR} strokeWidth={2}
+                  radius={BADGE_RADIUS}
+                  fill="transparent" stroke={DIM_COLOR} strokeWidth={BADGE_STROKE_W}
                   listening={false}
                 />
                 <Text
-                  x={x + w / 2 - 20} y={numY - 9}
-                  width={40} height={18}
+                  x={x + w / 2 - BADGE_RADIUS} y={numY - BADGE_RADIUS / 2}
+                  width={BADGE_RADIUS * 2} height={BADGE_RADIUS}
                   text={String(i + 1)}
                   align="center" verticalAlign="middle"
-                  fill={DIM_COLOR} fontStyle="bold" fontSize={17 * scaleRatio}
+                  fill={DIM_COLOR} fontStyle="bold" fontSize={BADGE_FONT_SIZE * scaleRatio}
                   listening={false}
                 />
 
