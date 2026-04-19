@@ -4,6 +4,7 @@ import { OrbitControls, Environment, ContactShadows } from '@react-three/drei';
 import { EffectComposer, N8AO, Bloom, Vignette } from '@react-three/postprocessing';
 import * as THREE from 'three';
 import { normalizeCabinetModules } from '../utils/normalizeCabinetModules';
+import MaterialSelector, { FINISHES } from './MaterialSelector';
 
 /* ═══════════════════════════════════════════════════════════════
    PROCEDURAL TEXTURE GENERATORS
@@ -163,8 +164,11 @@ function createBumpCanvas(src) {
    MATERIALS HOOK
    ═══════════════════════════════════════════════════════════════ */
 
-function useMaterials() {
+function useMaterials(finish) {
   return useMemo(() => {
+    const finishData = FINISHES.find(f => f.id === finish) || FINISHES[0];
+    const { baseR, baseG, baseB, grainR, grainG, grainB } = finishData;
+
     const mkTex = (canvas, repX = 1, repY = 1) => {
       const t = new THREE.CanvasTexture(canvas);
       t.wrapS = t.wrapT = THREE.RepeatWrapping;
@@ -173,21 +177,21 @@ function useMaterials() {
       return t;
     };
 
-    // Main wood (light sonoma oak)
-    const mainCanvas = createWoodCanvas({ baseR: 210, baseG: 180, baseB: 148, grainR: 170, grainG: 140, grainB: 100, density: 150, knots: 3 });
+    // Main wood (finish-dependent)
+    const mainCanvas = createWoodCanvas({ baseR, baseG, baseB, grainR, grainG, grainB, density: 150, knots: 3 });
     const mainTex    = mkTex(mainCanvas);
     const mainBump   = mkTex(createBumpCanvas(mainCanvas));
 
-    // Interior / shelf wood (lighter)
+    // Interior / shelf wood (lighter, neutral — not finish-dependent)
     const intCanvas = createWoodCanvas({ baseR: 228, baseG: 215, baseB: 198, grainR: 200, grainG: 185, grainB: 168, density: 50, knots: 0, noiseAmt: 8 });
     const intTex    = mkTex(intCanvas);
 
-    // Back panel (light melamine gray)
+    // Back panel (light melamine gray — not finish-dependent)
     const backCanvas = createWoodCanvas({ baseR: 188, baseG: 158, baseB: 126, grainR: 150, grainG: 122, grainB: 92, density: 55, knots: 1, noiseAmt: 10 });
     const backTex    = mkTex(backCanvas);
 
-    // Drawer front (slightly warmer)
-    const drawerCanvas = createWoodCanvas({ baseR: 208, baseG: 178, baseB: 145, grainR: 168, grainG: 138, grainB: 98, density: 95, knots: 2 });
+    // Drawer front (finish-dependent)
+    const drawerCanvas = createWoodCanvas({ baseR, baseG, baseB, grainR, grainG, grainB, density: 95, knots: 2 });
     const drawerTex    = mkTex(drawerCanvas);
     const drawerBump   = mkTex(createBumpCanvas(drawerCanvas));
 
@@ -251,7 +255,7 @@ function useMaterials() {
         map: mainTex, roughness: 0.5, metalness: 0.0,
       }),
     };
-  }, []);
+  }, [finish]);
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -640,8 +644,8 @@ function SceneBg({ isCapturing }) {
    SCENE
    ═══════════════════════════════════════════════════════════════ */
 
-function Scene({ cabinet, modules, isCapturing = false, isMobile = false }) {
-  const mats = useMaterials();
+function Scene({ cabinet, modules, isCapturing = false, isMobile = false, finish = 'oak' }) {
+  const mats = useMaterials(finish);
 
   const W  = Number(cabinet.width)     || 0;
   const H  = Number(cabinet.height)    || 0;
@@ -830,7 +834,7 @@ function SceneControls({ viewPreset, Wm, Hm, Dm, cabZ, camDist, autoRotate, glCa
    ═══════════════════════════════════════════════════════════════ */
 
 const ProfessionalRealisticViewer = forwardRef(function ProfessionalRealisticViewer(
-  { cabinet, name, fullScreen = false, presentationMode = false, isCapturing = false },
+  { cabinet, name, fullScreen = false, presentationMode = false, isCapturing = false, initialFinish = 'oak', onFinishChange },
   ref
 ) {
   if (!cabinet || !cabinet.width || !cabinet.height) {
@@ -858,6 +862,7 @@ const ProfessionalRealisticViewer = forwardRef(function ProfessionalRealisticVie
   const [viewPreset, setViewPreset] = useState('angle');
   const [autoRotate, setAutoRotate] = useState(presentationMode);
   const [userStoppedRotation, setUserStoppedRotation] = useState(false);
+  const [finish, setFinish] = useState(initialFinish);
   const glCaptureRef = useRef(null);
 
   useEffect(() => {
@@ -917,7 +922,7 @@ const ProfessionalRealisticViewer = forwardRef(function ProfessionalRealisticVie
             glCaptureRef={glCaptureRef}
           />
           <Suspense fallback={null}>
-            <Scene cabinet={cabinet} modules={modules} isCapturing={isCapturing} isMobile={isMobile} />
+            <Scene cabinet={cabinet} modules={modules} isCapturing={isCapturing} isMobile={isMobile} finish={finish} />
           </Suspense>
         </Canvas>
 
@@ -977,22 +982,31 @@ const ProfessionalRealisticViewer = forwardRef(function ProfessionalRealisticVie
 
       {/* View preset buttons — 3×2 grid, shown below canvas */}
       {!isCapturing && (
-        <div className="grid grid-cols-3 gap-1.5 mt-2 px-0.5">
-          {VIEW_PRESETS.map(v => (
-            <button
-              key={v.id}
-              onClick={() => setViewPreset(v.id)}
-              className={`flex items-center justify-center gap-1.5 py-2 px-1 rounded-lg text-xs font-semibold transition-all border ${
-                viewPreset === v.id
-                  ? 'bg-orange-600 text-white border-orange-500 shadow shadow-orange-900/30'
-                  : 'bg-white/5 text-slate-400 border-white/10 hover:bg-white/10 hover:text-white'
-              }`}
-            >
-              {v.icon}
-              <span>{v.label}</span>
-            </button>
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-3 gap-1.5 mt-2 px-0.5">
+            {VIEW_PRESETS.map(v => (
+              <button
+                key={v.id}
+                onClick={() => setViewPreset(v.id)}
+                className={`flex items-center justify-center gap-1.5 py-2 px-1 rounded-lg text-xs font-semibold transition-all border ${
+                  viewPreset === v.id
+                    ? 'bg-orange-600 text-white border-orange-500 shadow shadow-orange-900/30'
+                    : 'bg-white/5 text-slate-400 border-white/10 hover:bg-white/10 hover:text-white'
+                }`}
+              >
+                {v.icon}
+                <span>{v.label}</span>
+              </button>
+            ))}
+          </div>
+          <MaterialSelector
+            finish={finish}
+            onChange={(f) => {
+              setFinish(f);
+              if (onFinishChange) onFinishChange(f);
+            }}
+          />
+        </>
       )}
     </div>
   );

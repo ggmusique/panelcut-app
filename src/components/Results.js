@@ -188,7 +188,7 @@ function TabBar({ active, onChange, show3dBadge = false }) {
   );
 }
 
-export default function Results({ t, results, project }) {
+export default function Results({ t, results, project, onFinishChange }) {
   const [currentPanel, setCurrentPanel] = useState(0);
   const [tab, setTab] = useState('plan');
   const [fullPlan, setFullPlan] = useState(false);
@@ -404,7 +404,7 @@ export default function Results({ t, results, project }) {
                     <Maximize2 className="w-3.5 h-3.5" /> Plein écran
                   </button>
                 </div>
-                <ProfessionalRealisticViewer ref={view3dRef} cabinet={cabinet} name={project.name} presentationMode={presentation3D} />
+                <ProfessionalRealisticViewer ref={view3dRef} cabinet={cabinet} name={project.name} presentationMode={presentation3D} initialFinish={project.finish} onFinishChange={onFinishChange} />
               </>
             ) : (
               <div className="flex flex-col items-center justify-center py-16 gap-4 text-center">
@@ -447,7 +447,7 @@ export default function Results({ t, results, project }) {
               <Minimize2 className="w-4 h-4" /> Quitter plein écran
             </button>
           </div>
-          <ProfessionalRealisticViewer cabinet={cabinet} name={project.name} fullScreen presentationMode={presentation3D} />
+          <ProfessionalRealisticViewer cabinet={cabinet} name={project.name} fullScreen presentationMode={presentation3D} initialFinish={project.finish} onFinishChange={onFinishChange} />
         </div>
       )}
 
@@ -457,7 +457,7 @@ export default function Results({ t, results, project }) {
             <CabinetElevationFront cabinet={cabinet} name={project.name} />
           </div>
           <div ref={viewerCaptureRef} className="w-[1120px] h-[760px] bg-white p-2">
-            <ProfessionalRealisticViewer cabinet={cabinet} name={project.name} presentationMode isCapturing />
+            <ProfessionalRealisticViewer cabinet={cabinet} name={project.name} presentationMode isCapturing initialFinish={project.finish} />
           </div>
         </div>
       )}
