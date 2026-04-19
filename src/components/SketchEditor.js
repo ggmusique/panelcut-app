@@ -198,6 +198,8 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
         onElementUpdate={handleElementUpdate}
         onElementRemove={handleElementRemove}
         activeTool={tool}
+        onModuleChange={setFacadeModules}
+        onItemChange={setFacadeItems}
         generalNotes={generalNotes}
         onGeneralNotesChange={setGeneralNotes}
       />
