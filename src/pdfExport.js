@@ -69,8 +69,8 @@ function getLargestWasteRect(panel, panelWmm, panelHmm) {
 
 export function exportPDF(results, project, extras = {}) {
   const { panels, summary } = results;
-  const panelW = project.panel.w;
-  const panelH = project.panel.h;
+  const panelW = project.panel?.w ?? 244;
+  const panelH = project.panel?.h ?? 122;
   const totalCost = (summary.totalPanels * (project.pricePerPanel || 0)).toFixed(2);
   const projectName = project.name || 'Sans titre';
   const client = project.client || '';
