@@ -94,11 +94,18 @@ export function useSketchGestures({
 
   const handleFacadePointerDown = useCallback((e, modIdx) => {
     e.stopPropagation();
-    const { y } = getSVGCoords(e);
     const mRects = getFacadeGeometry();
     const mr     = mRects[modIdx];
     if (!mr) return;
-    const yRatio = clamp((y - mr.intTop) / mr.intH, 0.02, 0.98);
+    let yRatio;
+    let startY = 0;
+    if (e._konvaYRatio !== undefined) {
+      yRatio = e._konvaYRatio;
+    } else {
+      const { y } = getSVGCoords(e);
+      startY = y;
+      yRatio = clamp((y - mr.intTop) / mr.intH, 0.02, 0.98);
+    }
     const newItem = { id: uid(), type: tool, modIdx, yRatio };
     setFacadeItems(prev => [...prev, newItem]);
     setFacadeItems(prev => {
@@ -114,7 +121,7 @@ export function useSketchGestures({
       }, 0);
       return next;
     });
-    facadeDrag.current = { active: true, itemId: newItem.id, startY: y, startYRatio: yRatio, modIdx, intTop: mr.intTop, intH: mr.intH };
+    facadeDrag.current = { active: true, itemId: newItem.id, startY, startYRatio: yRatio, modIdx, intTop: mr.intTop, intH: mr.intH };
   }, [tool, getSVGCoords, getFacadeGeometry, sketchFingerprint, elements, cabinetDims, facadeModules, moduleDetails, generalNotes, joints, globalSliding, setFacadeItems]);
 
   const handleItemPointerDown = useCallback((e, itemId) => {
