@@ -170,6 +170,12 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
   // Pan souris (PC)
   const mousePanRef   = useRef({ active: false, startX: 0, startY: 0, stageX: 0, stageY: 0 });
 
+  // ── TOOL FLAGS (declared early — used in useEffect/useCallback dep arrays below) ──
+  const isErase   = activeTool === 'erase';
+  const isPlace   = activeTool === 'shelf' || activeTool === 'rod';
+  const isAdd     = activeTool === 'drawer' || activeTool === 'door' || activeTool === 'sliding';
+  const isNavMode = activeTool === 'select';
+
   // Non-passive wheel listener so we can call preventDefault()
   useEffect(() => {
     const el = containerRef.current;
@@ -283,13 +289,7 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
     [facadeModules, joints, thPx, drawW, mL, mT, innerH],
   );
 
-  // ── 3. TOOL FLAGS ─────────────────────────────────────────────────────────
-  const isErase   = activeTool === 'erase';
-  const isPlace   = activeTool === 'shelf' || activeTool === 'rod';
-  const isAdd     = activeTool === 'drawer' || activeTool === 'door' || activeTool === 'sliding';
-  const isNavMode = activeTool === 'select';
-
-  // ── 4. ANNOTATION Y (scaled margins) ─────────────────────────────────────
+  // ── 3. ANNOTATION Y (scaled margins) ─────────────────────────────────────
   const annotBaseY = mT + drawH;   // bottom of drawing area
   const dimLineH   = 26 * scaleRatio;
   const dimTickH   = 6  * scaleRatio;
