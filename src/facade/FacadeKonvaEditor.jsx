@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect, useMemo, useCallback, useImperativeHandle } from 'react';
-import { Stage, Layer, Rect, Line, Text, Group, Circle } from 'react-konva';
+import { Stage, Layer, Rect, Line, Text, Group } from 'react-konva';
 import { WOOD_STROKE, DIM_COLOR } from './konvaTheme';
-import FacadeKonvaItems from './FacadeKonvaItems';
+import FacadeKonvaModule from './FacadeKonvaModule';
 import FacadeKonvaAnnotations from './FacadeKonvaAnnotations';
 import { useFacadeKonva } from './useFacadeKonva';
 
@@ -11,14 +11,6 @@ import { useFacadeKonva } from './useFacadeKonva';
 const MARGIN = { l: 65, r: 52, t: 55, b: 65 };
 
 const DOUBLE_COLOR = '#d97706';
-
-// Module number badge geometry
-const BADGE_RADIUS      = 20;
-const BADGE_STROKE_W    = 2;
-const BADGE_FONT_SIZE   = 17;
-const BADGE_MIN_OFFSET  = 30;   // minimum top offset inside module
-const BADGE_MIDDLE_FRAC = 0.45; // fraction of module height for the preferred center
-const BADGE_MAX_FRAC    = 0.70; // maximum fraction to keep badge away from bottom
 
 // Double-separator label geometry
 const DOUBLE_LABEL_OFFSET = 10;
@@ -57,9 +49,15 @@ function computeKonvaMRects({ facadeModules, joints, thPx, drawW, mL, mT, innerH
     const wPx = m.width * scale;
     const r = {
       x: xCur, w: wPx, m, i,
+      modIdx: i,
+      y: mT + thPx,
+      intX: xCur,
+      intY: mT + thPx,
+      intW: wPx,
+      intH: innerH - 2 * thPx,
+      widthCm: m.width,
       intTop:    mT + thPx,
       intBottom: mT + innerH - thPx,
-      intH:      innerH - 2 * thPx,
       innerH,
     };
     xCur += wPx + (i < facadeModules.length - 1 ? (joints[i] ? 2 * thPx : thPx) : 0);
@@ -302,6 +300,10 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
     canRedo,
     snapActive,
     snapX: hookSnapX,
+    selectedId,
+    selectModule,
+    resizeModule,
+    setResizingModuleId,
   } = useFacadeKonva({
     cabinetDims: { width: toNum(cabW), height: toNum(cabH), plinth: toNum(plinth) },
     facadeModules,
@@ -337,7 +339,6 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
   }, [undo, redo]);
 
   // ── 3. ANNOTATION Y (scaled margins) ─────────────────────────────────────
-  const annotBaseY = mT + drawH;   // bottom of drawing area
   const dimLineH   = 26 * scaleRatio;
   const dimTickH   = 6  * scaleRatio;
   const rightDimX  = mL + drawW + 24 * scaleRatio;
@@ -410,52 +411,68 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
   }, []);
 
   /**
-   * Shelf / rod placement hit.
-   * Converts the Konva pointer position to a synthetic event compatible with
-   * useSketchGestures.handleFacadePointerDown (which calls getSVGCoords).
-   * We embed the already-computed yRatio in e._konvaYRatio so that a
-   * Konva-aware gesture handler can use it directly without SVG maths.
+   * Module resize drag: called by FacadeKonvaModule's onResizeStart.
+   * Sets up mousemove / mouseup listeners on window to track the drag and
+   * call resizeModule with the updated width in cm.
    */
-  const handleModulePlace = useCallback((konvaEvt, modIdx, intTop, intH) => {
-    if (!onFacadePointerDown) return;
+  const handleResizeStart = useCallback((modIdx, moduleWPx, widthCm, konvaEvt) => {
     konvaEvt.cancelBubble = true;
-    const stage = konvaEvt.target.getStage();
-    // getRelativePointerPosition returns coordinates in the Stage's logical
-    // coordinate space, correctly accounting for zoom (scaleX/Y) and pan (x/y).
-    const pos   = stage?.getRelativePointerPosition?.() ?? stage?.getPointerPosition();
-    if (!pos) return;
-    const yRatio = Math.max(0.02, Math.min(0.98, (pos.y - intTop) / intH));
-    // Synthetic event: includes screen coords + pre-computed yRatio
-    const container = stage.container();
-    const cr        = container?.getBoundingClientRect?.() ?? { left: 0, top: 0 };
-    const synth = {
-      stopPropagation: () => {},
-      clientX:         cr.left + pos.x,
-      clientY:         cr.top  + pos.y,
-      _konvaYRatio:    yRatio,
+    setResizingModuleId(modIdx);
+    const startClientX = konvaEvt.evt?.clientX ?? 0;
+    const pxPerCm = moduleWPx / Math.max(1, widthCm);
+
+    const handleMouseMove = (e) => {
+      const dx = e.clientX - startClientX;
+      const currentZoom = stageRef.current?.scaleX() ?? 1;
+      const newWidthCm = Math.max(10, widthCm + (dx / currentZoom) / pxPerCm);
+      resizeModule(modIdx, newWidthCm);
     };
-    onFacadePointerDown(synth, modIdx);
-  }, [onFacadePointerDown]);
+
+    const handleMouseUp = () => {
+      setResizingModuleId(null);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  }, [resizeModule, setResizingModuleId]);
 
   /**
-   * Item drag start (shelf / rod).
-   * FacadeKonvaItems already handles drag internally via Konva's built-in
-   * draggable, so onItemPointerDown is called here as a notification only.
+   * Called by FacadeKonvaModule's onAddElement.
+   * payload = { type, yRatio } for shelf/rod, or a tool string for drawer/door/sliding.
    */
-  const handleItemPointerDown = useCallback((konvaEvt, itemId) => {
-    if (!onItemPointerDown) return;
-    konvaEvt.cancelBubble = true;
-    const stage = konvaEvt.target.getStage?.();
-    const pos   = stage?.getPointerPosition();
-    const container = stage?.container();
-    const cr        = container?.getBoundingClientRect?.() ?? { left: 0, top: 0 };
-    const synth = {
-      stopPropagation: () => {},
-      clientX: pos ? cr.left + pos.x : 0,
-      clientY: pos ? cr.top  + pos.y : 0,
-    };
-    onItemPointerDown(synth, itemId);
-  }, [onItemPointerDown]);
+  const handleModuleAddElement = useCallback((modIdx, payload) => {
+    if (payload && typeof payload === 'object') {
+      // shelf / rod: FacadeKonvaModule already computed yRatio from the pointer
+      if (!onFacadePointerDown) return;
+      const stage = stageRef.current;
+      const container = stage?.container();
+      const cr = container?.getBoundingClientRect?.() ?? { left: 0, top: 0 };
+      const pos = stage?.getPointerPosition();
+      onFacadePointerDown({
+        stopPropagation: () => {},
+        clientX:      pos ? cr.left + pos.x : cr.left,
+        clientY:      pos ? cr.top  + pos.y : cr.top,
+        _konvaYRatio: payload.yRatio,
+      }, modIdx);
+    } else {
+      // drawer / door / sliding: no position needed
+      onModuleClick?.(modIdx, typeof payload === 'string' ? payload : activeTool);
+    }
+  }, [onFacadePointerDown, onModuleClick, activeTool]);
+
+  /**
+   * Called by FacadeKonvaModule's onRemoveElement.
+   * type = 'item' for shelf/rod (with id), or 'drawer'/'door'/'sliding' for fixtures.
+   */
+  const handleModuleRemoveElement = useCallback((modIdx, type, id) => {
+    if (type === 'item') {
+      onItemErase?.(id);
+    } else {
+      onModuleErase?.(modIdx, type);
+    }
+  }, [onItemErase, onModuleErase]);
 
   // ── 6. RENDER ─────────────────────────────────────────────────────────────
   return (
@@ -624,109 +641,24 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
           })}
 
           {/* ── MODULES ── */}
-          {mRects.map(({ x, w, m, i, intTop, intH: iH, intBottom }) => {
-            const numY   = intTop + Math.min(Math.max(BADGE_MIN_OFFSET, iH * BADGE_MIDDLE_FRAC), iH * BADGE_MAX_FRAC);
-            const annotY = annotBaseY + 10 * scaleRatio;
-
-            // Cabinet interior height in cm — needed to convert drawer cm heights to px
+          {mRects.map((moduleRect) => {
+            const { i, m } = moduleRect;
             const cabInteriorCm = toNum(cabH) - toNum(plinth);
-
-            // Rect descriptor for FacadeKonvaItems
-            const moduleRect = {
-              modIdx: i,
-              x, y: intTop, w, h: iH,
-              intX: x, intY: intTop, intW: w, intH: iH,
-              widthCm: m.width,
-              cabInteriorCm,
-            };
-
+            const moduleItems   = facadeItems.filter((it) => Number(it.modIdx) === i);
             return (
-              <Group key={`mod-${i}`}>
-                {/* Module interior background */}
-                <Rect
-                  x={x} y={intTop} width={w} height={iH}
-                  fill="#faf5ed" stroke={WOOD_STROKE} strokeWidth={0.7}
-                  listening={false}
-                />
-
-                {/* ── Interaction hit zones (rendered BEFORE items so items
-                     have higher z-order and receive pointer events first) ── */}
-                {isPlace && (
-                  <Rect
-                    x={x} y={intTop} width={w} height={iH}
-                    fill="transparent"
-                    style={{ cursor: 'cell' }}
-                    onMouseDown={(e) => handleModulePlace(e, i, intTop, iH)}
-                    onTouchStart={(e) => handleModulePlace(e, i, intTop, iH)}
-                  />
-                )}
-                {isAdd && (
-                  <Rect
-                    x={x} y={intTop} width={w} height={iH}
-                    fill="transparent"
-                    style={{ cursor: 'cell' }}
-                    onClick={(e) => {
-                      e.cancelBubble = true;
-                      onModuleClick?.(i, activeTool);
-                    }}
-                    onTap={(e) => {
-                      e.cancelBubble = true;
-                      onModuleClick?.(i, activeTool);
-                    }}
-                  />
-                )}
-
-                {/* Interior elements: drawers, doors, shelves, rods
-                     (rendered AFTER hit zones → higher z-order → events reach items first) */}
-                <FacadeKonvaItems
-                  moduleRect={moduleRect}
-                  facadeItems={facadeItems}
-                  module={m}
-                  moduleDetail={cabinetModules[i] || null}
-                  isEraseTool={isErase}
-                  onItemMove={onItemMove}
-                  onItemRemove={(itemId) => onItemErase?.(itemId)}
-                  onRemoveElement={(modIdx, type) => onModuleErase?.(modIdx, type)}
-                />
-
-                {/* Module number badge */}
-                <Circle
-                  x={x + w / 2} y={numY}
-                  radius={BADGE_RADIUS}
-                  fill="transparent" stroke={DIM_COLOR} strokeWidth={BADGE_STROKE_W}
-                  listening={false}
-                />
-                <Text
-                  x={x + w / 2 - BADGE_RADIUS} y={numY - BADGE_RADIUS / 2}
-                  width={BADGE_RADIUS * 2} height={BADGE_RADIUS}
-                  text={String(i + 1)}
-                  align="center" verticalAlign="middle"
-                  fill={DIM_COLOR} fontStyle="bold" fontSize={BADGE_FONT_SIZE * scaleRatio}
-                  listening={false}
-                />
-
-                {/* Width annotation below module */}
-                <Line
-                  points={[x, annotY, x + w, annotY]}
-                  stroke="#b45309" strokeWidth={1} listening={false}
-                />
-                <Line
-                  points={[x, annotY - dimTickH / 2, x, annotY + dimTickH / 2]}
-                  stroke="#b45309" strokeWidth={1} listening={false}
-                />
-                <Line
-                  points={[x + w, annotY - dimTickH / 2, x + w, annotY + dimTickH / 2]}
-                  stroke="#b45309" strokeWidth={1} listening={false}
-                />
-                <Text
-                  x={x} y={annotY + 6 * scaleRatio}
-                  width={w}
-                  text={`${m.width.toFixed(2)} cm`}
-                  align="center"
-                  fill="#b45309" fontStyle="bold" fontSize={11 * scaleRatio}
-                  listening={false}
-                />
-              </Group>
+              <FacadeKonvaModule
+                key={`mod-${i}`}
+                moduleRect={{ ...moduleRect, cabInteriorCm }}
+                module={m}
+                moduleDetail={cabinetModules[i] || null}
+                facadeItems={moduleItems}
+                isSelected={selectedId === i}
+                activeTool={activeTool}
+                onSelect={() => selectModule(i)}
+                onResizeStart={(e) => handleResizeStart(i, moduleRect.w, m.width, e)}
+                onAddElement={(payload) => handleModuleAddElement(i, payload)}
+                onRemoveElement={(type, id) => handleModuleRemoveElement(i, type, id)}
+              />
             );
           })}
 
