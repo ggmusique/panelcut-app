@@ -29,28 +29,40 @@ const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
 function ShelfItem({ item, intLeft, intTop, intBottom, iW, iH, isEraseTool, onItemMove, onItemRemove }) {
   const [hovered, setHovered] = useState(false);
+  const groupRef = useRef(null);
 
-  // Coordonnée Y absolue dans le canvas
+  // Coordonnée Y en espace contenu (content-space)
   const ey = intTop + clamp(toNum(item.yRatio, 0.5), 0, 1) * iH;
 
-  // dragBoundFunc reçoit la position absolue du nœud dans le coordinate space du parent Layer.
-  // On contraint Y entre intTop et intBottom et on fixe X à 0 pour éviter la dérive horizontale.
-  const dragBoundFunc = useCallback((pos) => ({
-    x: 0,
-    y: clamp(pos.y, intTop, intBottom),
-  }), [intTop, intBottom]);
+  // dragBoundFunc reçoit ET doit retourner des coordonnées ABSOLUES (pixels canvas),
+  // c'est-à-dire après application du scaleX/Y et x/y du Stage.
+  // intTop/intBottom sont en espace contenu → on les convertit en absolu.
+  // Pour l'axe X, on verrouille le Group à content-x=0 :
+  //   absX = 0 * scaleX + stageX = stageX.
+  const dragBoundFunc = useCallback((pos) => {
+    const stage  = groupRef.current?.getStage?.();
+    const scaleX = stage?.scaleX?.() ?? 1;
+    const scaleY = stage?.scaleY?.() ?? 1;
+    const stX    = stage?.x?.()     ?? 0;
+    const stY    = stage?.y?.()     ?? 0;
+    return {
+      x: 0 * scaleX + stX,  // maintient content-x = 0
+      y: clamp(pos.y, intTop * scaleY + stY, intBottom * scaleY + stY),
+    };
+  }, [intTop, intBottom]);
 
   const handleDragEnd = useCallback((e) => {
-    // y() retourne la position Y absolue du nœud après drag
+    // e.target.y() retourne la position Y LOCALE (espace contenu) après drag
     const newY      = e.target.y();
     const newYRatio = clamp((newY - intTop) / Math.max(1, iH), 0, 1);
-    // Remet la position Konva à 0 car le rendu est piloté par le state React (yRatio)
+    // Remet la position Konva à la valeur snappée (avant que React ne re-rende)
     e.target.y(intTop + newYRatio * iH);
     onItemMove?.(item.id, newYRatio);
   }, [intTop, iH, item.id, onItemMove]);
 
   return (
     <Group
+      ref={groupRef}
       x={0}
       y={ey}
       draggable={!isEraseTool}
@@ -86,13 +98,22 @@ function ShelfItem({ item, intLeft, intTop, intBottom, iW, iH, isEraseTool, onIt
 
 function RodItem({ item, intLeft, intTop, intBottom, iW, iH, isEraseTool, onItemMove, onItemRemove }) {
   const [hovered, setHovered] = useState(false);
+  const groupRef = useRef(null);
 
   const ey = intTop + clamp(toNum(item.yRatio, 0.32), 0, 1) * iH;
 
-  const dragBoundFunc = useCallback((pos) => ({
-    x: 0,
-    y: clamp(pos.y, intTop, intBottom),
-  }), [intTop, intBottom]);
+  // Même correction que ShelfItem : convertir intTop/intBottom en coordonnées absolues.
+  const dragBoundFunc = useCallback((pos) => {
+    const stage  = groupRef.current?.getStage?.();
+    const scaleX = stage?.scaleX?.() ?? 1;
+    const scaleY = stage?.scaleY?.() ?? 1;
+    const stX    = stage?.x?.()     ?? 0;
+    const stY    = stage?.y?.()     ?? 0;
+    return {
+      x: 0 * scaleX + stX,
+      y: clamp(pos.y, intTop * scaleY + stY, intBottom * scaleY + stY),
+    };
+  }, [intTop, intBottom]);
 
   const handleDragEnd = useCallback((e) => {
     const newY      = e.target.y();
@@ -103,6 +124,7 @@ function RodItem({ item, intLeft, intTop, intBottom, iW, iH, isEraseTool, onItem
 
   return (
     <Group
+      ref={groupRef}
       x={0}
       y={ey}
       draggable={!isEraseTool}
