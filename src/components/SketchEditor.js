@@ -31,6 +31,7 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
     widthInputs,   setWidthInputs,
     loading,
     error,
+    capturing,
     currentCabinet,
     sketchFingerprint,
     commitWidth,
@@ -119,6 +120,7 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
           <span className="text-[10px] font-mono font-black text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/30">v3.7</span>
         </div>
         <div className="flex gap-2">
+          {capturing && <span className="text-amber-300 text-sm self-center mr-2 animate-pulse">⏳ Capture en cours...</span>}
           {error && <span className="text-red-400 text-sm self-center mr-2">{error}</span>}
           <button onClick={onCancel} className="px-3 py-1 bg-slate-700 text-white rounded">Annuler</button>
           <button
