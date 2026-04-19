@@ -1,134 +1,152 @@
-/**
- * FacadeKonvaEditor.jsx — Éditeur façade Konva complet
- *
- * CORRECTIONS v2 :
- * - onItemMove correctement branché → setFacadeItems dans SketchEditor
- * - FacadeKonvaAnnotations intégré dans le Stage (cotes + notes)
- * - FacadeKonvaModule.jsx n'est plus utilisé (fichier orphelin)
- * - Snap indicator (ligne bleue) quand resize en cours
- * - exportDataUrl retourne un PNG haute résolution (pixelRatio 3)
- */
-import React, {
-  useRef, useState, useEffect, useMemo,
-  useCallback, useImperativeHandle,
-} from 'react';
+import React, { useRef, useState, useEffect, useMemo, useCallback, useImperativeHandle } from 'react';
 import { Stage, Layer, Rect, Line, Text, Group, Circle } from 'react-konva';
 import { WOOD_STROKE, DIM_COLOR } from './konvaTheme';
 import FacadeKonvaItems from './FacadeKonvaItems';
-import FacadeKonvaAnnotations from './FacadeKonvaAnnotations';
 
-// ── Constantes ────────────────────────────────────────────────────────────────
+// ── Constants ─────────────────────────────────────────────────────────────────
 
+/** Visual margins (in SVG reference pixels) matching FacadeCanvas */
 const MARGIN = { l: 65, r: 52, t: 55, b: 65 };
-const DOUBLE_COLOR          = '#d97706';
-const BADGE_RADIUS          = 20;
-const BADGE_STROKE_W        = 2;
-const BADGE_FONT_SIZE       = 17;
-const PINCH_GESTURE_DELAY   = 50;
+
+const DOUBLE_COLOR = '#d97706';
+
+// Module number badge geometry
+const BADGE_RADIUS      = 20;
+const BADGE_STROKE_W    = 2;
+const BADGE_FONT_SIZE   = 17;
+const BADGE_MIN_OFFSET  = 30;   // minimum top offset inside module
+const BADGE_MIDDLE_FRAC = 0.45; // fraction of module height for the preferred center
+const BADGE_MAX_FRAC    = 0.70; // maximum fraction to keep badge away from bottom
+
+// Double-separator label geometry
+const DOUBLE_LABEL_OFFSET = 10;
+const DOUBLE_LABEL_WIDTH  = 20;
+
+// Delay (ms) before resetting isPinching after the last touch ends,
+// preventing a residual single-finger move from firing right after a pinch.
+const PINCH_GESTURE_DELAY_MS = 50;
 
 const toNum = (v, d = 0) => { const n = Number(v); return Number.isFinite(n) ? n : d; };
-const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
-// ── Gestes ────────────────────────────────────────────────────────────────────
+// ── Gesture helpers ───────────────────────────────────────────────────────────
 
 function getDistance(p1, p2) {
   return Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
 }
 
-// ── Géométrie ─────────────────────────────────────────────────────────────────
+function getCenter(p1, p2) {
+  return { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+}
 
+// ── Geometry ──────────────────────────────────────────────────────────────────
+
+/**
+ * Computes per-module drawing rects for the Konva stage.
+ * Matches the logic of computeMRects in FacadeCanvas so the layouts are equivalent.
+ */
 function computeKonvaMRects({ facadeModules, joints, thPx, drawW, mL, mT, innerH }) {
   if (!facadeModules.length) return [];
   const totalSepPx = joints.reduce((acc, j) => acc + (j ? 2 * thPx : thPx), 0) + 2 * thPx;
   const avail      = drawW - totalSepPx;
-  const totalModW  = facadeModules.reduce((a, m) => a + toNum(m.width, 0), 0);
+  const totalModW  = facadeModules.reduce((a, m) => a + m.width, 0);
   const scale      = avail / Math.max(1, totalModW);
   let xCur = mL + thPx;
   return facadeModules.map((m, i) => {
-    const wPx = toNum(m.width, 0) * scale;
+    const wPx = m.width * scale;
     const r = {
       x: xCur, w: wPx, m, i,
       intTop:    mT + thPx,
       intBottom: mT + innerH - thPx,
       intH:      innerH - 2 * thPx,
       innerH,
-      // Format attendu par FacadeKonvaItems
-      modIdx: i,
-      intX: xCur,
-      intY: mT + thPx,
-      intW: wPx,
     };
     xCur += wPx + (i < facadeModules.length - 1 ? (joints[i] ? 2 * thPx : thPx) : 0);
     return r;
   });
 }
 
-// ── Gradients bois ────────────────────────────────────────────────────────────
+// ── Wood gradient helpers ─────────────────────────────────────────────────────
 
+/** Horizontal wood gradient (left-to-right) filling a rect of width `w`. */
 const woodGradH = (w) => ({
-  fillLinearGradientStartPoint: { x: 0, y: 0 },
-  fillLinearGradientEndPoint:   { x: w, y: 0 },
-  fillLinearGradientColorStops: [0, '#dcc89a', 0.45, '#f5ede0', 1, '#dcc89a'],
+  fillLinearGradientStartPoint:      { x: 0, y: 0 },
+  fillLinearGradientEndPoint:        { x: w, y: 0 },
+  fillLinearGradientColorStops:      [0, '#dcc89a', 0.45, '#f5ede0', 1, '#dcc89a'],
 });
 
+/** Vertical wood gradient (top-to-bottom) filling a rect of height `h`. */
 const woodGradV = (h) => ({
-  fillLinearGradientStartPoint: { x: 0, y: 0 },
-  fillLinearGradientEndPoint:   { x: 0, y: h },
-  fillLinearGradientColorStops: [0, '#c4a87a', 1, '#e8d5b0'],
+  fillLinearGradientStartPoint:      { x: 0, y: 0 },
+  fillLinearGradientEndPoint:        { x: 0, y: h },
+  fillLinearGradientColorStops:      [0, '#c4a87a', 1, '#e8d5b0'],
 });
 
+/** Double-panel separator gradient (horizontal). */
 const sepGradH = (w) => ({
-  fillLinearGradientStartPoint: { x: 0, y: 0 },
-  fillLinearGradientEndPoint:   { x: w, y: 0 },
-  fillLinearGradientColorStops: [0, '#dcc89a', 0.48, '#e8d5b0', 0.52, '#c9b068', 1, '#dcc89a'],
+  fillLinearGradientStartPoint:      { x: 0, y: 0 },
+  fillLinearGradientEndPoint:        { x: w, y: 0 },
+  fillLinearGradientColorStops:      [0, '#dcc89a', 0.48, '#e8d5b0', 0.52, '#c9b068', 1, '#dcc89a'],
 });
 
-// ── Composant principal ───────────────────────────────────────────────────────
+// ── Main component ────────────────────────────────────────────────────────────
 
+/**
+ * FacadeKonvaEditor
+ *
+ * Drop-in Konva replacement for FacadeRealisteSVG / FacadeCanvas.
+ * Shares the same props interface so it can replace the SVG-based renderer
+ * in SketchEditor without touching the parent's state logic.
+ *
+ * Props:
+ *   svgW, svgH           — reference viewport size (same as the SVG viewBox)
+ *   cabW, cabH           — cabinet outer dimensions in cm
+ *   plinth               — plinth height in cm
+ *   thick                — panel thickness in cm
+ *   facadeModules        — array of { width, drawers, doors, slidingDoors, … }
+ *   facadeItems          — array of { id, type, modIdx, yRatio }
+ *   joints               — boolean[] — true = double joint between module i and i+1
+ *   cabinetModules       — normalized modules from normalizeCabinetModules (may be [])
+ *   globalSliding        — { enabled, count, heightCm } | null
+ *   onFacadePointerDown  — (e, modIdx) => void — shelf / rod placement
+ *   onItemPointerDown    — (e, itemId) => void — item drag start
+ *   onItemErase          — (itemId) => void
+ *   onModuleClick        — (modIdx, tool) => void
+ *   onModuleErase        — (modIdx, type) => void
+ *   activeTool           — 'select'|'shelf'|'rod'|'drawer'|'door'|'sliding'|'erase'|…
+ */
 const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
-  svgW           = 1140,
-  svgH           = 700,
+  svgW         = 1140,
+  svgH         = 700,
   cabW,
   cabH,
   plinth,
   thick,
-  facadeModules  = [],
-  facadeItems    = [],
-  joints         = [],
-  cabinetModules = [],
+  facadeModules   = [],
+  facadeItems     = [],
+  joints          = [],
+  cabinetModules  = [],
   globalSliding,
-  // Callbacks depuis SketchEditor
-  onFacadePointerDown,   // (synthEvt, modIdx) — placement tablette/tringle
-  onItemPointerDown,     // (synthEvt, itemId) — notification drag start (optionnel)
-  onItemMove,            // (itemId, newYRatio) — mise à jour yRatio ← CRUCIAL
-  onItemErase,           // (itemId)
-  onModuleClick,         // (modIdx, tool)
-  onModuleErase,         // (modIdx, type)
-  // Annotations
-  elements       = [],
-  onElementAdd,
-  onElementUpdate,
-  onElementRemove,
-  activeTool     = 'select',
+  onFacadePointerDown,
+  onItemPointerDown,
+  onItemErase,
+  onModuleClick,
+  onModuleErase,
+  activeTool      = 'select',
 }, ref) {
-
+  // ── 1. RESPONSIVE RESIZE ───────────────────────────────────────────────────
   const containerRef = useRef(null);
   const stageRef     = useRef(null);
 
-  // ── Export PNG haute résolution pour PDF et Claude ────────────────────────
   useImperativeHandle(ref, () => ({
-    exportDataUrl: () =>
-      stageRef.current?.toDataURL({ mimeType: 'image/png', pixelRatio: 3 }) ?? null,
+    // Returns a JPEG data URL of the current Konva stage content.
+    exportDataUrl: () => stageRef.current?.toDataURL({ mimeType: 'image/jpeg', quality: 0.85 }) ?? null,
   }), []);
-
-  // ── Taille responsive ────────────────────────────────────────────────────
   const [stageSize, setStageSize] = useState({ w: svgW, h: svgH });
 
   useEffect(() => {
     const obs = new ResizeObserver((entries) => {
       if (!entries.length) return;
       const { width } = entries[0].contentRect;
-      if (width < 10) return;
       const ratio = svgH / svgW;
       setStageSize({ w: width, h: Math.round(width * ratio) });
     });
@@ -136,44 +154,55 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
     return () => obs.disconnect();
   }, [svgW, svgH]);
 
-  // ── Zoom / Pan ───────────────────────────────────────────────────────────
+  // ── 1b. VIEWPORT STATE (zoom / pan) ────────────────────────────────────────
   const [scale,    setScale]    = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
-  const lastDist   = useRef(null);
-  const isPinching = useRef(false);
-  const panStart   = useRef(null);
+  const lastCenter    = useRef(null);
+  const lastDist      = useRef(null);
+  const isPinching    = useRef(false);
+  const touchStartPos = useRef(null);
 
-  // Molette (non-passive pour pouvoir appeler preventDefault)
+  // Non-passive wheel listener so we can call preventDefault()
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     const onWheel = (e) => {
       e.preventDefault();
-      const stage    = stageRef.current;
+      const scaleBy = 1.06;
+      const stage   = stageRef.current;
       if (!stage) return;
       const oldScale = stage.scaleX();
       const pointer  = stage.getPointerPosition();
       if (!pointer) return;
-      const factor   = e.deltaY > 0 ? 1 / 1.06 : 1.06;
-      const newScale = clamp(oldScale * factor, 0.4, 5);
-      const mpt = { x: (pointer.x - stage.x()) / oldScale, y: (pointer.y - stage.y()) / oldScale };
+      const direction = e.deltaY > 0 ? -1 : 1;
+      const newScale  = Math.max(0.5, Math.min(4, direction > 0 ? oldScale * scaleBy : oldScale / scaleBy));
+      const mousePointTo = {
+        x: (pointer.x - stage.x()) / oldScale,
+        y: (pointer.y - stage.y()) / oldScale,
+      };
       setScale(newScale);
-      setPosition({ x: pointer.x - mpt.x * newScale, y: pointer.y - mpt.y * newScale });
+      setPosition({
+        x: pointer.x - mousePointTo.x * newScale,
+        y: pointer.y - mousePointTo.y * newScale,
+      });
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
   }, []);
 
   const { w: stageW, h: stageH } = stageSize;
+
+  // Scale factor between the Konva canvas and the SVG reference size
   const scaleRatio = stageW / Math.max(1, svgW);
 
-  // ── Géométrie ────────────────────────────────────────────────────────────
+  // ── 2. LAYOUT GEOMETRY ────────────────────────────────────────────────────
   const drawW = (svgW - MARGIN.l - MARGIN.r) * scaleRatio;
   const drawH = (svgH - MARGIN.t - MARGIN.b) * scaleRatio;
   const mL    = MARGIN.l * scaleRatio;
   const mT    = MARGIN.t * scaleRatio;
-  const thPx  = toNum(thick, 1.8) * (drawW / Math.max(1, toNum(cabW)));
-  const plPx  = toNum(plinth)      * (drawH / Math.max(1, toNum(cabH)));
+
+  const thPx   = toNum(thick, 1.8) * (drawW / Math.max(1, toNum(cabW)));
+  const plPx   = toNum(plinth)      * (drawH / Math.max(1, toNum(cabH)));
   const innerH = drawH - plPx;
 
   const mRects = useMemo(() =>
@@ -181,84 +210,134 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
     [facadeModules, joints, thPx, drawW, mL, mT, innerH],
   );
 
-  // ── Flags outils ────────────────────────────────────────────────────────
-  const isErase  = activeTool === 'erase';
-  const isPlace  = activeTool === 'shelf' || activeTool === 'rod';
-  const isAdd    = activeTool === 'drawer' || activeTool === 'door' || activeTool === 'sliding';
+  // ── 3. TOOL FLAGS ─────────────────────────────────────────────────────────
+  const isErase   = activeTool === 'erase';
+  const isPlace   = activeTool === 'shelf' || activeTool === 'rod';
+  const isAdd     = activeTool === 'drawer' || activeTool === 'door' || activeTool === 'sliding';
   const isNavMode = activeTool === 'select';
 
-  // ── Annotations (dim/note) — on les gère dans le Stage Konva ────────────
-  const isDim  = activeTool === 'dim';
-  const isNote = activeTool === 'note';
+  // ── 4. ANNOTATION Y (scaled margins) ─────────────────────────────────────
+  const annotBaseY = mT + drawH;   // bottom of drawing area
+  const dimLineH   = 26 * scaleRatio;
+  const dimTickH   = 6  * scaleRatio;
+  const rightDimX  = mL + drawW + 24 * scaleRatio;
 
-  // ── Touch handlers ───────────────────────────────────────────────────────
+  // ── 5. EVENT HANDLERS ─────────────────────────────────────────────────────
 
-  const handleTouchStart = useCallback((e) => {
-    const touches = e.evt.touches;
-    if (touches.length === 1 && isNavMode) {
+  // ── Touch gesture handlers ────────────────────────────────────────────────
+
+  const handleStageTouchStart = useCallback((e) => {
+    if (e.evt.touches.length === 1 && isNavMode) {
       const stage = stageRef.current;
-      panStart.current = {
-        cx: touches[0].clientX, cy: touches[0].clientY,
-        sx: stage.x(), sy: stage.y(),
+      touchStartPos.current = {
+        clientX: e.evt.touches[0].clientX,
+        clientY: e.evt.touches[0].clientY,
+        stageX:  stage.x(),
+        stageY:  stage.y(),
       };
     }
   }, [isNavMode]);
 
-  const handleTouchMove = useCallback((e) => {
+  const handleStageTouchMove = useCallback((e) => {
     const touches = e.evt.touches;
     if (touches.length === 2) {
+      // Pinch-to-zoom
       e.evt.preventDefault();
       isPinching.current = true;
       const p1 = { x: touches[0].clientX, y: touches[0].clientY };
       const p2 = { x: touches[1].clientX, y: touches[1].clientY };
-      const newDist = getDistance(p1, p2);
-      if (!lastDist.current) { lastDist.current = newDist; return; }
+      const newDist   = getDistance(p1, p2);
+      const newCenter = getCenter(p1, p2);
+      if (!lastDist.current) {
+        lastDist.current   = newDist;
+        lastCenter.current = newCenter;
+        return;
+      }
+      const scaleBy  = newDist / lastDist.current;
       const stage    = stageRef.current;
       const oldScale = stage.scaleX();
-      const newScale = clamp(oldScale * (newDist / lastDist.current), 0.4, 5);
+      const newScale = Math.max(0.5, Math.min(4, oldScale * scaleBy));
       const pointer  = stage.getPointerPosition();
-      if (pointer) {
-        const mpt = { x: (pointer.x - stage.x()) / oldScale, y: (pointer.y - stage.y()) / oldScale };
-        setScale(newScale);
-        setPosition({ x: pointer.x - mpt.x * newScale, y: pointer.y - mpt.y * newScale });
-      }
-      lastDist.current = newDist;
-    } else if (touches.length === 1 && isNavMode && panStart.current && !isPinching.current) {
-      const dx = touches[0].clientX - panStart.current.cx;
-      const dy = touches[0].clientY - panStart.current.cy;
-      setPosition({ x: panStart.current.sx + dx, y: panStart.current.sy + dy });
+      if (!pointer) return;
+      const mousePointTo = {
+        x: (pointer.x - stage.x()) / oldScale,
+        y: (pointer.y - stage.y()) / oldScale,
+      };
+      setScale(newScale);
+      setPosition({
+        x: pointer.x - mousePointTo.x * newScale,
+        y: pointer.y - mousePointTo.y * newScale,
+      });
+      lastDist.current   = newDist;
+      lastCenter.current = newCenter;
+    } else if (touches.length === 1 && isNavMode && !isPinching.current) {
+      // Single-finger pan
+      if (!touchStartPos.current) return;
+      const dx = touches[0].clientX - touchStartPos.current.clientX;
+      const dy = touches[0].clientY - touchStartPos.current.clientY;
+      setPosition({
+        x: touchStartPos.current.stageX + dx,
+        y: touchStartPos.current.stageY + dy,
+      });
     }
   }, [isNavMode]);
 
-  const handleTouchEnd = useCallback(() => {
-    lastDist.current = null;
-    panStart.current = null;
-    setTimeout(() => { isPinching.current = false; }, PINCH_GESTURE_DELAY);
+  const handleStageTouchEnd = useCallback(() => {
+    lastDist.current      = null;
+    lastCenter.current    = null;
+    touchStartPos.current = null;
+    setTimeout(() => { isPinching.current = false; }, PINCH_GESTURE_DELAY_MS);
   }, []);
 
-  // ── Placement tablette / tringle dans un module ──────────────────────────
-  const handleModulePlace = useCallback((konvaEvt, modIdx, intTop, iH) => {
+  /**
+   * Shelf / rod placement hit.
+   * Converts the Konva pointer position to a synthetic event compatible with
+   * useSketchGestures.handleFacadePointerDown (which calls getSVGCoords).
+   * We embed the already-computed yRatio in e._konvaYRatio so that a
+   * Konva-aware gesture handler can use it directly without SVG maths.
+   */
+  const handleModulePlace = useCallback((konvaEvt, modIdx, intTop, intH) => {
     if (!onFacadePointerDown) return;
     konvaEvt.cancelBubble = true;
     const stage = konvaEvt.target.getStage();
     const pos   = stage?.getPointerPosition();
     if (!pos) return;
-    const yRatio = clamp((pos.y - intTop) / Math.max(1, iH), 0.02, 0.98);
-    const cr     = stage.container()?.getBoundingClientRect?.() ?? { left: 0, top: 0 };
-    onFacadePointerDown(
-      { stopPropagation: () => {}, clientX: cr.left + pos.x, clientY: cr.top + pos.y, _konvaYRatio: yRatio },
-      modIdx,
-    );
+    const yRatio = Math.max(0.02, Math.min(0.98, (pos.y - intTop) / intH));
+    // Synthetic event: includes screen coords + pre-computed yRatio
+    const container = stage.container();
+    const cr        = container?.getBoundingClientRect?.() ?? { left: 0, top: 0 };
+    const synth = {
+      stopPropagation: () => {},
+      clientX:         cr.left + pos.x,
+      clientY:         cr.top  + pos.y,
+      _konvaYRatio:    yRatio,
+    };
+    onFacadePointerDown(synth, modIdx);
   }, [onFacadePointerDown]);
 
-  // ── Annotations ──────────────────────────────────────────────────────────
-  const annotBaseY = mT + drawH;
-  const dimTickH   = 6 * scaleRatio;
-  const rightDimX  = mL + drawW + 24 * scaleRatio;
+  /**
+   * Item drag start (shelf / rod).
+   * FacadeKonvaItems already handles drag internally via Konva's built-in
+   * draggable, so onItemPointerDown is called here as a notification only.
+   */
+  const handleItemPointerDown = useCallback((konvaEvt, itemId) => {
+    if (!onItemPointerDown) return;
+    konvaEvt.cancelBubble = true;
+    const stage = konvaEvt.target.getStage?.();
+    const pos   = stage?.getPointerPosition();
+    const container = stage?.container();
+    const cr        = container?.getBoundingClientRect?.() ?? { left: 0, top: 0 };
+    const synth = {
+      stopPropagation: () => {},
+      clientX: pos ? cr.left + pos.x : 0,
+      clientY: pos ? cr.top  + pos.y : 0,
+    };
+    onItemPointerDown(synth, itemId);
+  }, [onItemPointerDown]);
 
-  // ── Render ───────────────────────────────────────────────────────────────
+  // ── 6. RENDER ─────────────────────────────────────────────────────────────
   return (
-    <div ref={containerRef} style={{ width: '100%', touchAction: 'none' }}>
+    <div ref={containerRef} style={{ width: '100%' }}>
       <Stage
         ref={stageRef}
         width={stageW}
@@ -267,182 +346,289 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
         scaleY={scale}
         x={position.x}
         y={position.y}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
+        onTouchStart={handleStageTouchStart}
+        onTouchMove={handleStageTouchMove}
+        onTouchEnd={handleStageTouchEnd}
       >
         <Layer>
 
-          {/* ── Fond bois extérieur ── */}
-          <Rect x={mL} y={mT} width={drawW} height={drawH}
-            {...woodGradH(drawW)} stroke={WOOD_STROKE} strokeWidth={2.5} listening={false} />
+          {/* ── 2. FOND BOIS — outer cabinet rectangle ── */}
+          <Rect
+            x={mL} y={mT}
+            width={drawW} height={drawH}
+            {...woodGradH(drawW)}
+            stroke={WOOD_STROKE} strokeWidth={2.5}
+            listening={false}
+          />
 
-          {/* Fond intérieur */}
-          <Rect x={mL + thPx} y={mT + thPx}
+          {/* Interior background (inside the four panels) */}
+          <Rect
+            x={mL + thPx}     y={mT + thPx}
             width={drawW - 2 * thPx} height={innerH - thPx}
-            fill="#ede4d3" listening={false} />
+            fill="#ede4d3"
+            listening={false}
+          />
 
-          {/* ── Plinthe ── */}
+          {/* ── PLINTH ── */}
           {plPx > 2 && (
             <Group listening={false}>
-              <Rect x={mL} y={mT + innerH} width={drawW} height={plPx}
-                fill="#c8b07c" stroke={WOOD_STROKE} strokeWidth={1.5} />
-              <Line points={[mL, mT + innerH, mL + drawW, mT + innerH]}
-                stroke={WOOD_STROKE} strokeWidth={2} />
+              <Rect
+                x={mL}     y={mT + innerH}
+                width={drawW} height={plPx}
+                fill="#c8b07c" stroke={WOOD_STROKE} strokeWidth={1.5}
+              />
+              <Line
+                points={[mL, mT + innerH, mL + drawW, mT + innerH]}
+                stroke={WOOD_STROKE} strokeWidth={2}
+              />
             </Group>
           )}
 
-          {/* ── Panneaux latéraux ── */}
-          <Rect x={mL} y={mT} width={thPx} height={innerH}
-            {...woodGradH(thPx)} stroke={WOOD_STROKE} strokeWidth={1.5} listening={false} />
-          <Rect x={mL + drawW - thPx} y={mT} width={thPx} height={innerH}
-            {...woodGradH(thPx)} stroke={WOOD_STROKE} strokeWidth={1.5} listening={false} />
+          {/* ── SIDE PANELS ── */}
+          <Rect
+            x={mL} y={mT} width={thPx} height={innerH}
+            {...woodGradH(thPx)}
+            stroke={WOOD_STROKE} strokeWidth={1.5}
+            listening={false}
+          />
+          <Rect
+            x={mL + drawW - thPx} y={mT} width={thPx} height={innerH}
+            {...woodGradH(thPx)}
+            stroke={WOOD_STROKE} strokeWidth={1.5}
+            listening={false}
+          />
 
-          {/* ── Panneau dessus ── */}
-          <Rect x={mL} y={mT} width={drawW} height={thPx}
-            {...woodGradV(thPx)} stroke={WOOD_STROKE} strokeWidth={1.5} listening={false} />
+          {/* ── TOP PANEL ── */}
+          <Rect
+            x={mL} y={mT} width={drawW} height={thPx}
+            {...woodGradV(thPx)}
+            stroke={WOOD_STROKE} strokeWidth={1.5}
+            listening={false}
+          />
 
-          {/* ── Panneau dessous ── */}
-          <Rect x={mL} y={mT + innerH - thPx} width={drawW} height={thPx}
-            {...woodGradV(thPx)} stroke={WOOD_STROKE} strokeWidth={1.5} listening={false} />
+          {/* ── BOTTOM PANEL ── */}
+          <Rect
+            x={mL} y={mT + innerH - thPx} width={drawW} height={thPx}
+            {...woodGradV(thPx)}
+            stroke={WOOD_STROKE} strokeWidth={1.5}
+            listening={false}
+          />
 
-          {/* ── Séparateurs ── */}
+          {/* ── SEPARATORS / JOINTS ── */}
           {mRects.map(({ x, w, i }) => {
             if (i >= facadeModules.length - 1) return null;
-            const sepX     = x + w;
             const isDouble = joints[i];
+            const sepX     = x + w;
             if (isDouble) {
               return (
                 <Group key={`sep-${i}`} listening={false}>
-                  <Rect x={sepX}        y={mT} width={thPx} height={innerH}
-                    {...sepGradH(thPx)} stroke={WOOD_STROKE} strokeWidth={1} />
-                  <Rect x={sepX + thPx} y={mT} width={thPx} height={innerH}
-                    {...sepGradH(thPx)} stroke={WOOD_STROKE} strokeWidth={1} />
-                  <Line points={[sepX + thPx, mT + 2, sepX + thPx, mT + innerH - 2]}
-                    stroke={DOUBLE_COLOR} strokeWidth={1.5} dash={[4, 3]} opacity={0.9} />
+                  <Rect
+                    x={sepX}        y={mT} width={thPx} height={innerH}
+                    {...sepGradH(thPx)}
+                    stroke={WOOD_STROKE} strokeWidth={1}
+                  />
+                  <Rect
+                    x={sepX + thPx} y={mT} width={thPx} height={innerH}
+                    {...sepGradH(thPx)}
+                    stroke={WOOD_STROKE} strokeWidth={1}
+                  />
+                  <Line
+                    points={[sepX + thPx, mT + 2, sepX + thPx, mT + innerH - 2]}
+                    stroke={DOUBLE_COLOR} strokeWidth={1.5} dash={[4, 3]} opacity={0.9}
+                  />
+                  <Text
+                    x={sepX + thPx - DOUBLE_LABEL_OFFSET} y={mT + innerH + 28 * scaleRatio}
+                    width={DOUBLE_LABEL_WIDTH} text="⬛⬛"
+                    align="center" fill={DOUBLE_COLOR} fontSize={9 * scaleRatio} fontStyle="bold"
+                  />
                 </Group>
               );
             }
             return (
-              <Rect key={`sep-${i}`} x={sepX} y={mT} width={thPx} height={innerH}
-                {...woodGradH(thPx)} stroke={WOOD_STROKE} strokeWidth={1} listening={false} />
+              <Rect
+                key={`sep-${i}`}
+                x={sepX} y={mT} width={thPx} height={innerH}
+                {...woodGradH(thPx)}
+                stroke={WOOD_STROKE} strokeWidth={1}
+                listening={false}
+              />
             );
           })}
 
-          {/* ── Modules ── */}
-          {mRects.map((mr) => {
-            const { x, w, m, i, intTop, intH: iH, intBottom } = mr;
+          {/* ── MODULES ── */}
+          {mRects.map(({ x, w, m, i, intTop, intH: iH, intBottom }) => {
+            const numY   = intTop + Math.min(Math.max(BADGE_MIN_OFFSET, iH * BADGE_MIDDLE_FRAC), iH * BADGE_MAX_FRAC);
             const annotY = annotBaseY + 10 * scaleRatio;
+
+            // Rect descriptor for FacadeKonvaItems
+            const moduleRect = {
+              modIdx: i,
+              x, y: intTop, w, h: iH,
+              intX: x, intY: intTop, intW: w, intH: iH,
+              widthCm: m.width,
+            };
 
             return (
               <Group key={`mod-${i}`}>
-                {/* Fond intérieur du module */}
-                <Rect x={x} y={intTop} width={w} height={iH}
-                  fill="#faf5ed" stroke={WOOD_STROKE} strokeWidth={0.7} listening={false} />
+                {/* Module interior background */}
+                <Rect
+                  x={x} y={intTop} width={w} height={iH}
+                  fill="#faf5ed" stroke={WOOD_STROKE} strokeWidth={0.7}
+                  listening={false}
+                />
 
-                {/* Éléments intérieurs (tiroirs, portes, tablettes, tringles) */}
+                {/* Interior elements: drawers, doors, shelves, rods */}
                 <FacadeKonvaItems
-                  moduleRect={mr}
+                  moduleRect={moduleRect}
                   facadeItems={facadeItems}
                   module={m}
                   moduleDetail={cabinetModules[i] || null}
                   isEraseTool={isErase}
-                  onItemMove={onItemMove}          // ← correctement branché
-                  onItemRemove={onItemErase}
-                  onRemoveElement={onModuleErase}
+                  onItemMove={() => {
+                    // Item drag is handled internally by FacadeKonvaItems via Konva's
+                    // built-in draggable. The parent state is updated through
+                    // onItemRemove / onRemoveElement; there is no yRatio callback here
+                    // because FacadeKonvaItems commits the new yRatio itself.
+                  }}
+                  onItemRemove={(itemId) => onItemErase?.(itemId)}
+                  onRemoveElement={(modIdx, type) => onModuleErase?.(modIdx, type)}
                 />
 
-                {/* Badge numéro */}
-                <Circle x={x + w / 2} y={intTop + iH * 0.45}
-                  radius={BADGE_RADIUS} fill="transparent"
-                  stroke={DIM_COLOR} strokeWidth={BADGE_STROKE_W} listening={false} />
+                {/* Module number badge */}
+                <Circle
+                  x={x + w / 2} y={numY}
+                  radius={BADGE_RADIUS}
+                  fill="transparent" stroke={DIM_COLOR} strokeWidth={BADGE_STROKE_W}
+                  listening={false}
+                />
                 <Text
-                  x={x + w / 2 - BADGE_RADIUS} y={intTop + iH * 0.45 - BADGE_RADIUS / 2}
+                  x={x + w / 2 - BADGE_RADIUS} y={numY - BADGE_RADIUS / 2}
                   width={BADGE_RADIUS * 2} height={BADGE_RADIUS}
-                  text={String(i + 1)} align="center" verticalAlign="middle"
-                  fill={DIM_COLOR} fontStyle="bold"
-                  fontSize={BADGE_FONT_SIZE * scaleRatio} listening={false} />
+                  text={String(i + 1)}
+                  align="center" verticalAlign="middle"
+                  fill={DIM_COLOR} fontStyle="bold" fontSize={BADGE_FONT_SIZE * scaleRatio}
+                  listening={false}
+                />
 
-                {/* Cote largeur en bas */}
-                <Line points={[x, annotY, x + w, annotY]}
-                  stroke="#b45309" strokeWidth={1} listening={false} />
-                <Line points={[x, annotY - dimTickH, x, annotY + dimTickH]}
-                  stroke="#b45309" strokeWidth={1} listening={false} />
-                <Line points={[x + w, annotY - dimTickH, x + w, annotY + dimTickH]}
-                  stroke="#b45309" strokeWidth={1} listening={false} />
-                <Text x={x} y={annotY + 5 * scaleRatio} width={w}
-                  text={`${toNum(m.width).toFixed(1)} cm`} align="center"
-                  fill="#b45309" fontStyle="bold" fontSize={11 * scaleRatio} listening={false} />
+                {/* Width annotation below module */}
+                <Line
+                  points={[x, annotY, x + w, annotY]}
+                  stroke="#b45309" strokeWidth={1} listening={false}
+                />
+                <Line
+                  points={[x, annotY - dimTickH / 2, x, annotY + dimTickH / 2]}
+                  stroke="#b45309" strokeWidth={1} listening={false}
+                />
+                <Line
+                  points={[x + w, annotY - dimTickH / 2, x + w, annotY + dimTickH / 2]}
+                  stroke="#b45309" strokeWidth={1} listening={false}
+                />
+                <Text
+                  x={x} y={annotY + 6 * scaleRatio}
+                  width={w}
+                  text={`${m.width.toFixed(2)} cm`}
+                  align="center"
+                  fill="#b45309" fontStyle="bold" fontSize={11 * scaleRatio}
+                  listening={false}
+                />
 
-                {/* Zone de hit — placement tablette / tringle */}
+                {/* ── Interaction hit zone ── */}
                 {isPlace && (
-                  <Rect x={x} y={intTop} width={w} height={iH} fill="transparent"
+                  <Rect
+                    x={x} y={intTop} width={w} height={iH}
+                    fill="transparent"
+                    style={{ cursor: 'cell' }}
                     onMouseDown={(e) => handleModulePlace(e, i, intTop, iH)}
                     onTouchStart={(e) => handleModulePlace(e, i, intTop, iH)}
-                    style={{ cursor: 'crosshair' }}
                   />
                 )}
-
-                {/* Zone de hit — ajout tiroir / porte */}
                 {isAdd && (
-                  <Rect x={x} y={intTop} width={w} height={iH} fill="transparent"
-                    onClick={(e) => { e.cancelBubble = true; onModuleClick?.(i, activeTool); }}
-                    onTap={(e)   => { e.cancelBubble = true; onModuleClick?.(i, activeTool); }}
+                  <Rect
+                    x={x} y={intTop} width={w} height={iH}
+                    fill="transparent"
                     style={{ cursor: 'cell' }}
+                    onClick={(e) => {
+                      e.cancelBubble = true;
+                      onModuleClick?.(i, activeTool);
+                    }}
+                    onTap={(e) => {
+                      e.cancelBubble = true;
+                      onModuleClick?.(i, activeTool);
+                    }}
                   />
                 )}
               </Group>
             );
           })}
 
-          {/* ── Cote largeur totale ── */}
-          <Line points={[mL, mT - 24 * scaleRatio, mL + drawW, mT - 24 * scaleRatio]}
-            stroke={DIM_COLOR} strokeWidth={1.5} listening={false} />
-          <Line points={[mL, mT - 30 * scaleRatio, mL, mT - 18 * scaleRatio]}
-            stroke={DIM_COLOR} strokeWidth={1.5} listening={false} />
-          <Line points={[mL + drawW, mT - 30 * scaleRatio, mL + drawW, mT - 18 * scaleRatio]}
-            stroke={DIM_COLOR} strokeWidth={1.5} listening={false} />
-          <Text x={mL} y={mT - 34 * scaleRatio} width={drawW}
-            text={`${toNum(cabW)} cm`} align="center"
-            fill={DIM_COLOR} fontSize={13 * scaleRatio} fontStyle="bold" listening={false} />
+          {/* ── GLOBAL DIMENSION ANNOTATIONS ── */}
 
-          {/* ── Cote hauteur droite ── */}
-          <Line points={[rightDimX, mT, rightDimX, mT + drawH]}
-            stroke={DIM_COLOR} strokeWidth={1.5} listening={false} />
-          <Line points={[rightDimX - 6 * scaleRatio, mT, rightDimX + 6 * scaleRatio, mT]}
-            stroke={DIM_COLOR} strokeWidth={1.5} listening={false} />
-          <Line points={[rightDimX - 6 * scaleRatio, mT + drawH, rightDimX + 6 * scaleRatio, mT + drawH]}
-            stroke={DIM_COLOR} strokeWidth={1.5} listening={false} />
+          {/* Width arrow */}
+          <Line
+            points={[mL, mT - dimLineH, mL + drawW, mT - dimLineH]}
+            stroke={DIM_COLOR} strokeWidth={1.5} listening={false}
+          />
+          <Line
+            points={[mL,        mT - dimLineH - dimTickH, mL,        mT - dimLineH + dimTickH]}
+            stroke={DIM_COLOR} strokeWidth={1.5} listening={false}
+          />
+          <Line
+            points={[mL + drawW, mT - dimLineH - dimTickH, mL + drawW, mT - dimLineH + dimTickH]}
+            stroke={DIM_COLOR} strokeWidth={1.5} listening={false}
+          />
           <Text
-            x={rightDimX + 4 * scaleRatio} y={mT + drawH / 2}
-            text={`${toNum(cabH)} cm`}
-            rotation={90} offsetY={-(13 * scaleRatio) / 2}
-            fill={DIM_COLOR} fontSize={13 * scaleRatio} fontStyle="bold" listening={false} />
+            x={mL} y={mT - dimLineH - 10 * scaleRatio}
+            width={drawW}
+            text={`${toNum(cabW)} cm`}
+            align="center"
+            fill={DIM_COLOR} fontSize={13 * scaleRatio} fontStyle="bold"
+            listening={false}
+          />
 
-          {/* ── Portes coulissantes globales ── */}
+          {/* Height arrow */}
+          <Line
+            points={[rightDimX, mT, rightDimX, mT + drawH]}
+            stroke={DIM_COLOR} strokeWidth={1.5} listening={false}
+          />
+          <Line
+            points={[rightDimX - 6 * scaleRatio, mT,        rightDimX + 6 * scaleRatio, mT]}
+            stroke={DIM_COLOR} strokeWidth={1.5} listening={false}
+          />
+          <Line
+            points={[rightDimX - 6 * scaleRatio, mT + drawH, rightDimX + 6 * scaleRatio, mT + drawH]}
+            stroke={DIM_COLOR} strokeWidth={1.5} listening={false}
+          />
+          <Text
+            x={rightDimX + 4 * scaleRatio}
+            y={mT + drawH / 2}
+            text={`${toNum(cabH)} cm`}
+            rotation={90}
+            offsetX={0}
+            offsetY={-(13 * scaleRatio) / 2}
+            fill={DIM_COLOR} fontSize={13 * scaleRatio} fontStyle="bold"
+            listening={false}
+          />
+
+          {/* ── GLOBAL SLIDING DOORS indicator ── */}
           {globalSliding?.enabled && (
             <Group listening={false}>
-              <Line points={[mL + 4, mT + 10, mL + drawW - 4, mT + 10]}
-                stroke="#38bdf8" strokeWidth={2} />
-              <Line points={[mL + 4, mT + innerH - 10, mL + drawW - 4, mT + innerH - 10]}
-                stroke="#38bdf8" strokeWidth={2} />
-              <Text x={mL} y={mT + 16} width={drawW}
+              <Line
+                points={[mL + 4, mT + 10, mL + drawW - 4, mT + 10]}
+                stroke="#38bdf8" strokeWidth={2}
+              />
+              <Line
+                points={[mL + 4, mT + innerH - 10, mL + drawW - 4, mT + innerH - 10]}
+                stroke="#38bdf8" strokeWidth={2}
+              />
+              <Text
+                x={mL} y={mT + 16}
+                width={drawW}
                 text={`${globalSliding.count} vantaux coulissants · H ${globalSliding.heightCm} cm`}
-                align="center" fill="#0ea5e9" fontSize={11 * scaleRatio} fontStyle="bold" />
+                align="center"
+                fill="#0ea5e9" fontSize={11 * scaleRatio} fontStyle="bold"
+              />
             </Group>
           )}
-
-          {/* ── Annotations (cotes + notes) ── */}
-          <FacadeKonvaAnnotations
-            elements={elements}
-            stageWidth={stageW / scale}
-            stageHeight={stageH / scale}
-            activeTool={activeTool}
-            onElementAdd={onElementAdd}
-            onElementUpdate={onElementUpdate}
-            onElementRemove={onElementRemove}
-            stageRef={stageRef}
-          />
 
         </Layer>
       </Stage>
