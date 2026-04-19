@@ -1,10 +1,7 @@
 import { useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import { Disc } from 'lucide-react';
-import CabinetElevationFront from './CabinetElevationFront';
 import SketchToolbar from './SketchToolbar';
 import FacadeKonvaEditor from '../facade/FacadeKonvaEditor';
-import { captureFacadeToImage } from '../utils/captureFacadeToImage';
-import { useSketchGestures } from '../hooks/useSketchGestures';
 import { useSketchPersistence } from '../hooks/useSketchPersistence';
 import {
   normalizeModulesFromResult,
@@ -12,11 +9,6 @@ import {
   buildSketchContextPrompt,
 } from '../utils/sketchEditorHelpers';
 import { LS_SKETCH_KEY, defaultDrawerParts } from '../utils/sketchEditorConstants';
-
-const FACADE_CAPTURE_WIDTH        = 980;
-const FACADE_CAPTURE_INITIAL_DELAY_MS = 150;
-const FACADE_CAPTURE_DEBOUNCE_MS  = 400;
-const MOBILE_BREAKPOINT_PX        = 768;
 
 const toNum = (v, d = 0) => { const n = Number(v); return Number.isFinite(n) ? n : d; };
 const jointThickness = (isDouble, t) => isDouble ? t * 2 : t;
@@ -29,13 +21,8 @@ const defaultModuleDetail = (drawerCount = 0) => ({
 
 
 export default function SketchEditor({ image, scanImage, initialResult, draft, onDraftChange, onComplete, onCancel, onSave }) {
-  const rawImg             = image || scanImage || null;
-  const svgRef             = useRef(null);
   const konvaEditorRef     = useRef(null);
-  const facadeContainerRef = useRef(null);
 
-  const [facadePng, setFacadePng] = useState(null);
-  const imgSrc               = facadePng || rawImg;
   const initialCab           = initialResult?.cabinet || {};
   const dimensionsFromWizard = Boolean(initialResult?._dimensionsFromWizard);
   const sketchFingerprint = useMemo(() => {
@@ -66,16 +53,11 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
   })();
 
   const [tool,          setTool]          = useState('drawer');
-  const [baseView,      setBaseView]      = useState(imgSrc ? 'photo' : 'facade');
   const [elements,      setElements]      = useState(savedState?.elements || []);
-  const [imgSize,       setImgSize]       = useState({ w: 800, h: 600 });
-  const [isNavMode,     setIsNavMode]     = useState(() => (typeof window !== 'undefined' ? window.innerWidth < MOBILE_BREAKPOINT_PX : false));
   const [isCompactMobile, setIsCompactMobile] = useState(() => (typeof window !== 'undefined' ? window.innerWidth < 640 : false));
   const [loading,       setLoading]       = useState(false);
   const [error,         setError]         = useState(null);
   const [generalNotes,  setGeneralNotes]  = useState(savedState?.generalNotes || '');
-  const [editingNoteId, setEditingNoteId] = useState(null);
-  const [editingDimId,  setEditingDimId]  = useState(null);
   const [cabinetDims,   setCabinetDims]   = useState(
     savedState?.cabinetDims || {
       width:  toNum(initialCab.width,  200),
@@ -180,7 +162,6 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
     });
     setFacadeItems(normalizeItemsFromResult(initialResult));
     setJoints(Array(Math.max(0, newModules.length - 1)).fill(true));
-    didAutoSwitchRef.current = false;
   }, [initialResult]);
 
   const currentCabinet = useMemo(() => {
@@ -241,32 +222,6 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
     sketchFingerprint, onSave, onDraftChange, currentCabinet,
   });
 
-  const didAutoSwitchRef = useRef(false);
-  useEffect(() => {
-    if (!currentCabinet) return;
-    const isFirst = !didAutoSwitchRef.current;
-    const delay   = isFirst ? FACADE_CAPTURE_INITIAL_DELAY_MS : FACADE_CAPTURE_DEBOUNCE_MS;
-    const timer = setTimeout(async () => {
-      const png = await captureFacadeToImage(facadeContainerRef);
-      if (png) {
-        setFacadePng(png);
-        if (isFirst) { setBaseView('photo'); didAutoSwitchRef.current = true; }
-      }
-    }, delay);
-    return () => clearTimeout(timer);
-  }, [currentCabinet]);
-
-  useEffect(() => {
-    if (baseView === 'facade') { setImgSize({ w: 1140, h: 700 }); return; }
-    if (!imgSrc) return;
-    const img = new window.Image();
-    img.onload = () => {
-      const maxW  = 1200;
-      const ratio = Math.min(maxW / img.naturalWidth, 1);
-      setImgSize({ w: Math.round(img.naturalWidth * ratio), h: Math.round(img.naturalHeight * ratio) });
-    };
-    img.src = imgSrc;
-  }, [imgSrc, baseView]);
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const onResize = () => setIsCompactMobile(window.innerWidth < 640);
@@ -277,27 +232,21 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
   const FACADE_W = 1140;
   const FACADE_H = 700;
 
-  const {
-    viewport,
-    setViewport,
-    handlePointerDown,
-    handlePointerMove,
-    handlePointerUp,
-    getSVGCoords,
-    resetViewport,
-    handleFacadePointerDown,
-    handleItemPointerDown,
-  } = useSketchGestures({
-    svgRef, imgSize, isNavMode, baseView, tool,
-    elements, facadeItems, setElements, setFacadeItems,
-    setEditingDimId, sketchFingerprint, cabinetDims,
-    facadeModules, moduleDetails, generalNotes, joints,
-    globalSliding, thickness,
-  });
-
-  useEffect(() => {
-    setViewport({ x: 0, y: 0, w: imgSize.w, h: imgSize.h });
-  }, [imgSize.w, imgSize.h, baseView, setViewport]);
+  const handleFacadePointerDown = useCallback((e, modIdx) => {
+    if (e._konvaYRatio === undefined) return;
+    const yRatio = e._konvaYRatio;
+    const newItem = { id: uid(), type: tool, modIdx, yRatio };
+    setFacadeItems(prev => {
+      const next = [...prev, newItem];
+      setTimeout(() => {
+        localStorage.setItem(LS_SKETCH_KEY, JSON.stringify({
+          fingerprint: sketchFingerprint,
+          state: { elements, cabinetDims, facadeModules, facadeItems: next, moduleDetails, generalNotes, joints, globalSliding },
+        }));
+      }, 0);
+      return next;
+    });
+  }, [tool, sketchFingerprint, elements, cabinetDims, facadeModules, moduleDetails, generalNotes, joints, globalSliding, setFacadeItems]);
 
   const handleModuleClick = useCallback((modIdx, activeTool) => {
     setFacadeModules(prev => {
@@ -349,8 +298,6 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
   const handleElementAdd    = useCallback((el) => setElements(prev => [...prev, el]), []);
   const handleElementUpdate = useCallback((el) => setElements(prev => prev.map(e => e.id === el.id ? el : e)), []);
   const handleElementRemove = useCallback((id) => setElements(prev => prev.filter(e => e.id !== id)), []);
-
-  const eraseElement = (id) => setElements(prev => prev.filter(el => el.id !== id));
 
   const getContextPrompt = useCallback(() => buildSketchContextPrompt({
     elements, dimensionsFromWizard, cabinetDims, thickness, joints,
@@ -413,47 +360,16 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
     } finally {
       setLoading(false);
     }
-  }, [onComplete, imgSize, elements, cabinetDims, facadeModules, facadeItems, generalNotes, joints, getContextPrompt, currentCabinet]);
+  }, [onComplete, elements, cabinetDims, facadeModules, facadeItems, generalNotes, joints, getContextPrompt, currentCabinet]);
 
-  const renderElement = (el) => {
-    if (el.type === 'dim') return (
-      <g key={el.id} data-id={el.id}
-        onClick={e => { e.stopPropagation(); if (tool === 'erase') { eraseElement(el.id); return; } }}
-        style={{ cursor: tool === 'erase' ? 'pointer' : 'default' }} opacity={0.85}>
-        <line x1={el.x1} y1={el.y1} x2={el.x2} y2={el.y2} stroke="#22d3ee" strokeWidth="2" strokeDasharray="4"/>
-        <circle cx={el.x1} cy={el.y1} r="3" fill="#22d3ee"/>
-        <circle cx={el.x2} cy={el.y2} r="3" fill="#22d3ee"/>
-        <rect x={(el.x1+el.x2)/2-24} y={(el.y1+el.y2)/2-14} width="48" height="18" rx="3"
-          fill={el.label?'#0e7490':'#164e63'} stroke="#22d3ee" strokeWidth="1"
-          style={{cursor:'pointer'}}
-          onClick={e=>{
-            e.stopPropagation();
-            if (tool === 'erase') { eraseElement(el.id); return; }
-            setEditingDimId(el.id);
-          }}/>
-        <text x={(el.x1+el.x2)/2} y={(el.y1+el.y2)/2-2} textAnchor="middle" fill="#22d3ee" fontSize="11" fontWeight="bold" pointerEvents="none">
-          {el.label ? `${el.label} cm` : '? cm'}
-        </text>
-      </g>
-    );
-    if (el.type === 'note') return (
-      <g key={el.id} onClick={e=>{e.stopPropagation();tool==='erase'?eraseElement(el.id):setEditingNoteId(el.id);}} style={{cursor:'pointer'}}>
-        <rect x={el.x-2} y={el.y-14} width={Math.max(60,el.text.length*7+12)} height="20" rx="3" fill="#fb923c" opacity="0.85"/>
-        <text x={el.x+4} y={el.y} fill="white" fontSize="11" fontWeight="bold" pointerEvents="none">📝 {el.text}</text>
-      </g>
-    );
-    return null;
-  };
-
-  const hint = baseView === 'facade'
-    ? tool === 'erase'   ? '🧹 Clic sur un élément pour le supprimer'
+  const hint =
+      tool === 'erase'   ? '🧹 Clic sur un élément pour le supprimer'
     : tool === 'shelf'   ? '📦 Clic dans un module pour placer · glisser pour déplacer'
     : tool === 'rod'     ? '👔 Clic dans un module pour placer · glisser pour déplacer'
     : tool === 'drawer'  ? '🗄️ Clic dans un module pour ajouter un tiroir'
     : tool === 'door'    ? '🚪 Clic dans un module pour ajouter une porte'
     : tool === 'sliding' ? '🚪↔️ Clic dans un module pour poser 2 portes coulissantes'
-    : '💡 Dim/Note : tracez sur la façade'
-    : '💡 Cliquez pour créer · glissez pour déplacer';
+    : '💡 Dim/Note : tracez sur la façade';
 
   const isIPhone = typeof navigator !== 'undefined' && /iPhone/i.test(navigator.userAgent || '');
   const showRotateHint =
@@ -474,14 +390,6 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
       {showRotateHint && (
         <div className="px-3 py-2 bg-amber-600/20 border-b border-amber-400/30 text-amber-200 text-xs text-center font-semibold">
           📱 Conseil iPhone : passe en paysage pour éditer plus confortablement.
-        </div>
-      )}
-
-      {currentCabinet && (
-        <div ref={facadeContainerRef}
-          style={{position:'absolute',left:'-9999px',top:0,width:`${FACADE_CAPTURE_WIDTH}px`,visibility:'hidden',pointerEvents:'none'}}
-          aria-hidden="true">
-          <CabinetElevationFront cabinet={currentCabinet} name={initialResult?.name||'Meuble'}/>
         </div>
       )}
 
@@ -531,12 +439,6 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
       <SketchToolbar
         activeTool={tool}
         onToolChange={setTool}
-        baseView={baseView}
-        onViewChange={setBaseView}
-        facadePng={facadePng}
-        isNavMode={isNavMode}
-        onNavModeChange={setIsNavMode}
-        onResetViewport={resetViewport}
         isCompactMobile={isCompactMobile}
         hint={hint}
         dimensionsFromWizard={dimensionsFromWizard}
@@ -556,44 +458,27 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
       />
 
       <div className="flex-1 overflow-auto bg-slate-950 flex justify-center p-4">
-        {baseView === 'photo' ? (
-          <svg ref={svgRef} width={imgSize.w} height={imgSize.h}
-            viewBox={`${viewport.x} ${viewport.y} ${viewport.w} ${viewport.h}`}
-            className="shadow-2xl"
-            style={{ background: '#1e293b' }}
-            onMouseDown={handlePointerDown} onMouseMove={handlePointerMove}
-            onMouseUp={handlePointerUp}     onMouseLeave={handlePointerUp}
-            onTouchStart={handlePointerDown} onTouchMove={handlePointerMove}
-            onTouchEnd={handlePointerUp}>
-            {imgSrc && (
-              <image href={imgSrc} width={imgSize.w} height={imgSize.h} preserveAspectRatio="xMidYMid meet"/>
-            )}
-            {elements.filter(el => ['dim','note'].includes(el.type)).map(renderElement)}
-          </svg>
-        ) : (
-          <FacadeKonvaEditor
-            ref={konvaEditorRef}
-            svgW={imgSize.w} svgH={imgSize.h}
-            cabW={cabinetDims.width} cabH={cabinetDims.height}
-            plinth={cabinetDims.plinth} thick={thickness}
-            facadeModules={facadeModules}
-            cabinetModules={currentCabinet?.modules || []}
-            facadeItems={facadeItems}
-            joints={joints}
-            globalSliding={globalSliding}
-            elements={elements}
-            onFacadePointerDown={handleFacadePointerDown}
-            onItemPointerDown={handleItemPointerDown}
-            onItemMove={handleItemMove}
-            onItemErase={handleItemErase}
-            onModuleClick={handleModuleClick}
-            onModuleErase={handleModuleErase}
-            onElementAdd={handleElementAdd}
-            onElementUpdate={handleElementUpdate}
-            onElementRemove={handleElementRemove}
-            activeTool={tool}
-          />
-        )}
+        <FacadeKonvaEditor
+          ref={konvaEditorRef}
+          svgW={FACADE_W} svgH={FACADE_H}
+          cabW={cabinetDims.width} cabH={cabinetDims.height}
+          plinth={cabinetDims.plinth} thick={thickness}
+          facadeModules={facadeModules}
+          cabinetModules={currentCabinet?.modules || []}
+          facadeItems={facadeItems}
+          joints={joints}
+          globalSliding={globalSliding}
+          elements={elements}
+          onFacadePointerDown={handleFacadePointerDown}
+          onItemMove={handleItemMove}
+          onItemErase={handleItemErase}
+          onModuleClick={handleModuleClick}
+          onModuleErase={handleModuleErase}
+          onElementAdd={handleElementAdd}
+          onElementUpdate={handleElementUpdate}
+          onElementRemove={handleElementRemove}
+          activeTool={tool}
+        />
       </div>
 
       <div className="bg-slate-900 border-t border-slate-700 p-2">
@@ -601,61 +486,6 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
           placeholder="📝 Notes pour Claude (ex: 2 tiroirs en bas du module 3, porte vitrée à gauche...)"
           className="w-full h-16 px-3 py-2 bg-slate-800 border border-slate-600 rounded text-sm text-slate-200 placeholder-slate-500 resize-none"/>
       </div>
-
-      {editingDimId && (() => {
-        const dim = elements.find(e=>e.id===editingDimId);
-        if (!dim) return null;
-        return (
-          <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center" onClick={()=>setEditingDimId(null)}>
-            <div className="bg-slate-800 rounded-xl p-4 border border-slate-600 shadow-xl min-w-[260px]" onClick={e=>e.stopPropagation()}>
-              <h3 className="text-white font-bold mb-3">📏 Valeur de la cote (cm)</h3>
-              <input autoFocus type="number" defaultValue={dim.label||''} placeholder="ex: 120"
-                className="w-full px-3 py-2 bg-slate-900 border border-slate-500 rounded text-white text-lg"
-                onKeyDown={e=>{
-                  if(e.key==='Enter'){setElements(prev=>prev.map(el=>el.id===editingDimId?{...el,label:e.target.value.trim()}:el));setEditingDimId(null);}
-                  if(e.key==='Escape') setEditingDimId(null);
-                }}/>
-              <div className="flex gap-2 mt-3">
-                <button className="flex-1 px-3 py-1.5 bg-cyan-700 hover:bg-cyan-600 text-white rounded font-bold text-sm"
-                  onClick={e=>{
-                    const input=e.target.closest('div').parentElement.querySelector('input');
-                    setElements(prev=>prev.map(el=>el.id===editingDimId?{...el,label:input.value.trim()}:el));
-                    setEditingDimId(null);
-                  }}>✓ Valider</button>
-                <button className="px-3 py-1.5 bg-slate-700 text-slate-300 rounded text-sm" onClick={()=>setEditingDimId(null)}>Annuler</button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-
-      {editingNoteId && (() => {
-        const note = elements.find(e=>e.id===editingNoteId);
-        if (!note) return null;
-        return (
-          <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center" onClick={()=>setEditingNoteId(null)}>
-            <div className="bg-slate-800 rounded-xl p-4 border border-slate-600 shadow-xl min-w-[280px]" onClick={e=>e.stopPropagation()}>
-              <h3 className="text-white font-bold mb-3">📝 Modifier la note</h3>
-              <input autoFocus type="text" defaultValue={note.text}
-                className="w-full px-3 py-2 bg-slate-900 border border-slate-500 rounded text-white"
-                onKeyDown={e=>{
-                  if(e.key==='Enter'){const v=e.target.value.trim();if(v)setElements(prev=>prev.map(el=>el.id===editingNoteId?{...el,text:v}:el));setEditingNoteId(null);}
-                  if(e.key==='Escape') setEditingNoteId(null);
-                }}/>
-              <div className="flex gap-2 mt-3">
-                <button className="flex-1 px-3 py-1.5 bg-orange-600 hover:bg-orange-500 text-white rounded font-bold text-sm"
-                  onClick={e=>{
-                    const input=e.target.closest('div').parentElement.querySelector('input');
-                    const v=input.value.trim();
-                    if(v) setElements(prev=>prev.map(el=>el.id===editingNoteId?{...el,text:v}:el));
-                    setEditingNoteId(null);
-                  }}>✓ Valider</button>
-                <button className="px-3 py-1.5 bg-slate-700 text-slate-300 rounded text-sm" onClick={()=>setEditingNoteId(null)}>Annuler</button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
     </div>
   );
 }

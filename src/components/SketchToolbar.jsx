@@ -21,14 +21,6 @@ export default function SketchToolbar({
   // Outils
   activeTool,
   onToolChange,
-  // Vues
-  baseView,
-  onViewChange,
-  facadePng,
-  // Navigation
-  isNavMode,
-  onNavModeChange,
-  onResetViewport,
   // Affichage compact
   isCompactMobile,
   hint,
@@ -54,26 +46,8 @@ export default function SketchToolbar({
 }) {
   return (
     <>
-      {/* ── Barre outils + vues ── */}
+      {/* ── Barre outils ── */}
       <div className="flex gap-2 p-2 bg-slate-800 overflow-x-auto border-b border-slate-700">
-        <div className="flex items-center gap-1 mr-2">
-          <button onClick={() => onViewChange('photo')}
-            className={`px-3 py-1 rounded text-xs font-bold ${baseView === 'photo' ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
-            {facadePng ? 'Façade SVG' : 'Photo'}
-          </button>
-          <button onClick={() => onViewChange('facade')}
-            className={`px-3 py-1 rounded text-xs font-bold ${baseView === 'facade' ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
-            Plan façade
-          </button>
-          <button onClick={() => onNavModeChange(v => !v)}
-            className={`px-3 py-1 rounded text-xs font-bold ${isNavMode ? 'bg-emerald-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
-            🖐️ Déplacer
-          </button>
-          <button onClick={onResetViewport}
-            className="px-3 py-1 rounded text-xs font-bold bg-slate-700 text-slate-200">
-            🎯 Recentrer
-          </button>
-        </div>
         {dimensionsFromWizard && (
           <span className="flex items-center gap-1 px-2 py-1 rounded text-xs font-bold bg-green-700/30 text-green-400 border border-green-600/40">✓ Cotes</span>
         )}
@@ -238,20 +212,6 @@ export default function SketchToolbar({
       {/* ── FAB mobile (fixe en bas à droite) ── */}
       {isCompactMobile && (
         <div className="fixed bottom-4 right-3 z-[60] flex flex-col gap-2">
-          <button
-            onClick={() => onNavModeChange(v => !v)}
-            className={`w-11 h-11 rounded-full border shadow-xl text-lg ${isNavMode ? 'bg-emerald-600 text-white border-emerald-300/40' : 'bg-slate-800 text-slate-100 border-white/20'}`}
-            title="Mode déplacement"
-          >
-            🖐️
-          </button>
-          <button
-            onClick={onResetViewport}
-            className="w-11 h-11 rounded-full border border-white/20 bg-slate-800 text-slate-100 shadow-xl text-lg"
-            title="Recentrer"
-          >
-            🎯
-          </button>
           <button
             onClick={onSave}
             className="w-11 h-11 rounded-full border border-green-300/30 bg-green-700 text-white shadow-xl text-lg"
