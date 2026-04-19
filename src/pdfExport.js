@@ -1,4 +1,5 @@
 import { jsPDF } from 'jspdf';
+import { isRodPiece } from './utils/isRodPiece';
 
 /**
  * PanelCut Pro — Export PDF avec jsPDF
@@ -104,15 +105,16 @@ export function exportPDF(results, project, extras = {}) {
   const HIGH_UTIL_THRESHOLD   = 80;
   const MEDIUM_UTIL_THRESHOLD = 60;
 
-  // 3 panneaux par page (utilisé aussi pour le total pages)
-  const PANELS_PER_PAGE = 3;
+  // Pièces tringles — exclues de l'optimisation panneau bois
+  const rodPieces       = extras.rodPieces || (project.pieces || []).filter(isRodPiece);
+  const hasTringlesPage = rodPieces.length > 0;
 
   // ── PAGE DE GARDE ──────────────────────────────────────────────────────
 
-  // Pré-calcul du nombre total de pages
-  const cutPages = Math.ceil(panels.length / PANELS_PER_PAGE);
+  // Pré-calcul du nombre total de pages (1 panneau par page de découpe)
+  const cutPages   = panels.length;
   const extraPages = [extras.facadeImage, extras.view3dImage].filter(Boolean).length;
-  const totalPages = 1 + cutPages + extraPages;
+  const totalPages = 1 + cutPages + extraPages + (hasTringlesPage ? 1 : 0);
 
   const generatedAt = new Date().toLocaleString('fr-BE');
 
@@ -302,193 +304,299 @@ export function exportPDF(results, project, extras = {}) {
   doc.text('Ce devis est valable 30 jours.', PW / 2, 295, { align: 'center' });
 
   // ── PAGES DE DÉCOUPE ───────────────────────────────────────────────────
+  // 1 panneau par page — visuel gauche 60 % / liste des coupes droite 40 %
 
-  const panelAreaH = (PH - 2*M - 14) / PANELS_PER_PAGE; // hauteur dispo par panneau
-  const SVG_W_mm = 80;  // largeur du visuel en mm
-  const SVG_H_mm = Math.round(SVG_W_mm * panelH / panelW);
-  const CUTS_W   = CW - SVG_W_mm - 5; // largeur colonne coupes
+  const SVG_W_mm   = 120;                           // largeur du visuel (mm)
+  const FOOTER_Y   = 278;                           // y de la ligne de pied de page
+  const CUTS_GAP   = 6;                             // espace inter-colonnes (mm)
+  const CUTS_COL_X = M + SVG_W_mm + CUTS_GAP;      // x colonne des coupes
+  const CUTS_COL_W = CW - SVG_W_mm - CUTS_GAP;     // largeur colonne coupes (~60 mm)
+
+  /** Pied de page identique à la page de garde */
+  const drawCutPageFooter = (pageNum) => {
+    doc.setDrawColor(220, 220, 220);
+    doc.setLineWidth(0.3);
+    doc.line(M, FOOTER_Y, PW - M, FOOTER_Y);
+    doc.setTextColor(...GRAY);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Document g\u00e9n\u00e9r\u00e9 par PanelCut Pro \u00b7 panelcut.app', M, FOOTER_Y + 5);
+    doc.text(`Page ${pageNum}/${totalPages}`, PW - M, FOOTER_Y + 5, { align: 'right' });
+    doc.text(generatedAt, PW / 2, FOOTER_Y + 5, { align: 'center' });
+    doc.setTextColor(180, 180, 180);
+    doc.setFontSize(7);
+    doc.text('Ce devis est valable 30 jours.', PW / 2, FOOTER_Y + 10, { align: 'center' });
+  };
 
   for (let pi = 0; pi < panels.length; pi++) {
-    if (pi % PANELS_PER_PAGE === 0) {
-      doc.addPage();
+    doc.addPage();
+    const panel    = panels[pi];
+    const pageNum  = 2 + pi;
+    const panelWmm = panelW * 10;   // cm → mm
+    const panelHmm = panelH * 10;
+    const wasteRect = getLargestWasteRect(panel, panelWmm, panelHmm);
+    const utilPct  = panel.utilizationPct;
+    const utilColor = utilPct >= HIGH_UTIL_THRESHOLD ? GREEN
+                    : utilPct >= MEDIUM_UTIL_THRESHOLD ? [...ACCENT] : [...RED];
 
-      // En-tête page
-      doc.setFillColor(...ACCENT);
-      doc.rect(M, M, CW, 0.8, 'F');
-      doc.setTextColor(...ACCENT);
-      doc.setFontSize(11);
-      doc.setFont('helvetica','bold');
-      doc.text('✂ PanelCut Pro', M, M+7);
-      doc.setTextColor(...GRAY);
-      doc.setFontSize(9);
-      doc.setFont('helvetica','normal');
-      doc.text(`${projectName}${client ? ' — ' + client : ''}`, M+35, M+7);
-      doc.text(`${devisNum ? devisNum + ' · ' : ''}${date}`, PW-M, M+7, {align:'right'});
-    }
+    // ── 3. EN-TÊTE DE PAGE ──────────────────────────────────────────────
+    const HEADER_H = 3;   // hauteur bande grise (mm)
+    const BAR_H    = 2;   // hauteur barre de progression (mm)
+    const hdrY     = M;
 
-    const panel = panels[pi];
-    const wasteRect = getLargestWasteRect(panel, panelW * 10, panelH * 10);
-    const rowIdx = pi % PANELS_PER_PAGE;
-    const baseY = M + 14 + rowIdx * panelAreaH;
+    // Bande gris très clair
+    doc.setFillColor(242, 242, 242);
+    doc.rect(M, hdrY, CW, HEADER_H, 'F');
+    doc.setTextColor(60, 60, 60);
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'bold');
+    doc.text(
+      `Panneau ${pi + 1}/${panels.length} \u2014 ${panelW}\u00d7${panelH}\u00a0cm`,
+      M + 2, hdrY + 2.2
+    );
+    doc.text(
+      `Utilisation\u00a0: ${utilPct}%  \u00b7  Chute\u00a0: ${panel.wastePct}%`,
+      M + CW - 2, hdrY + 2.2, { align: 'right' }
+    );
 
-    // Fond de carte
-    doc.setFillColor(248,248,248);
-    doc.roundedRect(M, baseY, CW, panelAreaH-3, 2, 2, 'F');
-    doc.setDrawColor(220,220,220);
-    doc.setLineWidth(0.3);
-    doc.roundedRect(M, baseY, CW, panelAreaH-3, 2, 2, 'S');
+    // Barre de progression colorée (même logique couleur)
+    const barY = hdrY + HEADER_H + 0.5;
+    doc.setFillColor(220, 220, 220);
+    doc.rect(M, barY, CW, BAR_H, 'F');
+    doc.setFillColor(...utilColor);
+    doc.rect(M, barY, CW * Math.min(utilPct / 100, 1), BAR_H, 'F');
 
-    // Titre panneau
-    doc.setFillColor(...DARK);
-    doc.roundedRect(M, baseY, CW, 7, 2, 2, 'F');
-    doc.setFillColor(...DARK);
-    doc.rect(M, baseY+3, CW, 4, 'F'); // carré pour aplatir le bas
-    doc.setTextColor(255,255,255);
-    doc.setFontSize(9);
-    doc.setFont('helvetica','bold');
-    doc.text(`Panneau ${panel.panelId} / ${panels.length}`, M+4, baseY+5);
-    const utilColor = panel.utilizationPct >= HIGH_UTIL_THRESHOLD ? GREEN : panel.utilizationPct >= MEDIUM_UTIL_THRESHOLD ? [...ACCENT] : [...RED];
-    doc.setTextColor(...utilColor);
-    doc.text(`${panel.utilizationPct}% utilisé · chute ${panel.wastePct}%`, PW-M-4, baseY+5, {align:'right'});
+    const contentY = barY + BAR_H + 3;   // ~21 mm depuis le haut de la page
 
-    const contentY = baseY + 10;
-    const contentH = panelAreaH - 13;
+    // ── 1. VISUEL PANNEAU (colonne gauche) ──────────────────────────────
+    const SVG_H_mm = Math.max(70, Math.round(SVG_W_mm * panelHmm / panelWmm));
+    const scaleX   = SVG_W_mm / panelWmm;
+    const scaleY   = SVG_H_mm / panelHmm;
+    const svgX     = M;
+    const svgY     = contentY;
 
-    // ── VISUEL SVG (droite) ──
-    const svgX = M + CUTS_W + 5;
-    const svgY = contentY + 2;
-    const scaleX = SVG_W_mm / (panelW * 10);
-    const scaleY = SVG_H_mm / (panelH * 10);
-
-    // Fond blanc SVG
-    doc.setFillColor(255,255,255);
-    doc.setDrawColor(180,180,180);
+    // Fond blanc pur
+    doc.setFillColor(255, 255, 255);
+    doc.setDrawColor(180, 180, 180);
     doc.setLineWidth(0.4);
     doc.roundedRect(svgX, svgY, SVG_W_mm, SVG_H_mm, 1, 1, 'FD');
 
-    // Pièces
+    // Hachuré rouge clair (zones de chute) — les pièces effaceront le hachuré
+    doc.setDrawColor(255, 195, 195);
+    doc.setLineWidth(0.15);
+    const hatchStep = 4;
+    for (let d = -SVG_H_mm; d <= SVG_W_mm; d += hatchStep) {
+      const pts = [];
+      // Ligne de pente +1 : y = x − d, clippée au rectangle SVG
+      if (d >= 0 && d <= SVG_W_mm)                        pts.push([d, 0]);
+      if (d + SVG_H_mm >= 0 && d + SVG_H_mm <= SVG_W_mm) pts.push([d + SVG_H_mm, SVG_H_mm]);
+      if (-d >= 0 && -d <= SVG_H_mm)                      pts.push([0, -d]);
+      const ry = SVG_W_mm - d;
+      if (ry >= 0 && ry <= SVG_H_mm)                      pts.push([SVG_W_mm, ry]);
+      if (pts.length >= 2) {
+        doc.line(svgX + pts[0][0], svgY + pts[0][1],
+                 svgX + pts[1][0], svgY + pts[1][1]);
+      }
+    }
+
+    // Pièces (effacent le hachuré, couleur pastel)
     panel.placed.forEach(p => {
-      const hex = colorMap[p.name] || '#94a3b8';
+      const hex     = colorMap[p.name] || '#94a3b8';
       const [r,g,b] = hexToRgb(hex);
-      const px = svgX + (p.x||0)*scaleX;
-      const py = svgY + (p.bandY||0)*scaleY;
-      const pw2 = Math.max(p.l*scaleX - 0.3, 0.5);
-      const ph2 = Math.max(p.h*scaleY - 0.3, 0.5);
-      doc.setFillColor(r,g,b,0.35);
-      doc.setFillColor(Math.min(255,r+80), Math.min(255,g+80), Math.min(255,b+80));
-      doc.setDrawColor(r,g,b);
+      // Pastel : mélange 55 % blanc
+      const pr = Math.round(r + (255 - r) * 0.55);
+      const pg = Math.round(g + (255 - g) * 0.55);
+      const pb = Math.round(b + (255 - b) * 0.55);
+
+      const px  = svgX + (p.x    || 0) * scaleX;
+      const py  = svgY + (p.bandY|| 0) * scaleY;
+      const pw2 = Math.max(p.l * scaleX - 0.3, 0.5);
+      const ph2 = Math.max(p.h * scaleY - 0.3, 0.5);
+
+      doc.setFillColor(pr, pg, pb);
+      doc.setDrawColor(Math.max(r - 20, 0), Math.max(g - 20, 0), Math.max(b - 20, 0));
       doc.setLineWidth(0.3);
       doc.rect(px, py, pw2, ph2, 'FD');
-      // Label si assez grand
-      if (pw2 > 8 && ph2 > 4) {
-        doc.setTextColor(0,0,0);
-        doc.setFontSize(5.5);
-        doc.setFont('helvetica','bold');
-        const lbl = `${(p.l/10).toFixed(1)}×${(p.h/10).toFixed(1)}`;
-        doc.text(lbl, px+pw2/2, py+ph2/2+1, {align:'center'});
+
+      // Nom (max 8 car.) + dimensions en 8pt monospace — toujours visible
+      if (pw2 > 3 && ph2 > 3) {
+        const nameStr = (p.name || '').length > 8
+          ? (p.name || '').substring(0, 8) : (p.name || '');
+        const dimStr  = `${(p.l / 10).toFixed(1)}\u00d7${(p.h / 10).toFixed(1)}`;
+        const midY    = py + ph2 / 2;
+        doc.setTextColor(30, 30, 30);
+        doc.setFont('courier', 'normal');
+        if (pw2 > 8 && ph2 > 7) {
+          doc.setFontSize(8);
+          doc.text(nameStr, px + pw2 / 2, midY - 1,   { align: 'center' });
+          doc.setFontSize(6.5);
+          doc.text(dimStr,  px + pw2 / 2, midY + 2.5, { align: 'center' });
+        } else {
+          doc.setFontSize(6);
+          doc.text(dimStr, px + pw2 / 2, midY + 1, { align: 'center' });
+        }
       }
     });
 
-    // Lignes de coupe
-    panel.cuts.filter(c=>c.type==='bande').forEach(c => {
+    // Numérotation des coupes : cercle orange Ø5 mm + lignes en tirets
+    const bandCuts = panel.cuts.filter(c => c.type === 'bande');
+    bandCuts.forEach((c, idx) => {
+      const cutNum = c.cutNum ?? (idx + 1);
       doc.setDrawColor(...RED);
-      doc.setLineWidth(0.4);
-      doc.setLineDashPattern([1,1], 0);
-      doc.setTextColor(...RED);
-      doc.setFontSize(5);
-      doc.setFont('helvetica','bold');
+      doc.setLineWidth(0.5);
+      doc.setLineDashPattern([1.5, 1], 0);
 
+      let circleX, circleY;
       if (c.orientation === 'vertical') {
-        const cx = svgX + c.pos*scaleX;
-        if (cx > svgX && cx < svgX+SVG_W_mm) {
-          doc.line(cx, svgY, cx, svgY+SVG_H_mm);
-          doc.text(`${c.posCm}`, cx+0.5, svgY+2.5);
+        const cx = svgX + c.pos * scaleX;
+        if (cx > svgX && cx < svgX + SVG_W_mm) {
+          doc.line(cx, svgY, cx, svgY + SVG_H_mm);
+          circleX = cx;
+          circleY = svgY + 2.5;
         }
       } else {
-        const cy = svgY + c.pos*scaleY;
-        if (cy > svgY && cy < svgY+SVG_H_mm) {
-          doc.line(svgX, cy, svgX+SVG_W_mm, cy);
-          doc.text(`${c.posCm}`, svgX+SVG_W_mm-0.5, cy-0.5, {align:'right'});
+        const lineY = svgY + c.pos * scaleY;
+        if (lineY > svgY && lineY < svgY + SVG_H_mm) {
+          doc.line(svgX, lineY, svgX + SVG_W_mm, lineY);
+          circleX = svgX + 2.5;
+          circleY = lineY;
         }
       }
-
       doc.setLineDashPattern([], 0);
+
+      // Cercle orange rempli (r = 2.5 mm) avec numéro blanc
+      if (circleX !== undefined) {
+        doc.setFillColor(...ACCENT);
+        doc.circle(circleX, circleY, 2.5, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(6.5);
+        doc.setFont('helvetica', 'bold');
+        doc.text(String(cutNum), circleX, circleY + 1.2, { align: 'center' });
+      }
     });
 
-    // Dimension bas SVG
-    doc.setTextColor(160,160,160);
-    doc.setFontSize(5);
-    doc.setFont('helvetica','normal');
-    doc.text(`← ${panelW}cm →`, svgX+SVG_W_mm/2, svgY+SVG_H_mm-0.5, {align:'center'});
+    // Légendes dimensions panneau
+    doc.setTextColor(140, 140, 140);
+    doc.setFontSize(6);
+    doc.setFont('helvetica', 'normal');
+    doc.text(
+      `\u2190 ${panelW} cm \u2192`,
+      svgX + SVG_W_mm / 2, svgY + SVG_H_mm + 3.5, { align: 'center' }
+    );
 
-    // ── COUPES (gauche) ──
-    let cy2 = contentY + 3;
-    doc.setTextColor(160,160,160);
-    doc.setFontSize(7);
-    doc.setFont('helvetica','bold');
-    doc.text('ORDRE DES COUPES', M+3, cy2);
-    cy2 += 4;
-
+    // Dimensions de la zone de chute principale (7pt rouge)
     if (wasteRect) {
-      doc.setTextColor(...GRAY);
-      doc.setFontSize(6.5);
-      doc.setFont('helvetica','normal');
-      doc.text(`Plus grande chute : ${(wasteRect.w/10).toFixed(1)}×${(wasteRect.h/10).toFixed(1)} cm`, M+3, cy2);
-      cy2 += 4;
+      const wxX = svgX + wasteRect.x * scaleX;
+      const wxY = svgY + wasteRect.y * scaleY;
+      const wxW = wasteRect.w * scaleX;
+      const wxH = wasteRect.h * scaleY;
+      if (wxW > 6 && wxH > 4) {
+        doc.setTextColor(200, 60, 60);
+        doc.setFontSize(7);
+        doc.setFont('helvetica', 'normal');
+        doc.text(
+          `${(wasteRect.w / 10).toFixed(1)}\u00d7${(wasteRect.h / 10).toFixed(1)}`,
+          wxX + wxW / 2, wxY + wxH / 2 + 1, { align: 'center' }
+        );
+      }
     }
 
-    const bandCuts = panel.cuts.filter(c=>c.type==='bande');
+    // ── 4. CHUTE RÉCUPÉRABLE (> 30×10 cm) ──────────────────────────────
+    if (wasteRect && wasteRect.w >= 300 && wasteRect.h >= 100) {
+      const wxX = svgX + wasteRect.x * scaleX;
+      const wxY = svgY + wasteRect.y * scaleY;
+      const wxW = Math.max(wasteRect.w * scaleX, 4);
+      const wxH = Math.max(wasteRect.h * scaleY, 4);
+      doc.setFillColor(232, 255, 246);   // vert très clair
+      doc.setDrawColor(...GREEN);
+      doc.setLineWidth(0.8);
+      doc.rect(wxX, wxY, wxW, wxH, 'FD');
+      if (wxW > 16 && wxH > 5) {
+        const recLabel = `CHUTE R\u00c9CUP\u00c9RABLE : ${(wasteRect.w / 10).toFixed(1)}\u00d7${(wasteRect.h / 10).toFixed(1)} cm`;
+        doc.setTextColor(...GREEN);
+        doc.setFontSize(5.5);
+        doc.setFont('helvetica', 'bold');
+        const recLines = doc.splitTextToSize(recLabel, wxW - 2);
+        doc.text(recLines, wxX + wxW / 2, wxY + wxH / 2, { align: 'center' });
+      }
+    }
+
+    // ── 2. LISTE DES COUPES (colonne droite) ────────────────────────────
+    let cy2 = contentY;
+    const maxCutsY = FOOTER_Y - 5;
+
+    // Titre "ORDRE DES COUPES" en 8pt bold majuscules orange
+    doc.setTextColor(...ACCENT);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'bold');
+    doc.text('ORDRE DES COUPES', CUTS_COL_X, cy2 + 3.5);
+    cy2 += 5.5;
+
+    doc.setDrawColor(...ACCENT);
+    doc.setLineWidth(0.4);
+    doc.line(CUTS_COL_X, cy2, CUTS_COL_X + CUTS_COL_W, cy2);
+    cy2 += 3.5;
+
     for (const band of bandCuts) {
-      if (cy2 > contentY + contentH - 2) break;
-      const bandLabel = band.orientation === 'vertical'
-        ? `✂ Bande verticale à ${band.posCm} cm`
-        : `✂ Coupe à ${band.posCm} cm`;
-      doc.setTextColor(...RED);
-      doc.setFontSize(9);
-      doc.setFont('helvetica','bold');
-      doc.text(bandLabel, M+3, cy2);
+      if (cy2 > maxCutsY) break;
+      const cutNum = band.cutNum ?? (bandCuts.indexOf(band) + 1);
+      const isVert = band.orientation === 'vertical';
+      const arrow  = isVert ? '\u2193 V' : '\u2192 H';
+      // "→ H  à X cm" avec tiret long (em-space)
+      const cutLine = `${arrow}\u2003\u00e0 ${band.posCm} cm`;
+
+      // Cercle numéro Ø3 mm (r = 1.5)
+      const circCx = CUTS_COL_X + 1.8;
+      const circCy = cy2 - 0.8;
+      doc.setFillColor(...ACCENT);
+      doc.circle(circCx, circCy, 1.5, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(5.5);
+      doc.setFont('helvetica', 'bold');
+      doc.text(String(cutNum), circCx, circCy + 0.9, { align: 'center' });
+
+      // Libellé de coupe
+      doc.setTextColor(20, 20, 20);
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'bold');
+      doc.text(cutLine, CUTS_COL_X + 4.5, cy2);
       cy2 += 4.5;
 
+      // Pièces résultantes — indentées, nom + L×H monospace 8pt gris
       const piecesInBand = panel.cuts.filter(c =>
-        c.type==='piece' && c.bandKey===band.bandKey && c.depth===band.depth
+        c.type === 'piece' && c.bandKey === band.bandKey
       );
       for (const pc of piecesInBand) {
-        if (cy2 > contentY + contentH - 1) break;
-        // Tag meuble
-        if (pc.furnitureName) {
-          doc.setFillColor(...ACCENT);
-          const tw = doc.getTextWidth(pc.furnitureName) + 3;
-          doc.roundedRect(M+5, cy2-2.8, tw, 3.5, 0.5, 0.5, 'F');
-          doc.setTextColor(10,15,26);
-          doc.setFontSize(7);
-          doc.setFont('helvetica','bold');
-          doc.text(pc.furnitureName, M+5+tw/2, cy2, {align:'center'});
-          doc.setTextColor(...DARK);
-          doc.setFontSize(9);
-          doc.setFont('helvetica','normal');
-          doc.text(`→ ${pc.name}`, M+6+tw, cy2);
-        } else {
-          doc.setTextColor(...DARK);
-          doc.setFontSize(9);
-          doc.setFont('helvetica','normal');
-          doc.text(`→ ${pc.name}`, M+5, cy2);
-        }
-        // Dimensions
-        doc.setTextColor(...GRAY);
-        doc.setFontSize(8);
-        doc.setFont('helvetica','normal');
-        doc.text(`${pc.lCm}×${pc.hCm} cm`, M+CUTS_W-2, cy2, {align:'right'});
-        // Redélignage
+        if (cy2 > maxCutsY) break;
+        const pName = (pc.name || '').substring(0, 12);
+        const pDims = `${pc.lCm}\u00d7${pc.hCm}`;
+
+        doc.setTextColor(110, 110, 110);
+        doc.setFontSize(7.5);
+        doc.setFont('courier', 'normal');
+        doc.text(pName, CUTS_COL_X + 5, cy2);
+        doc.text(pDims, CUTS_COL_X + CUTS_COL_W, cy2, { align: 'right' });
+        cy2 += 4;
+
+        // Badge redélignage : fond orange pâle
         if (pc.redeligne) {
-          cy2 += 3.5;
-          doc.setTextColor(245,158,11);
-          doc.setFontSize(7.5);
-          doc.text(`  ⟹ Redéligner à ${pc.redeligne.toCm}cm`, M+5, cy2);
+          if (cy2 > maxCutsY) break;
+          const badgeText = `RED\u00c9L. \u2192 ${pc.redeligne.toCm}\u00a0cm`;
+          const bw = doc.getTextWidth(badgeText) + 4;
+          doc.setFillColor(255, 235, 200);
+          doc.roundedRect(CUTS_COL_X + 5, cy2 - 3, bw, 4, 0.5, 0.5, 'F');
+          doc.setTextColor(160, 70, 0);
+          doc.setFontSize(7);
+          doc.setFont('helvetica', 'bold');
+          doc.text(badgeText, CUTS_COL_X + 7, cy2);
+          cy2 += 4.5;
         }
-        cy2 += 4.5;
       }
-      cy2 += 1;
+      cy2 += 1.5;
     }
+
+    // ── 5. PIED DE PAGE ─────────────────────────────────────────────────
+    drawCutPageFooter(pageNum);
   }
 
   const addVisualPage = (title, imageData) => {
@@ -503,8 +611,8 @@ export function exportPDF(results, project, extras = {}) {
     const maxW = PW - 2 * M;
     const maxH = PH - 42;
     const props = doc.getImageProperties(imageData);
-    const imgW = props?.width || maxW;
-    const imgH = props?.height || maxH;
+    const imgW  = props?.width  || maxW;
+    const imgH  = props?.height || maxH;
     const scale = Math.min(maxW / imgW, maxH / imgH);
     const drawW = imgW * scale;
     const drawH = imgH * scale;
@@ -513,19 +621,76 @@ export function exportPDF(results, project, extras = {}) {
     doc.addImage(imageData, 'PNG', drawX, drawY, drawW, drawH, undefined, 'FAST');
   };
 
-  addVisualPage('Façade / Plan façade', extras.facadeImage);
-  addVisualPage('Vue 3D client', extras.view3dImage);
+  addVisualPage('Fa\u00e7ade / Plan fa\u00e7ade', extras.facadeImage);
+  addVisualPage('Vue 3D client',                  extras.view3dImage);
 
-  // Pied de page dernière page
-  const lastPageY = PH - 8;
-  doc.setDrawColor(220,220,220);
-  doc.setLineWidth(0.3);
-  doc.line(M, lastPageY, PW-M, lastPageY);
-  doc.setTextColor(...GRAY);
-  doc.setFontSize(7);
-  doc.setFont('helvetica','normal');
-  doc.text(`✂ PanelCut Pro — ${company}`, M, lastPageY+4);
-  doc.text(`${devisNum ? devisNum + ' · ' : ''}${date}`, PW-M, lastPageY+4, {align:'right'});
+  // ── PAGE TRINGLES ────────────────────────────────────────────────────
+  if (hasTringlesPage) {
+    doc.addPage();
+
+    // En-tête
+    doc.setFillColor(...DARK);
+    doc.rect(M, M, CW, 8, 'F');
+    doc.setFillColor(...DARK);
+    doc.rect(M, M + 5, CW, 3, 'F');   // aplat pour coins bas
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.text('TRINGLES \u2014 hors optimisation bois', M + 4, M + 5.5);
+
+    // Tableau nom / longueur / quantité
+    const tblY0  = M + 16;
+    const COL_W  = [CW - 80, 50, 30];   // Nom | Longueur | Qté
+    const ROW_H  = 7;
+    const headers = ['Nom', 'Longueur', 'Qt\u00e9'];
+
+    // En-tête tableau
+    doc.setFillColor(240, 240, 240);
+    doc.rect(M, tblY0, CW, ROW_H, 'F');
+    doc.setTextColor(60, 60, 60);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'bold');
+    headers.forEach((h, i) => {
+      const cx = M + COL_W.slice(0, i).reduce((s, v) => s + v, 0);
+      doc.text(h, cx + 3, tblY0 + 4.8);
+    });
+
+    // Regrouper par nom + longueur (utiliser qty du projet si disponible)
+    const rodMap = {};
+    rodPieces.forEach(p => {
+      const len = p.length || p.l || 0;
+      const key = `${p.name}|${len}`;
+      if (!rodMap[key]) rodMap[key] = { name: p.name, length: len, qty: 0 };
+      rodMap[key].qty += (p.qty || 1);
+    });
+    const rodRows = Object.values(rodMap);
+
+    rodRows.forEach((row, ri) => {
+      const ry = tblY0 + ROW_H + ri * ROW_H;
+      if (ri % 2 === 0) {
+        doc.setFillColor(252, 252, 252);
+        doc.rect(M, ry, CW, ROW_H, 'F');
+      }
+      doc.setDrawColor(220, 220, 220);
+      doc.setLineWidth(0.2);
+      doc.line(M, ry + ROW_H, M + CW, ry + ROW_H);
+
+      doc.setTextColor(30, 30, 30);
+      doc.setFontSize(8);
+      doc.setFont('courier', 'normal');
+      const vals = [
+        row.name,
+        `${row.length} cm`,
+        String(row.qty),
+      ];
+      vals.forEach((v, i) => {
+        const cx = M + COL_W.slice(0, i).reduce((s, w2) => s + w2, 0);
+        doc.text(v, cx + 3, ry + 4.8);
+      });
+    });
+
+    drawCutPageFooter(totalPages);
+  }
 
   // Télécharge le PDF
   const filename = `${projectName.replace(/\s+/g,'-')}${devisNum ? '-'+devisNum : ''}.pdf`;
