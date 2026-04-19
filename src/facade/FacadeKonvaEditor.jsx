@@ -138,6 +138,8 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
   onElementRemove,
   activeTool      = 'select',
   onChange,
+  onModuleChange,
+  onItemChange,
 }, ref) {
   // ── 1. RESPONSIVE RESIZE ───────────────────────────────────────────────────
   const containerRef = useRef(null);
@@ -293,6 +295,14 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
   // stageWidth = drawW so the hook's internal geometry aligns with the drawing
   // area; snapX from the hook is relative to the drawing area's left edge (0),
   // so we add mL to render it in Stage coordinates.
+
+  // Compose a single onChange that notifies all callers (onChange, onModuleChange, onItemChange).
+  const composedOnChange = useCallback((newModules, newItems) => {
+    onChange?.(newModules, newItems);
+    onModuleChange?.(newModules);
+    onItemChange?.(newItems);
+  }, [onChange, onModuleChange, onItemChange]);
+
   const {
     undo,
     redo,
@@ -312,7 +322,7 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
     thickness:   toNum(thick, 1.8),
     stageWidth:  drawW,
     stageHeight: drawH,
-    onChange,
+    onChange: composedOnChange,
   });
 
   // Snap line position in Stage coordinate space

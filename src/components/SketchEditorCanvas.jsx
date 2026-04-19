@@ -32,6 +32,9 @@ const SketchEditorCanvas = forwardRef(function SketchEditorCanvas(
     onElementUpdate,
     onElementRemove,
     activeTool,
+    // Callbacks undo/redo state sync
+    onModuleChange,
+    onItemChange,
     // Notes générales
     generalNotes,
     onGeneralNotesChange,
@@ -61,6 +64,8 @@ const SketchEditorCanvas = forwardRef(function SketchEditorCanvas(
           onElementUpdate={onElementUpdate}
           onElementRemove={onElementRemove}
           activeTool={activeTool}
+          onModuleChange={onModuleChange}
+          onItemChange={onItemChange}
         />
       </div>
 
