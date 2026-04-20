@@ -227,58 +227,50 @@ export default function SketchPropertiesPanel({
     ? Array.from(selectedIds).sort((a, b) => a - b)
     : (facadeModules?.map((_, i) => i) ?? []);
 
-  // "Égaliser largeurs" — divide the combined width equally among target modules
+  /** Shared helper: return a new modules array with equal widths for `indices`. */
+  const applyEqualWidths = (indices) => {
+    const totalW = indices.reduce((s, i) => s + (facadeModules[i]?.width || 0), 0);
+    const eqW    = Math.round((totalW / indices.length) * 10) / 10;
+    return facadeModules.map((m, i) =>
+      indices.includes(i) ? { ...m, width: eqW } : m
+    );
+  };
+
+  // "Égaliser largeurs" — equal widths among target modules (selected if >1, else all)
   const handleEqualWidths = () => {
     if (!facadeModules?.length || !targetIndices.length) return;
-    const totalW = targetIndices.reduce((s, i) => s + (facadeModules[i]?.width || 0), 0);
-    const eqW    = Math.round((totalW / targetIndices.length) * 10) / 10;
-    const newModules = facadeModules.map((m, i) =>
-      targetIndices.includes(i) ? { ...m, width: eqW } : m
-    );
-    onModulesChange?.(newModules);
+    onModulesChange?.(applyEqualWidths(targetIndices));
   };
 
   // "Aligner sur grille 5cm" — snap each target to nearest 5cm, adjust last to preserve total
+  const MIN_WIDTH_CM = 5;
   const handleSnapGrid5 = () => {
     if (!facadeModules?.length || !targetIndices.length) return;
     const totalOriginal = targetIndices.reduce((s, i) => s + (facadeModules[i]?.width || 0), 0);
     const newWidths = {};
     let totalSnapped = 0;
     targetIndices.forEach((i) => {
-      const snapped = Math.max(5, Math.round((facadeModules[i]?.width || 0) / 5) * 5);
+      const snapped = Math.max(MIN_WIDTH_CM, Math.round((facadeModules[i]?.width || 0) / 5) * 5);
       newWidths[i] = snapped;
       totalSnapped += snapped;
     });
     // Adjust last target module to preserve the total width
     const lastIdx = targetIndices[targetIndices.length - 1];
-    newWidths[lastIdx] = Math.max(5, Math.round((newWidths[lastIdx] + totalOriginal - totalSnapped) * 10) / 10);
+    newWidths[lastIdx] = Math.max(MIN_WIDTH_CM, Math.round((newWidths[lastIdx] + totalOriginal - totalSnapped) * 10) / 10);
     const newModules = facadeModules.map((m, i) =>
       newWidths[i] !== undefined ? { ...m, width: newWidths[i] } : m
     );
     onModulesChange?.(newModules);
   };
 
-  // "Distribuer" — keep combined width of selected, redistribute evenly (always among selectedIds)
+  // "Distribuer" — redistribute widths evenly among selected modules (always uses selectedIds)
   const handleDistribute = () => {
     if (!facadeModules?.length) return;
     const indices = (selectedIds?.size > 1)
       ? Array.from(selectedIds).sort((a, b) => a - b)
       : (facadeModules?.map((_, i) => i) ?? []);
     if (!indices.length) return;
-    const totalW = indices.reduce((s, i) => s + (facadeModules[i]?.width || 0), 0);
-    const eqW    = Math.round((totalW / indices.length) * 10) / 10;
-    const newModules = facadeModules.map((m, i) =>
-      indices.includes(i) ? { ...m, width: eqW } : m
-    );
-    onModulesChange?.(newModules);
-  };
-
-  // Redistribute all modules to equal widths
-  const handleEqualDistribute = () => {
-    if (!facadeModules?.length) return;
-    const totalW = facadeModules.reduce((s, m) => s + (m.width || 0), 0);
-    const eqW    = Math.round((totalW / facadeModules.length) * 10) / 10;
-    facadeModules.forEach((_, i) => onModuleChange?.(i, { width: eqW }));
+    onModulesChange?.(applyEqualWidths(indices));
   };
 
   // ── Render ────────────────────────────────────────────────────────────────

@@ -13,6 +13,12 @@ const MARGIN = { l: 65, r: 52, t: 55, b: 65 };
 
 const DOUBLE_COLOR = '#d97706';
 
+/** Konva node name set on module hit-box rects for rubber-band detection. */
+const MODULE_HITBOX_NAME = 'module-hitbox';
+
+/** Minimum drag distance (px, in content coords) to trigger rubber-band selection. */
+const MIN_RUBBER_BAND_SIZE = 4;
+
 // Double-separator label geometry
 const DOUBLE_LABEL_OFFSET = 10;
 const DOUBLE_LABEL_WIDTH  = 20;
@@ -486,7 +492,7 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
     let node = e.target;
     while (node && node.getType?.() !== 'Stage') {
       if (node.draggable?.()) return;
-      if (node.name?.() === 'module-hitbox') return;
+      if (node.name?.() === MODULE_HITBOX_NAME) return;
       node = node.parent;
     }
     // Only start rubber band when clicking empty background
@@ -589,7 +595,7 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
       const ryMin = Math.min(y0, y1);
       const ryMax = Math.max(y0, y1);
       // Only select if band has meaningful area
-      if (rxMax - rxMin > 4 && ryMax - ryMin > 4) {
+      if (rxMax - rxMin > MIN_RUBBER_BAND_SIZE && ryMax - ryMin > MIN_RUBBER_BAND_SIZE) {
         const matched = mRects
           .filter(r => {
             const cx = r.intX + r.intW / 2;

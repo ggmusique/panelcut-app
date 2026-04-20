@@ -139,6 +139,7 @@ export function useFacadeKonva({
 
   /** Remplace la sélection par un ensemble arbitraire d'indices (rubber band). */
   const selectModules  = useCallback((indices) => setSelectedIds(new Set(indices)), []);
+  /** selectItem est conservé pour la compatibilité API mais n'affecte pas la sélection de modules. */
   const selectItem     = useCallback((_id) => {}, []);
   const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
 
