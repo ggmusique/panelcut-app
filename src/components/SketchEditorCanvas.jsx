@@ -1,5 +1,6 @@
 import { forwardRef, useState, useRef, useCallback, useEffect } from 'react';
 import FacadeKonvaEditor from '../facade/FacadeKonvaEditor';
+import SketchPropertiesPanel from './SketchPropertiesPanel';
 
 const FACADE_W = 1140;
 const FACADE_H = 700;
@@ -17,6 +18,7 @@ const SketchEditorCanvas = forwardRef(function SketchEditorCanvas(
     thick,
     // Données façade
     facadeModules,
+    moduleDetails,
     cabinetModules,
     facadeItems,
     joints,
@@ -41,6 +43,10 @@ const SketchEditorCanvas = forwardRef(function SketchEditorCanvas(
     // Callbacks undo/redo state sync
     onModuleChange,
     onItemChange,
+    onModuleDetailsChange,
+    // Undo/redo state for panel
+    canUndo,
+    canRedo,
     // Notes générales
     generalNotes,
     onGeneralNotesChange,
@@ -50,6 +56,11 @@ const SketchEditorCanvas = forwardRef(function SketchEditorCanvas(
 ) {
   const [selectedModule, setSelectedModule] = useState(null); // { modIdx, x, y } | null
   const wrapperRef = useRef(null);
+
+  // Adapter: panel calls onModuleChange(idx, changes); canvas receives setFacadeModules
+  const handleModuleChangeForPanel = useCallback((idx, changes) => {
+    onModuleChange(prev => prev.map((m, i) => i === idx ? { ...m, ...changes } : m));
+  }, [onModuleChange]);
 
   // ── Keyboard shortcuts: tool selection + undo/redo ──────────────────────
   useEffect(() => {
@@ -98,87 +109,102 @@ const SketchEditorCanvas = forwardRef(function SketchEditorCanvas(
 
   return (
     <>
-      <div className="flex-1 overflow-auto bg-slate-950 flex justify-center p-4">
-        <div ref={wrapperRef} style={{ position: 'relative', overflow: 'visible', width: '100%' }}>
-          <FacadeKonvaEditor
-            ref={konvaEditorRef}
-            svgW={FACADE_W} svgH={FACADE_H}
-            cabW={cabW} cabH={cabH}
-            plinth={plinth} thick={thick}
-            facadeModules={facadeModules}
-            cabinetModules={cabinetModules}
-            facadeItems={facadeItems}
-            joints={joints}
-            globalSliding={globalSliding}
-            elements={elements}
-            onFacadePointerDown={onFacadePointerDown}
-            onItemMove={onItemMove}
-            onItemErase={onItemErase}
-            onModuleClick={onModuleClick}
-            onModuleErase={onModuleErase}
-            onElementAdd={onElementAdd}
-            onElementUpdate={onElementUpdate}
-            onElementRemove={onElementRemove}
-            activeTool={activeTool}
-            onModuleChange={onModuleChange}
-            onItemChange={onItemChange}
-            onDrawerResize={onDrawerResize}
-            onModuleSelect={handleModuleSelect}
-            onHistoryChange={onHistoryChange}
-          />
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+        <div className="flex-1 overflow-auto bg-slate-950 flex justify-center p-4">
+          <div ref={wrapperRef} style={{ position: 'relative', overflow: 'visible', width: '100%' }}>
+            <FacadeKonvaEditor
+              ref={konvaEditorRef}
+              svgW={FACADE_W} svgH={FACADE_H}
+              cabW={cabW} cabH={cabH}
+              plinth={plinth} thick={thick}
+              facadeModules={facadeModules}
+              cabinetModules={cabinetModules}
+              facadeItems={facadeItems}
+              joints={joints}
+              globalSliding={globalSliding}
+              elements={elements}
+              onFacadePointerDown={onFacadePointerDown}
+              onItemMove={onItemMove}
+              onItemErase={onItemErase}
+              onModuleClick={onModuleClick}
+              onModuleErase={onModuleErase}
+              onElementAdd={onElementAdd}
+              onElementUpdate={onElementUpdate}
+              onElementRemove={onElementRemove}
+              activeTool={activeTool}
+              onModuleChange={onModuleChange}
+              onItemChange={onItemChange}
+              onDrawerResize={onDrawerResize}
+              onModuleSelect={handleModuleSelect}
+              onHistoryChange={onHistoryChange}
+            />
 
-          {selectedModule !== null && (() => {
-            const mod = facadeModules[selectedModule.modIdx];
-            if (!mod) return null;
-            const containerWidth = wrapperRef.current?.offsetWidth ?? 800;
-            const top  = selectedModule.y - 60;
-            const left = Math.max(8, Math.min(selectedModule.x - 90, containerWidth - 188));
-            return (
-              <div style={{
-                position: 'absolute',
-                top,
-                left,
-                background: 'var(--bg-card)',
-                border: '0.5px solid var(--border)',
-                borderRadius: 'var(--radius-sm)',
-                padding: '10px 14px',
-                boxShadow: '0 4px 16px rgba(0,0,0,.12)',
-                zIndex: 30,
-                minWidth: 180,
-                color: 'var(--text1)',
-              }}>
-                <div style={{ fontSize: 13, fontWeight: 500 }}>Module {selectedModule.modIdx + 1}</div>
-                <div style={{ fontSize: 12, color: 'var(--text2)' }}>{mod.width.toFixed(1)} cm</div>
-                <hr style={{ margin: '6px 0', borderColor: 'var(--border)', border: 'none', borderTop: '1px solid var(--border)' }} />
-                <div style={{ display: 'flex', gap: 12, fontSize: 12 }}>
-                  <button
-                    style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', padding: 0, fontSize: 12 }}
-                    onClick={() => {
-                      onModuleErase(selectedModule.modIdx);
-                      setSelectedModule(null);
-                    }}
-                  >
-                    × Supprimer module
-                  </button>
-                  <button
-                    style={{ background: 'none', border: 'none', color: 'var(--text1)', cursor: 'pointer', padding: 0, fontSize: 12 }}
-                    onClick={() => {
-                      const { modIdx } = selectedModule;
-                      onModuleChange(prev => {
-                        const copy = [...prev];
-                        copy.splice(modIdx + 1, 0, { ...prev[modIdx] });
-                        return copy;
-                      });
-                      setSelectedModule(null);
-                    }}
-                  >
-                    ⧉ Dupliquer
-                  </button>
+            {selectedModule !== null && (() => {
+              const mod = facadeModules[selectedModule.modIdx];
+              if (!mod) return null;
+              const containerWidth = wrapperRef.current?.offsetWidth ?? 800;
+              const top  = selectedModule.y - 60;
+              const left = Math.max(8, Math.min(selectedModule.x - 90, containerWidth - 188));
+              return (
+                <div style={{
+                  position: 'absolute',
+                  top,
+                  left,
+                  background: 'var(--bg-card)',
+                  border: '0.5px solid var(--border)',
+                  borderRadius: 'var(--radius-sm)',
+                  padding: '10px 14px',
+                  boxShadow: '0 4px 16px rgba(0,0,0,.12)',
+                  zIndex: 30,
+                  minWidth: 180,
+                  color: 'var(--text1)',
+                }}>
+                  <div style={{ fontSize: 13, fontWeight: 500 }}>Module {selectedModule.modIdx + 1}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text2)' }}>{mod.width.toFixed(1)} cm</div>
+                  <hr style={{ margin: '6px 0', borderColor: 'var(--border)', border: 'none', borderTop: '1px solid var(--border)' }} />
+                  <div style={{ display: 'flex', gap: 12, fontSize: 12 }}>
+                    <button
+                      style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', padding: 0, fontSize: 12 }}
+                      onClick={() => {
+                        onModuleErase(selectedModule.modIdx);
+                        setSelectedModule(null);
+                      }}
+                    >
+                      × Supprimer module
+                    </button>
+                    <button
+                      style={{ background: 'none', border: 'none', color: 'var(--text1)', cursor: 'pointer', padding: 0, fontSize: 12 }}
+                      onClick={() => {
+                        const { modIdx } = selectedModule;
+                        onModuleChange(prev => {
+                          const copy = [...prev];
+                          copy.splice(modIdx + 1, 0, { ...prev[modIdx] });
+                          return copy;
+                        });
+                        setSelectedModule(null);
+                      }}
+                    >
+                      ⧉ Dupliquer
+                    </button>
+                  </div>
                 </div>
-              </div>
-            );
-          })()}
+              );
+            })()}
+          </div>
         </div>
+
+        <SketchPropertiesPanel
+          selectedModuleIdx={selectedModule?.modIdx ?? null}
+          facadeModules={facadeModules}
+          moduleDetails={moduleDetails}
+          cabinetDims={{ width: cabW, height: cabH, plinth: plinth || 0 }}
+          onModuleChange={handleModuleChangeForPanel}
+          onModuleDetailsChange={onModuleDetailsChange}
+          canUndo={canUndo}
+          canRedo={canRedo}
+          onUndo={onUndo}
+          onRedo={onRedo}
+        />
       </div>
 
       <div className="bg-slate-900 border-t border-slate-700 p-2">
