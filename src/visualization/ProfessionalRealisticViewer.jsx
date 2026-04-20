@@ -833,8 +833,11 @@ function SceneControls({ viewPreset, Wm, Hm, Dm, cabZ, camDist, autoRotate, glCa
    MAIN EXPORT
    ═══════════════════════════════════════════════════════════════ */
 
+// View presets shown in mini mode (reduced set)
+const MINI_VIEW_PRESETS = ['angle', 'face', 'right'];
+
 const ProfessionalRealisticViewer = forwardRef(function ProfessionalRealisticViewer(
-  { cabinet, name, fullScreen = false, presentationMode = false, isCapturing = false, initialFinish = 'oak', onFinishChange },
+  { cabinet, name, fullScreen = false, presentationMode = false, isCapturing = false, initialFinish = 'oak', onFinishChange, miniMode = false, height },
   ref
 ) {
   if (!cabinet || !cabinet.width || !cabinet.height) {
@@ -899,7 +902,7 @@ const ProfessionalRealisticViewer = forwardRef(function ProfessionalRealisticVie
     <div className={`relative w-full`} onWheel={e => e.stopPropagation()}>
       <div
         className={`relative w-full overflow-hidden shadow-2xl ${fullScreen ? 'rounded-none' : 'rounded-2xl'}`}
-        style={{ height: fullScreen ? '100dvh' : 620, background: isCapturing ? '#ffffff' : undefined }}
+        style={{ height: fullScreen ? '100dvh' : (height ?? (miniMode ? 250 : 620)), background: isCapturing ? '#ffffff' : undefined }}
       >
         <Canvas
           shadows
@@ -983,8 +986,8 @@ const ProfessionalRealisticViewer = forwardRef(function ProfessionalRealisticVie
       {/* View preset buttons — 3×2 grid, shown below canvas */}
       {!isCapturing && (
         <>
-          <div className="grid grid-cols-3 gap-1.5 mt-2 px-0.5">
-            {VIEW_PRESETS.map(v => (
+          <div className={`grid gap-1.5 mt-2 px-0.5 ${miniMode ? 'grid-cols-3' : 'grid-cols-3 grid-rows-2'}`}>
+            {VIEW_PRESETS.filter(v => !miniMode || MINI_VIEW_PRESETS.includes(v.id)).map(v => (
               <button
                 key={v.id}
                 onClick={() => setViewPreset(v.id)}
@@ -999,13 +1002,15 @@ const ProfessionalRealisticViewer = forwardRef(function ProfessionalRealisticVie
               </button>
             ))}
           </div>
-          <MaterialSelector
-            finish={finish}
-            onChange={(f) => {
-              setFinish(f);
-              if (onFinishChange) onFinishChange(f);
-            }}
-          />
+          {!miniMode && (
+            <MaterialSelector
+              finish={finish}
+              onChange={(f) => {
+                setFinish(f);
+                if (onFinishChange) onFinishChange(f);
+              }}
+            />
+          )}
         </>
       )}
     </div>
