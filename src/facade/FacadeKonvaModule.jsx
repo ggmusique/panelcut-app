@@ -36,6 +36,7 @@ export default function FacadeKonvaModule({
   facadeItems = [],
   isSelected = false,
   activeTool = 'select',
+  interactionMode = 'navigation',
   onSelect,
   onResizeStart,
   onAddElement,
@@ -155,6 +156,7 @@ export default function FacadeKonvaModule({
         module={module}
         moduleDetail={moduleDetail}
         isEraseTool={isErase}
+        interactionMode={interactionMode}
         onItemMove={onItemMove}
         onItemRemove={(itemId) => onRemoveElement?.('item', itemId)}
         onRemoveElement={(_mIdx, type, idx) => onRemoveElement?.(type, idx)}
