@@ -753,16 +753,46 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
             stageRef={stageRef}
           />
 
-          {/* ── SNAP LINE — golden vertical guide shown during module resize ── */}
-          {snapActive && snapLineX != null && (
-            <Line
-              points={[snapLineX, mT, snapLineX, mT + innerH]}
-              stroke="#f59e0b"
-              strokeWidth={2}
-              dash={[6, 3]}
-              listening={false}
-            />
-          )}
+          {/* ── SNAP LINE — amber vertical guide + badge shown during module resize ── */}
+          {snapActive && snapLineX != null && (() => {
+            const snapCm    = Math.round(hookSnapX / scaleRatio / (drawW / Math.max(1, toNum(cabW))));
+            const badgeText = `${snapCm} cm`;
+            const badgeFS   = 11 * scaleRatio;
+            const badgePadY = 3  * scaleRatio;
+            const badgeW    = 44 * scaleRatio;
+            const badgeH    = badgeFS + 2 * badgePadY;
+            const badgeX    = snapLineX - badgeW / 2;
+            const badgeY    = mT - 20 * scaleRatio - badgeH;
+            return (
+              <>
+                <Line
+                  points={[snapLineX, mT, snapLineX, mT + drawH]}
+                  stroke="#EF9F27"
+                  strokeWidth={1.5}
+                  dash={[4, 3]}
+                  listening={false}
+                />
+                <Rect
+                  x={badgeX} y={badgeY}
+                  width={badgeW} height={badgeH}
+                  fill="#fef3c7"
+                  stroke="#EF9F27" strokeWidth={1}
+                  cornerRadius={3 * scaleRatio}
+                  listening={false}
+                />
+                <Text
+                  x={badgeX} y={badgeY + badgePadY}
+                  width={badgeW}
+                  text={badgeText}
+                  align="center"
+                  fill="#92400e"
+                  fontSize={badgeFS}
+                  fontStyle="bold"
+                  listening={false}
+                />
+              </>
+            );
+          })()}
 
         </Layer>
       </Stage>
