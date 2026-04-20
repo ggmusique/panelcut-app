@@ -246,6 +246,7 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
   onElementRemove,
   onDrawerResize,
   onModuleSelect,
+  onSelectionChange,
   activeTool      = 'select',
   showGrid        = true,
   onChange,
@@ -287,6 +288,11 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
 
   // ── 1c. RESIZE LIVE WIDTH ──────────────────────────────────────────────────
   const [resizeWidthCm, setResizeWidthCm] = useState(null);
+
+  // ── 1d. RUBBER BAND SELECTION ─────────────────────────────────────────────
+  // Stored in Stage content coordinates (matching mRects).
+  const [rubberBand, setRubberBand] = useState(null); // { x0, y0, x1, y1 } | null
+  const isRubberBanding = useRef(false);
 
   // ── TOOL FLAGS (declared early — used in useEffect/useCallback dep arrays below) ──
   const isErase   = activeTool === 'erase';
@@ -402,8 +408,10 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
     canRedo,
     snapActive,
     snapX: hookSnapX,
-    selectedId,
+    selectedIds,
     selectModule,
+    selectModules,
+    clearSelection,
     resizeModule,
     setResizingModuleId,
   } = useFacadeKonva({
@@ -435,6 +443,11 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
     onHistoryChange?.({ canUndo, canRedo });
   }, [canUndo, canRedo, onHistoryChange]);
 
+  // ── Notify parent when selection changes ─────────────────────────────────
+  useEffect(() => {
+    onSelectionChange?.(selectedIds);
+  }, [selectedIds, onSelectionChange]);
+
   // ── 3. ANNOTATION Y (scaled margins) ─────────────────────────────────────
   const dimLineH   = 26 * scaleRatio;
   const dimTickH   = 6  * scaleRatio;
@@ -447,24 +460,44 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
   // avec des coordonnées converties manuellement (source d'erreur avec zoom/pan).
   // La détection Konva gère correctement les Rects transparents (listening=true).
   const handleStagePanStart = useCallback((e) => {
-    if (!isNavMode) return;
     if (e.evt.button !== 0) return;
-    // Cède le contrôle si un ancêtre est draggable (tablette, tringle, etc.)
+
+    if (isNavMode) {
+      // Navigation mode → pan
+      let node = e.target;
+      while (node && node.getType?.() !== 'Stage') {
+        if (node.draggable?.()) return;
+        node = node.parent;
+      }
+      const stage = stageRef.current;
+      if (!stage) return;
+      mousePanRef.current = {
+        active: true,
+        startX: e.evt.clientX,
+        startY: e.evt.clientY,
+        stageX: stage.x(),
+        stageY: stage.y(),
+      };
+      stage.container().style.cursor = 'grabbing';
+      return;
+    }
+
+    // Move mode → rubber band on background only (not on module/item)
     let node = e.target;
     while (node && node.getType?.() !== 'Stage') {
       if (node.draggable?.()) return;
+      if (node.name?.() === 'module-hitbox') return;
       node = node.parent;
     }
+    // Only start rubber band when clicking empty background
     const stage = stageRef.current;
     if (!stage) return;
-    mousePanRef.current = {
-      active: true,
-      startX: e.evt.clientX,
-      startY: e.evt.clientY,
-      stageX: stage.x(),
-      stageY: stage.y(),
-    };
-    stage.container().style.cursor = 'grabbing';
+    const pt = stage.getPointerPosition();
+    if (!pt) return;
+    const cx = (pt.x - stage.x()) / stage.scaleX();
+    const cy = (pt.y - stage.y()) / stage.scaleY();
+    isRubberBanding.current = true;
+    setRubberBand({ x0: cx, y0: cy, x1: cx, y1: cy });
   }, [isNavMode]);
 
   // ── Touch gesture handlers ────────────────────────────────────────────────
@@ -531,6 +564,44 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
     touchStartPos.current = null;
     setTimeout(() => { isPinching.current = false; }, PINCH_GESTURE_DELAY_MS);
   }, []);
+
+  // ── Rubber band — mouse move ───────────────────────────────────────────────
+  const handleStageMouseMove = useCallback((e) => {
+    if (!isRubberBanding.current) return;
+    const stage = stageRef.current;
+    if (!stage) return;
+    const pt = stage.getPointerPosition();
+    if (!pt) return;
+    const cx = (pt.x - stage.x()) / stage.scaleX();
+    const cy = (pt.y - stage.y()) / stage.scaleY();
+    setRubberBand(prev => prev ? { ...prev, x1: cx, y1: cy } : prev);
+  }, []);
+
+  // ── Rubber band — mouse up → select matching modules ──────────────────────
+  const handleStageMouseUp = useCallback(() => {
+    if (!isRubberBanding.current) return;
+    isRubberBanding.current = false;
+    setRubberBand(prev => {
+      if (!prev) return null;
+      const { x0, y0, x1, y1 } = prev;
+      const rxMin = Math.min(x0, x1);
+      const rxMax = Math.max(x0, x1);
+      const ryMin = Math.min(y0, y1);
+      const ryMax = Math.max(y0, y1);
+      // Only select if band has meaningful area
+      if (rxMax - rxMin > 4 && ryMax - ryMin > 4) {
+        const matched = mRects
+          .filter(r => {
+            const cx = r.intX + r.intW / 2;
+            const cy = r.intY + r.intH / 2;
+            return cx >= rxMin && cx <= rxMax && cy >= ryMin && cy <= ryMax;
+          })
+          .map(r => r.modIdx);
+        if (matched.length > 0) selectModules(matched);
+      }
+      return null;
+    });
+  }, [mRects, selectModules]);
 
   /**
    * Module resize drag: called by FacadeKonvaModule's onResizeStart.
@@ -687,11 +758,14 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
         x={position.x}
         y={position.y}
         onMouseDown={handleStagePanStart}
+        onMouseMove={handleStageMouseMove}
+        onMouseUp={handleStageMouseUp}
         onTouchStart={handleStageTouchStart}
         onTouchMove={handleStageTouchMove}
         onTouchEnd={handleStageTouchEnd}
         onClick={(e) => {
           if (e.target === e.target.getStage()) {
+            clearSelection();
             onModuleSelect?.(null, 0, 0);
           }
         }}
@@ -806,6 +880,8 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
             const { i, m } = moduleRect;
             const cabInteriorCm = toNum(cabH) - toNum(plinth);
             const moduleItems   = facadeItems.filter((it) => Number(it.modIdx) === i);
+            const isSelected    = selectedIds.has(i);
+            const hasSelection  = selectedIds.size > 0;
             return (
               <FacadeKonvaModule
                 key={`mod-${i}`}
@@ -813,12 +889,14 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
                 module={m}
                 moduleDetail={cabinetModules[i] || null}
                 facadeItems={moduleItems}
-                isSelected={selectedId === i}
+                isSelected={isSelected}
+                hasSelection={hasSelection}
                 activeTool={activeTool}
                 interactionMode={interactionMode}
-                onSelect={() => {
-                  selectModule(i);
-                  if (activeTool === 'select') {
+                onSelect={(konvaEvt) => {
+                  const addToSelection = konvaEvt?.evt?.shiftKey ?? false;
+                  selectModule(i, addToSelection);
+                  if (activeTool === 'select' && !addToSelection) {
                     const { x, y } = computeModuleScreenCenter(moduleRect);
                     onModuleSelect?.(i, x, y);
                   }
@@ -1003,6 +1081,26 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
                   listening={false}
                 />
               </>
+            );
+          })()}
+
+          {/* ── RUBBER BAND SELECTION RECT ── */}
+          {rubberBand && (() => {
+            const { x0, y0, x1, y1 } = rubberBand;
+            const rx = Math.min(x0, x1);
+            const ry = Math.min(y0, y1);
+            const rw = Math.abs(x1 - x0);
+            const rh = Math.abs(y1 - y0);
+            return (
+              <Rect
+                x={rx} y={ry}
+                width={rw} height={rh}
+                fill="rgba(59, 130, 246, 0.12)"
+                stroke="#3b82f6"
+                strokeWidth={1.5}
+                dash={[4, 3]}
+                listening={false}
+              />
             );
           })()}
 

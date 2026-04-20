@@ -153,20 +153,24 @@ const S = {
  *
  * Props:
  *   selectedModuleIdx        {number|null}
+ *   selectedIds              {Set<number>}  — multi-selection from the canvas
  *   facadeModules            {Array}
  *   moduleDetails            {Array}
  *   cabinetDims              {{width, height, plinth}}
  *   onModuleChange           {(idx: number, changes: object) => void}
+ *   onModulesChange          {(newModules: Array) => void}  — bulk update
  *   onModuleDetailsChange    {(idx: number, changes: object) => void}
  *   canUndo, canRedo         {boolean}
  *   onUndo, onRedo           {() => void}
  */
 export default function SketchPropertiesPanel({
   selectedModuleIdx,
+  selectedIds,
   facadeModules,
   moduleDetails,
   cabinetDims,
   onModuleChange,
+  onModulesChange,
   onModuleDetailsChange,
   canUndo,
   canRedo,
@@ -217,19 +221,64 @@ export default function SketchPropertiesPanel({
     setWidthBuffer(null);
   };
 
+  // Determine which module indices the alignment operations should target.
+  // Multiple selected → act on selected only; one or none → act on all.
+  const targetIndices = (selectedIds?.size > 1)
+    ? Array.from(selectedIds).sort((a, b) => a - b)
+    : (facadeModules?.map((_, i) => i) ?? []);
+
+  // "Égaliser largeurs" — divide the combined width equally among target modules
+  const handleEqualWidths = () => {
+    if (!facadeModules?.length || !targetIndices.length) return;
+    const totalW = targetIndices.reduce((s, i) => s + (facadeModules[i]?.width || 0), 0);
+    const eqW    = Math.round((totalW / targetIndices.length) * 10) / 10;
+    const newModules = facadeModules.map((m, i) =>
+      targetIndices.includes(i) ? { ...m, width: eqW } : m
+    );
+    onModulesChange?.(newModules);
+  };
+
+  // "Aligner sur grille 5cm" — snap each target to nearest 5cm, adjust last to preserve total
+  const handleSnapGrid5 = () => {
+    if (!facadeModules?.length || !targetIndices.length) return;
+    const totalOriginal = targetIndices.reduce((s, i) => s + (facadeModules[i]?.width || 0), 0);
+    const newWidths = {};
+    let totalSnapped = 0;
+    targetIndices.forEach((i) => {
+      const snapped = Math.max(5, Math.round((facadeModules[i]?.width || 0) / 5) * 5);
+      newWidths[i] = snapped;
+      totalSnapped += snapped;
+    });
+    // Adjust last target module to preserve the total width
+    const lastIdx = targetIndices[targetIndices.length - 1];
+    newWidths[lastIdx] = Math.max(5, Math.round((newWidths[lastIdx] + totalOriginal - totalSnapped) * 10) / 10);
+    const newModules = facadeModules.map((m, i) =>
+      newWidths[i] !== undefined ? { ...m, width: newWidths[i] } : m
+    );
+    onModulesChange?.(newModules);
+  };
+
+  // "Distribuer" — keep combined width of selected, redistribute evenly (always among selectedIds)
+  const handleDistribute = () => {
+    if (!facadeModules?.length) return;
+    const indices = (selectedIds?.size > 1)
+      ? Array.from(selectedIds).sort((a, b) => a - b)
+      : (facadeModules?.map((_, i) => i) ?? []);
+    if (!indices.length) return;
+    const totalW = indices.reduce((s, i) => s + (facadeModules[i]?.width || 0), 0);
+    const eqW    = Math.round((totalW / indices.length) * 10) / 10;
+    const newModules = facadeModules.map((m, i) =>
+      indices.includes(i) ? { ...m, width: eqW } : m
+    );
+    onModulesChange?.(newModules);
+  };
+
   // Redistribute all modules to equal widths
   const handleEqualDistribute = () => {
     if (!facadeModules?.length) return;
     const totalW = facadeModules.reduce((s, m) => s + (m.width || 0), 0);
     const eqW    = Math.round((totalW / facadeModules.length) * 10) / 10;
     facadeModules.forEach((_, i) => onModuleChange?.(i, { width: eqW }));
-  };
-
-  // Snap selected module width to nearest 5 cm grid
-  const handleSnapToGrid = () => {
-    if (selectedModuleIdx == null || !mod) return;
-    const snapped = Math.round((mod.width || 0) / 5) * 5;
-    onModuleChange?.(selectedModuleIdx, { width: Math.max(5, snapped) });
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -354,47 +403,37 @@ export default function SketchPropertiesPanel({
       </section>
 
       {/* ── ALIGNEMENT ── */}
-      {mod && (
+      {facadeModules?.length > 0 && (
         <section>
-          <div style={S.sectionTitle}>Alignement</div>
+          <div style={S.sectionTitle}>
+            Alignement
+            {selectedIds?.size > 1 && (
+              <span style={{ fontSize: 10, fontWeight: 400, color: 'var(--text3)', marginLeft: 6 }}>
+                ({selectedIds.size} sél.)
+              </span>
+            )}
+          </div>
           <div style={{ display: 'flex', gap: 4 }}>
             <button
-              title="Aligner à gauche — placer le module au bord gauche du meuble"
+              title="Égaliser largeurs — largeurs égales entre les modules ciblés"
               style={S.iconBtn}
-              onClick={() => {
-                // Move the selected module to position 0 by setting preceding modules' widths unchanged;
-                // For now, snap its width to the nearest 5 cm grid (leftward snap)
-                if (selectedModuleIdx == null || !mod) return;
-                const snapped = Math.floor((mod.width || 0) / 5) * 5;
-                onModuleChange?.(selectedModuleIdx, { width: Math.max(5, snapped) });
-              }}
-            >
-              <IconAlignLeft />
-            </button>
-            <button
-              title="Centrer — largeur arrondie au 5 cm le plus proche"
-              style={S.iconBtn}
-              onClick={handleSnapToGrid}
+              onClick={handleEqualWidths}
             >
               <IconAlignCenter />
             </button>
             <button
-              title="Redistribuer — largeurs égales entre tous les modules"
+              title="Aligner sur grille 5 cm — arrondir au 5 cm le plus proche"
               style={S.iconBtn}
-              onClick={handleEqualDistribute}
+              onClick={handleSnapGrid5}
             >
-              <IconDistribute />
+              <IconAlignLeft />
             </button>
             <button
-              title="Aligner à droite — largeur arrondie au 5 cm supérieur"
+              title="Distribuer — répartir équitablement la largeur entre les modules sélectionnés"
               style={S.iconBtn}
-              onClick={() => {
-                if (selectedModuleIdx == null || !mod) return;
-                const snapped = Math.ceil((mod.width || 0) / 5) * 5;
-                onModuleChange?.(selectedModuleIdx, { width: Math.max(5, snapped) });
-              }}
+              onClick={handleDistribute}
             >
-              <IconAlignRight />
+              <IconDistribute />
             </button>
           </div>
         </section>

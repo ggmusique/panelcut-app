@@ -35,6 +35,7 @@ export default function FacadeKonvaModule({
   moduleDetail,
   facadeItems = [],
   isSelected = false,
+  hasSelection = false,
   activeTool = 'select',
   interactionMode = 'navigation',
   onSelect,
@@ -124,11 +125,11 @@ export default function FacadeKonvaModule({
       onAddElement?.(activeTool);
       return;
     }
-    onSelect?.();
+    onSelect?.(e);
   }, [isErase, isPlace, isAdd, activeTool, onSelect, onAddElement]);
 
   return (
-    <Group>
+    <Group opacity={hasSelection && !isSelected ? 0.7 : 1}>
       {/* ── Interior background ── */}
       <Rect
         x={intLeft} y={intTop}
