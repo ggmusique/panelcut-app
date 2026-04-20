@@ -19,6 +19,17 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
   const [tool,             setTool]             = useState('drawer');
   const [isCompactMobile,  setIsCompactMobile]  = useState(() => (typeof window !== 'undefined' ? window.innerWidth < 640 : false));
   const [selectedModuleIdx, setSelectedModuleIdx] = useState(0);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+
+  const handleUndo = useCallback(() => { konvaEditorRef.current?.undo?.(); }, []);
+  const handleRedo = useCallback(() => { konvaEditorRef.current?.redo?.(); }, []);
+  const handleZoomIn  = useCallback(() => { konvaEditorRef.current?.zoomIn?.();  }, []);
+  const handleZoomOut = useCallback(() => { konvaEditorRef.current?.zoomOut?.(); }, []);
+  const handleHistoryChange = useCallback(({ canUndo: cu, canRedo: cr }) => {
+    setCanUndo(cu);
+    setCanRedo(cr);
+  }, []);
 
   // Refs for local-mode optimisation (skip server when only positions changed)
   const lastScannedStructuralRef = useRef(null);
@@ -214,6 +225,12 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
       <SketchToolbar
         activeTool={tool}
         onToolChange={setTool}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        onZoomIn={handleZoomIn}
+        onZoomOut={handleZoomOut}
         isCompactMobile={isCompactMobile}
         hint={hint}
         dimensionsFromWizard={dimensionsFromWizard}
@@ -254,6 +271,10 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
         onElementUpdate={handleElementUpdate}
         onElementRemove={handleElementRemove}
         activeTool={tool}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        onToolChange={setTool}
+        onHistoryChange={handleHistoryChange}
         onModuleChange={setFacadeModules}
         onItemChange={setFacadeItems}
         onDrawerResize={handleDrawerResize}

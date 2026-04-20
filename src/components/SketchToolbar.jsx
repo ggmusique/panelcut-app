@@ -1,15 +1,249 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { defaultDrawerParts } from '../utils/sketchEditorConstants';
 
-const TOOLS = [
-  { id: 'drawer', icon: '🗄️', label: 'Tiroir',       color: '#fbbf24' },
-  { id: 'shelf',  icon: '📦', label: 'Tablette',     color: '#34d399' },
-  { id: 'rod',    icon: '👔', label: 'Tringle',      color: '#f472b6' },
-  { id: 'door',   icon: '🚪', label: 'Porte',        color: '#60a5fa' },
-  { id: 'sliding',icon: '🚪↔️', label: 'Coulissante', color: '#93c5fd' },
-  { id: 'dim',    icon: '📏', label: 'Cote',         color: '#22d3ee' },
-  { id: 'note',   icon: '📝', label: 'Note',         color: '#fb923c' },
+// ── SVG icons (inline, no external lib) ──────────────────────────────────────
+
+const IconSelect = () => (
+  <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6">
+    <path d="M3 2 L3 14 L7 11 L9 16 L11 15 L9 10 L14 10 Z" strokeLinejoin="round" strokeLinecap="round"/>
+  </svg>
+);
+
+const IconDrawer = () => (
+  <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6">
+    <rect x="2" y="3" width="14" height="12" rx="1"/>
+    <line x1="2" y1="7" x2="16" y2="7"/>
+    <line x1="2" y1="11" x2="16" y2="11"/>
+    <circle cx="9" cy="5" r="0.8" fill="currentColor" stroke="none"/>
+    <circle cx="9" cy="9" r="0.8" fill="currentColor" stroke="none"/>
+    <circle cx="9" cy="13" r="0.8" fill="currentColor" stroke="none"/>
+  </svg>
+);
+
+const IconShelf = () => (
+  <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6">
+    <rect x="2" y="7" width="14" height="4" rx="1"/>
+  </svg>
+);
+
+const IconRod = () => (
+  <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6">
+    <line x1="3" y1="9" x2="15" y2="9" strokeWidth="2"/>
+    <circle cx="3" cy="9" r="2" fill="currentColor" stroke="none"/>
+    <circle cx="15" cy="9" r="2" fill="currentColor" stroke="none"/>
+  </svg>
+);
+
+const IconDoor = () => (
+  <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6">
+    <rect x="3" y="2" width="12" height="14" rx="1"/>
+    <circle cx="12.5" cy="9" r="1" fill="currentColor" stroke="none"/>
+  </svg>
+);
+
+const IconSliding = () => (
+  <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6">
+    <rect x="2" y="3" width="9" height="12" rx="1"/>
+    <rect x="7" y="3" width="9" height="12" rx="1"/>
+  </svg>
+);
+
+const IconDim = () => (
+  <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6">
+    <line x1="2" y1="9" x2="16" y2="9"/>
+    <polyline points="5,6 2,9 5,12"/>
+    <polyline points="13,6 16,9 13,12"/>
+    <line x1="2" y1="5" x2="2" y2="13" strokeWidth="1"/>
+    <line x1="16" y1="5" x2="16" y2="13" strokeWidth="1"/>
+  </svg>
+);
+
+const IconNote = () => (
+  <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6">
+    <path d="M3 2 H13 L15 4 V16 H3 Z"/>
+    <polyline points="13,2 13,5 15,5" strokeWidth="1.2"/>
+    <line x1="6" y1="8" x2="12" y2="8" strokeWidth="1.2"/>
+    <line x1="6" y1="11" x2="12" y2="11" strokeWidth="1.2"/>
+  </svg>
+);
+
+const IconUndo = () => (
+  <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6">
+    <path d="M3 9 A6 6 0 1 1 9 15" strokeLinecap="round"/>
+    <polyline points="3,5 3,9 7,9" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+
+const IconRedo = () => (
+  <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6">
+    <path d="M15 9 A6 6 0 1 0 9 15" strokeLinecap="round"/>
+    <polyline points="15,5 15,9 11,9" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+
+const IconZoomIn = () => (
+  <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6">
+    <circle cx="8" cy="8" r="5"/>
+    <line x1="12" y1="12" x2="16" y2="16" strokeLinecap="round"/>
+    <line x1="6" y1="8" x2="10" y2="8"/>
+    <line x1="8" y1="6" x2="8" y2="10"/>
+  </svg>
+);
+
+const IconZoomOut = () => (
+  <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6">
+    <circle cx="8" cy="8" r="5"/>
+    <line x1="12" y1="12" x2="16" y2="16" strokeLinecap="round"/>
+    <line x1="6" y1="8" x2="10" y2="8"/>
+  </svg>
+);
+
+// ── Tool groups definition ────────────────────────────────────────────────────
+
+const TOOL_GROUPS = [
+  [
+    { id: 'erase',   label: 'Sélection',   shortcut: 'Esc', icon: <IconSelect /> },
+  ],
+  [
+    { id: 'drawer',  label: 'Tiroir',      shortcut: 'T',   icon: <IconDrawer /> },
+    { id: 'shelf',   label: 'Tablette',    shortcut: 'S',   icon: <IconShelf /> },
+    { id: 'rod',     label: 'Tringle',     shortcut: 'R',   icon: <IconRod /> },
+    { id: 'door',    label: 'Porte',       shortcut: 'P',   icon: <IconDoor /> },
+    { id: 'sliding', label: 'Coulissante', shortcut: null,  icon: <IconSliding /> },
+  ],
+  [
+    { id: 'dim',     label: 'Cote',        shortcut: 'C',   icon: <IconDim /> },
+    { id: 'note',    label: 'Note',        shortcut: 'N',   icon: <IconNote /> },
+  ],
 ];
+
+// ── Tooltip-aware tool button ─────────────────────────────────────────────────
+
+function ToolBtn({ tool, isActive, onClick }) {
+  const [visible, setVisible] = useState(false);
+  const timerRef = useRef(null);
+
+  const handleEnter = useCallback(() => {
+    timerRef.current = setTimeout(() => setVisible(true), 400);
+  }, []);
+
+  const handleLeave = useCallback(() => {
+    clearTimeout(timerRef.current);
+    setVisible(false);
+  }, []);
+
+  return (
+    <div style={{ position: 'relative', display: 'inline-flex' }} onMouseEnter={handleEnter} onMouseLeave={handleLeave}>
+      <button
+        onClick={onClick}
+        title={tool.label}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '5px 7px',
+          background: 'none',
+          border: 'none',
+          borderBottom: isActive ? '2px solid #EA580C' : '2px solid transparent',
+          borderRadius: 0,
+          cursor: 'pointer',
+          color: isActive ? '#EA580C' : '#94a3b8',
+          transition: 'color 0.15s',
+        }}
+      >
+        {tool.icon}
+      </button>
+      {visible && (
+        <div style={{
+          position: 'absolute',
+          top: '100%',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          marginTop: 4,
+          background: '#1e293b',
+          color: '#e2e8f0',
+          border: '1px solid #334155',
+          padding: '3px 8px',
+          borderRadius: 4,
+          fontSize: 11,
+          whiteSpace: 'nowrap',
+          zIndex: 100,
+          pointerEvents: 'none',
+        }}>
+          {tool.label}{tool.shortcut ? ` (${tool.shortcut})` : ''}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Action button (undo/redo/zoom) ────────────────────────────────────────────
+
+function ActionBtn({ icon, label, shortcut, onClick, disabled }) {
+  const [visible, setVisible] = useState(false);
+  const timerRef = useRef(null);
+
+  const handleEnter = useCallback(() => {
+    timerRef.current = setTimeout(() => setVisible(true), 400);
+  }, []);
+
+  const handleLeave = useCallback(() => {
+    clearTimeout(timerRef.current);
+    setVisible(false);
+  }, []);
+
+  return (
+    <div style={{ position: 'relative', display: 'inline-flex' }} onMouseEnter={handleEnter} onMouseLeave={handleLeave}>
+      <button
+        onClick={onClick}
+        disabled={disabled}
+        title={label}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '5px 7px',
+          background: 'none',
+          border: 'none',
+          borderBottom: '2px solid transparent',
+          borderRadius: 0,
+          cursor: disabled ? 'default' : 'pointer',
+          color: disabled ? '#475569' : '#94a3b8',
+          transition: 'color 0.15s',
+          opacity: disabled ? 0.4 : 1,
+        }}
+      >
+        {icon}
+      </button>
+      {visible && !disabled && (
+        <div style={{
+          position: 'absolute',
+          top: '100%',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          marginTop: 4,
+          background: '#1e293b',
+          color: '#e2e8f0',
+          border: '1px solid #334155',
+          padding: '3px 8px',
+          borderRadius: 4,
+          fontSize: 11,
+          whiteSpace: 'nowrap',
+          zIndex: 100,
+          pointerEvents: 'none',
+        }}>
+          {label}{shortcut ? ` (${shortcut})` : ''}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Vertical separator ────────────────────────────────────────────────────────
+
+const Sep = () => (
+  <div style={{ width: 1, background: '#334155', margin: '4px 4px', alignSelf: 'stretch' }} />
+);
 
 const toNum = (v, d = 0) => { const n = Number(v); return Number.isFinite(n) ? n : d; };
 
@@ -21,6 +255,14 @@ export default function SketchToolbar({
   // Outils
   activeTool,
   onToolChange,
+  // Undo / Redo
+  onUndo,
+  onRedo,
+  canUndo,
+  canRedo,
+  // Zoom
+  onZoomIn,
+  onZoomOut,
   // Affichage compact
   isCompactMobile,
   hint,
@@ -51,20 +293,36 @@ export default function SketchToolbar({
   return (
     <>
       {/* ── Barre outils ── */}
-      <div className="flex gap-2 p-2 bg-slate-800 overflow-x-auto border-b border-slate-700">
+      <div className="flex items-center gap-0 p-1 bg-slate-800 overflow-x-auto border-b border-slate-700" style={{ minHeight: 40 }}>
         {dimensionsFromWizard && (
-          <span className="flex items-center gap-1 px-2 py-1 rounded text-xs font-bold bg-green-700/30 text-green-400 border border-green-600/40">✓ Cotes</span>
+          <span className="flex items-center gap-1 px-2 py-1 rounded text-xs font-bold bg-green-700/30 text-green-400 border border-green-600/40 mr-2">✓ Cotes</span>
         )}
-        {TOOLS.map(t => (
-          <button key={t.id} onClick={() => onToolChange(t.id)}
-            className={`flex items-center gap-1.5 ${isCompactMobile ? 'px-2 py-2' : 'px-3 py-2'} rounded text-sm font-medium transition ${
-              activeTool === t.id ? 'bg-slate-600 text-white ring-2 ring-offset-1 ring-offset-slate-800' : 'text-slate-400 hover:bg-slate-700'
-            }`}
-            style={activeTool === t.id ? { borderColor: t.color, borderWidth: '2px' } : {}}>
-            <span>{t.icon}</span>
-            {!isCompactMobile && <span>{t.label}</span>}
-          </button>
+
+        {/* Tool groups */}
+        {TOOL_GROUPS.map((group, gi) => (
+          <div key={gi} style={{ display: 'flex', alignItems: 'center' }}>
+            {gi > 0 && <Sep />}
+            {group.map(tool => (
+              <ToolBtn
+                key={tool.id}
+                tool={tool}
+                isActive={activeTool === tool.id}
+                onClick={() => onToolChange(tool.id)}
+              />
+            ))}
+          </div>
         ))}
+
+        {/* Undo / Redo */}
+        <Sep />
+        <ActionBtn icon={<IconUndo />} label="Annuler" shortcut="Ctrl+Z" onClick={onUndo} disabled={!canUndo} />
+        <ActionBtn icon={<IconRedo />} label="Rétablir" shortcut="Ctrl+Y" onClick={onRedo} disabled={!canRedo} />
+
+        {/* Zoom */}
+        <Sep />
+        <ActionBtn icon={<IconZoomIn />}  label="Zoom +"  onClick={onZoomIn} />
+        <ActionBtn icon={<IconZoomOut />} label="Zoom −"  onClick={onZoomOut} />
+
         {!isCompactMobile && <div className="ml-auto text-xs text-slate-400 self-center px-2 whitespace-nowrap">{hint}</div>}
       </div>
 

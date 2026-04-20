@@ -1,4 +1,4 @@
-import { forwardRef, useState, useRef, useCallback } from 'react';
+import { forwardRef, useState, useRef, useCallback, useEffect } from 'react';
 import FacadeKonvaEditor from '../facade/FacadeKonvaEditor';
 
 const FACADE_W = 1140;
@@ -32,6 +32,12 @@ const SketchEditorCanvas = forwardRef(function SketchEditorCanvas(
     onElementUpdate,
     onElementRemove,
     activeTool,
+    // Keyboard shortcuts callbacks
+    onUndo,
+    onRedo,
+    onToolChange,
+    // History state sync
+    onHistoryChange,
     // Callbacks undo/redo state sync
     onModuleChange,
     onItemChange,
@@ -44,6 +50,41 @@ const SketchEditorCanvas = forwardRef(function SketchEditorCanvas(
 ) {
   const [selectedModule, setSelectedModule] = useState(null); // { modIdx, x, y } | null
   const wrapperRef = useRef(null);
+
+  // ── Keyboard shortcuts: tool selection + undo/redo ──────────────────────
+  useEffect(() => {
+    const handler = (e) => {
+      const tag = e.target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || e.target?.isContentEditable) return;
+      // Undo / Redo
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === 'z') {
+        e.preventDefault();
+        onUndo?.();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.shiftKey && e.key === 'z'))) {
+        e.preventDefault();
+        onRedo?.();
+        return;
+      }
+      // Tool shortcuts (no modifier)
+      // T=Tiroir(drawer), S=Tablette(shelf), R=Tringle(rod), P=Porte(door),
+      // C=Cote(dim), N=Note, Esc=Sélection(erase)
+      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+      switch (e.key) {
+        case 't': case 'T': onToolChange?.('drawer');  break;
+        case 's': case 'S': onToolChange?.('shelf');   break;
+        case 'r': case 'R': onToolChange?.('rod');     break;
+        case 'p': case 'P': onToolChange?.('door');    break;
+        case 'c': case 'C': onToolChange?.('dim');     break;
+        case 'n': case 'N': onToolChange?.('note');    break;
+        case 'Escape':      onToolChange?.('erase');   break;
+        default: break;
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onUndo, onRedo, onToolChange]);
 
   const handleModuleSelect = useCallback((modIdx, screenX, screenY) => {
     if (modIdx === null) {
@@ -83,6 +124,7 @@ const SketchEditorCanvas = forwardRef(function SketchEditorCanvas(
             onItemChange={onItemChange}
             onDrawerResize={onDrawerResize}
             onModuleSelect={handleModuleSelect}
+            onHistoryChange={onHistoryChange}
           />
 
           {selectedModule !== null && (() => {
