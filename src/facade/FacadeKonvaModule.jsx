@@ -146,7 +146,7 @@ export default function FacadeKonvaModule({
         isEraseTool={isErase}
         onItemMove={onItemMove}
         onItemRemove={(itemId) => onRemoveElement?.('item', itemId)}
-        onRemoveElement={(_mIdx, type) => onRemoveElement?.(type, null)}
+        onRemoveElement={(_mIdx, type, idx) => onRemoveElement?.(type, idx)}
         onDrawerResize={onDrawerResize}
       />
       {/* ── Module number badge ── */}
@@ -223,6 +223,7 @@ export default function FacadeKonvaModule({
           x={intLeft} y={intTop}
           width={iW} height={iH}
           fill="transparent"
+          listening={!isErase}
           onClick={handleGroupClick}
         />
       )}

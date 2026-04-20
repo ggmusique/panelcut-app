@@ -151,6 +151,7 @@ function DimElement({
         draggable={!isErase}
         onDragEnd={handleGroupDragEnd}
         onClick={(e) => { if (isErase) { e.cancelBubble = true; onRemove?.(id); } }}
+        onTap={(e)   => { if (isErase) { e.cancelBubble = true; onRemove?.(id); } }}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
       >
@@ -361,6 +362,11 @@ function NoteElement({ el, isErase, onUpdate, onRemove, stageRef }) {
         draggable={!isErase}
         onDragEnd={handleDragEnd}
         onClick={(e) => {
+          e.cancelBubble = true;
+          if (isErase) { onRemove?.(id); return; }
+          openEdit(e);
+        }}
+        onTap={(e) => {
           e.cancelBubble = true;
           if (isErase) { onRemove?.(id); return; }
           openEdit(e);
