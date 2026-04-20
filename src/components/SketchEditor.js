@@ -290,6 +290,7 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
         generalNotes={generalNotes}
         onGeneralNotesChange={setGeneralNotes}
         showGrid={showGrid}
+        currentCabinet={currentCabinet}
       />
     </div>
   );

@@ -1,6 +1,8 @@
 import { forwardRef, useState, useRef, useCallback, useEffect } from 'react';
 import FacadeKonvaEditor from '../facade/FacadeKonvaEditor';
 import SketchPropertiesPanel from './SketchPropertiesPanel';
+import ProfessionalRealisticViewer from '../visualization/ProfessionalRealisticViewer';
+import { useDebounce } from '../hooks/useDebounce';
 
 const FACADE_W = 1140;
 const FACADE_H = 700;
@@ -53,11 +55,28 @@ const SketchEditorCanvas = forwardRef(function SketchEditorCanvas(
     onDrawerResize,
     // Grille
     showGrid,
+    // 3D preview
+    currentCabinet,
   },
   konvaEditorRef
 ) {
   const [selectedModule, setSelectedModule] = useState(null); // { modIdx, x, y } | null
+  const [show3D, setShow3D] = useState(() => typeof window !== 'undefined' ? window.innerWidth >= 768 : true);
+  const show3DUserOverride = useRef(false);
   const wrapperRef = useRef(null);
+
+  // Auto-hide on mobile resize, unless the user explicitly toggled
+  useEffect(() => {
+    const onResize = () => {
+      if (!show3DUserOverride.current) {
+        setShow3D(window.innerWidth >= 768);
+      }
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  const debouncedCabinet = useDebounce(currentCabinet, 800);
 
   // Adapter: panel calls onModuleChange(idx, changes);
   // canvas receives setFacadeModules which accepts a React functional-update.
@@ -202,18 +221,56 @@ const SketchEditorCanvas = forwardRef(function SketchEditorCanvas(
           </div>
         </div>
 
-        <SketchPropertiesPanel
-          selectedModuleIdx={selectedModule?.modIdx ?? null}
-          facadeModules={facadeModules}
-          moduleDetails={moduleDetails}
-          cabinetDims={{ width: cabW, height: cabH, plinth: plinth || 0 }}
-          onModuleChange={handleModuleChangeForPanel}
-          onModuleDetailsChange={onModuleDetailsChange}
-          canUndo={canUndo}
-          canRedo={canRedo}
-          onUndo={onUndo}
-          onRedo={onRedo}
-        />
+        <div style={{ display: 'flex', flexDirection: 'column', width: 280, minWidth: 280, overflow: 'hidden', background: 'var(--bg-panel, #1e293b)', borderLeft: '1px solid var(--border, #334155)' }}>
+          {/* Header of right panel with 3D toggle */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '4px 8px', borderBottom: '1px solid var(--border, #334155)' }}>
+            <button
+              onClick={() => { show3DUserOverride.current = true; setShow3D(v => !v); }}
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                padding: '2px 8px',
+                borderRadius: 4,
+                border: '1px solid var(--border, #475569)',
+                background: show3D ? 'rgba(234,88,12,0.15)' : 'transparent',
+                color: show3D ? '#fb923c' : 'var(--text2, #94a3b8)',
+                cursor: 'pointer',
+              }}
+              title={show3D ? 'Masquer l\'aperçu 3D' : 'Afficher l\'aperçu 3D'}
+            >
+              {show3D ? '🎲 Aperçu 3D ▲' : '🎲 Aperçu 3D ▼'}
+            </button>
+          </div>
+
+          {/* Properties panel — takes remaining space */}
+          <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+            <SketchPropertiesPanel
+              selectedModuleIdx={selectedModule?.modIdx ?? null}
+              facadeModules={facadeModules}
+              moduleDetails={moduleDetails}
+              cabinetDims={{ width: cabW, height: cabH, plinth: plinth || 0 }}
+              onModuleChange={handleModuleChangeForPanel}
+              onModuleDetailsChange={onModuleDetailsChange}
+              canUndo={canUndo}
+              canRedo={canRedo}
+              onUndo={onUndo}
+              onRedo={onRedo}
+            />
+          </div>
+
+          {/* 3D mini preview */}
+          {show3D && debouncedCabinet && (
+            <div style={{ flexShrink: 0, padding: '6px 8px 8px', borderTop: '1px solid var(--border, #334155)', background: '#0f172a' }}>
+              <ProfessionalRealisticViewer
+                cabinet={debouncedCabinet}
+                fullScreen={false}
+                presentationMode={false}
+                miniMode={true}
+                height={250}
+              />
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="bg-slate-900 border-t border-slate-700 p-2">
