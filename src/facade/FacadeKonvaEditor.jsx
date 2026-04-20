@@ -149,14 +149,6 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
   const containerRef = useRef(null);
   const stageRef     = useRef(null);
 
-  useImperativeHandle(ref, () => ({
-    // Returns a PNG data URL (high-res, pixelRatio 3) of the current Konva stage content.
-    exportDataUrl: () => stageRef.current?.toDataURL({ mimeType: 'image/png', pixelRatio: 3 }) ?? null,
-    undo,
-    redo,
-    zoomIn:  () => setScale(s => Math.min(4, s * 1.2)),
-    zoomOut: () => setScale(s => Math.max(0.5, s / 1.2)),
-  }), [undo, redo]);
   const [stageSize, setStageSize] = useState({ w: svgW, h: svgH });
 
   useEffect(() => {
@@ -319,6 +311,16 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
 
   // Snap line position in Stage coordinate space
   const snapLineX = hookSnapX != null ? hookSnapX + mL : null;
+
+  // ── Imperative handle (undo/redo must be defined first) ───────────────────
+  useImperativeHandle(ref, () => ({
+    // Returns a PNG data URL (high-res, pixelRatio 3) of the current Konva stage content.
+    exportDataUrl: () => stageRef.current?.toDataURL({ mimeType: 'image/png', pixelRatio: 3 }) ?? null,
+    undo,
+    redo,
+    zoomIn:  () => setScale(s => Math.min(4, s * 1.2)),
+    zoomOut: () => setScale(s => Math.max(0.5, s / 1.2)),
+  }), [undo, redo]);
 
   // ── Notify parent when undo/redo availability changes ─────────────────────
   useEffect(() => {
