@@ -272,6 +272,20 @@ export function useSketchState({ initialResult, draft, konvaEditorRef, onComplet
     setFacadeItems(prev => prev.map(it => it.id === itemId ? { ...it, yRatio: newYRatio } : it));
   }, []);
 
+  const handleDrawerResize = useCallback((modIdx, drawerIdx, newHeightCm) => {
+    setModuleDetails(prev => prev.map((detail, i) => {
+      if (i !== modIdx) return detail;
+      const heights         = Array.isArray(detail.drawerHeights) ? [...detail.drawerHeights] : [];
+      const currentHeight   = Math.max(5, toNum(heights[drawerIdx],     18));
+      const nextHeight      = Math.max(5, toNum(heights[drawerIdx + 1], 18));
+      const total           = currentHeight + nextHeight;
+      const newCurrent      = Math.max(8, Math.min(total - 8, newHeightCm));
+      heights[drawerIdx]     = Math.round(newCurrent * 10) / 10;
+      heights[drawerIdx + 1] = Math.round((total - newCurrent) * 10) / 10;
+      return { ...detail, drawerHeights: heights };
+    }));
+  }, []);
+
   const handleElementAdd    = useCallback((el) => setElements(prev => [...prev, el]), []);
   const handleElementUpdate = useCallback((el) => setElements(prev => prev.map(e => e.id === el.id ? el : e)), []);
   const handleElementRemove = useCallback((id) => setElements(prev => prev.filter(e => e.id !== id)), []);
@@ -398,6 +412,7 @@ export function useSketchState({ initialResult, draft, konvaEditorRef, onComplet
     handleModuleErase,
     handleItemErase,
     handleItemMove,
+    handleDrawerResize,
     handleRelancer,
     handleElementAdd,
     handleElementUpdate,

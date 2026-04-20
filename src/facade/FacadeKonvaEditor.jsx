@@ -136,6 +136,7 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
   onElementAdd,
   onElementUpdate,
   onElementRemove,
+  onDrawerResize,
   activeTool      = 'select',
   onChange,
   onModuleChange,
@@ -668,6 +669,8 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
                 onResizeStart={(e) => handleResizeStart(i, moduleRect.w, m.width, e)}
                 onAddElement={(payload) => handleModuleAddElement(i, payload)}
                 onRemoveElement={(type, id) => handleModuleRemoveElement(i, type, id)}
+                onItemMove={onItemMove}
+                onDrawerResize={onDrawerResize}
               />
             );
           })}

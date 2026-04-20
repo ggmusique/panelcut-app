@@ -40,6 +40,7 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
     handleModuleErase,
     handleItemErase,
     handleItemMove,
+    handleDrawerResize,
     handleRelancer,
     handleElementAdd,
     handleElementUpdate,
@@ -204,6 +205,7 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
         activeTool={tool}
         onModuleChange={setFacadeModules}
         onItemChange={setFacadeItems}
+        onDrawerResize={handleDrawerResize}
         generalNotes={generalNotes}
         onGeneralNotesChange={setGeneralNotes}
       />
