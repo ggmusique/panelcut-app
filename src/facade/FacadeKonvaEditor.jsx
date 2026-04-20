@@ -173,6 +173,9 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
   // Pan souris (PC)
   const mousePanRef   = useRef({ active: false, startX: 0, startY: 0, stageX: 0, stageY: 0 });
 
+  // ── 1c. RESIZE LIVE WIDTH ──────────────────────────────────────────────────
+  const [resizeWidthCm, setResizeWidthCm] = useState(null);
+
   // ── TOOL FLAGS (declared early — used in useEffect/useCallback dep arrays below) ──
   const isErase   = activeTool === 'erase';
   const isPlace   = activeTool === 'shelf' || activeTool === 'rod';
@@ -431,6 +434,7 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
   const handleResizeStart = useCallback((modIdx, moduleWPx, widthCm, konvaEvt) => {
     konvaEvt.cancelBubble = true;
     setResizingModuleId(modIdx);
+    setResizeWidthCm(widthCm);
     const startClientX = konvaEvt.evt?.clientX ?? 0;
     const pxPerCm = moduleWPx / Math.max(1, widthCm);
 
@@ -438,11 +442,13 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
       const dx = e.clientX - startClientX;
       const currentZoom = stageRef.current?.scaleX() ?? 1;
       const newWidthCm = Math.max(10, widthCm + (dx / currentZoom) / pxPerCm);
+      setResizeWidthCm(Math.round(newWidthCm * 10) / 10);
       resizeModule(modIdx, newWidthCm);
     };
 
     const handleMouseUp = () => {
       setResizingModuleId(null);
+      setResizeWidthCm(null);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
@@ -777,6 +783,39 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
                   dash={[4, 3]}
                   listening={false}
                 />
+                <Rect
+                  x={badgeX} y={badgeY}
+                  width={badgeW} height={badgeH}
+                  fill="#fef3c7"
+                  stroke="#EF9F27" strokeWidth={1}
+                  cornerRadius={3 * scaleRatio}
+                  listening={false}
+                />
+                <Text
+                  x={badgeX} y={badgeY + badgePadY}
+                  width={badgeW}
+                  text={badgeText}
+                  align="center"
+                  fill="#92400e"
+                  fontSize={badgeFS}
+                  fontStyle="bold"
+                  listening={false}
+                />
+              </>
+            );
+          })()}
+
+          {/* ── LIVE WIDTH BADGE — shown during module resize when not snapped ── */}
+          {!snapActive && resizeWidthCm !== null && (() => {
+            const badgeText = `${resizeWidthCm} cm`;
+            const badgeFS   = 11 * scaleRatio;
+            const badgePadY = 3  * scaleRatio;
+            const badgeW    = 54 * scaleRatio;
+            const badgeH    = badgeFS + 2 * badgePadY;
+            const badgeX    = mL + drawW / 2 - badgeW / 2;
+            const badgeY    = mT - 20 * scaleRatio - badgeH;
+            return (
+              <>
                 <Rect
                   x={badgeX} y={badgeY}
                   width={badgeW} height={badgeH}

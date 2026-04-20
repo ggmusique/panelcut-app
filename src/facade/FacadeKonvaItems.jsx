@@ -27,8 +27,9 @@ const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
 // ── Shelf (tablette draggable) ────────────────────────────────────────────────
 
-function ShelfItem({ item, intLeft, intTop, intBottom, iW, iH, isEraseTool, onItemMove, onItemRemove }) {
+function ShelfItem({ item, intLeft, intTop, intBottom, iW, iH, cabInteriorCm, isEraseTool, onItemMove, onItemRemove }) {
   const [hovered, setHovered] = useState(false);
+  const [dragInfo, setDragInfo] = useState(null);
   const groupRef = useRef(null);
 
   // Coordonnée Y en espace contenu (content-space)
@@ -51,6 +52,13 @@ function ShelfItem({ item, intLeft, intTop, intBottom, iW, iH, isEraseTool, onIt
     };
   }, [intTop, intBottom]);
 
+  const handleDragMove = useCallback(() => {
+    const posY   = groupRef.current?.y() ?? 0;
+    const yRatio = clamp((posY - intTop) / Math.max(1, iH), 0, 1);
+    const yCm    = Math.round((1 - yRatio) * toNum(cabInteriorCm));
+    setDragInfo({ yCm });
+  }, [intTop, iH, cabInteriorCm]);
+
   const handleDragEnd = useCallback((e) => {
     // e.target.y() retourne la position Y LOCALE (espace contenu) après drag
     const newY      = e.target.y();
@@ -58,6 +66,7 @@ function ShelfItem({ item, intLeft, intTop, intBottom, iW, iH, isEraseTool, onIt
     // Remet la position Konva à la valeur snappée (avant que React ne re-rende)
     e.target.y(intTop + newYRatio * iH);
     onItemMove?.(item.id, newYRatio);
+    setDragInfo(null);
   }, [intTop, iH, item.id, onItemMove]);
 
   return (
@@ -67,6 +76,7 @@ function ShelfItem({ item, intLeft, intTop, intBottom, iW, iH, isEraseTool, onIt
       y={ey}
       draggable={!isEraseTool}
       dragBoundFunc={dragBoundFunc}
+      onDragMove={handleDragMove}
       onDragEnd={handleDragEnd}
       onClick={(e) => { e.cancelBubble = true; if (isEraseTool) onItemRemove?.(item.id); }}
       onTap={(e)   => { e.cancelBubble = true; if (isEraseTool) onItemRemove?.(item.id); }}
@@ -91,14 +101,36 @@ function ShelfItem({ item, intLeft, intTop, intBottom, iW, iH, isEraseTool, onIt
         <Rect x={intLeft} y={-10} width={iW} height={20}
           fill="red" opacity={0.3} listening={false} />
       )}
+      {/* Badge cote live pendant le drag */}
+      {!isEraseTool && dragInfo !== null && (
+        <Group listening={false}>
+          <Line
+            points={[intLeft, 0, intLeft + iW, 0]}
+            stroke="#378ADD" strokeWidth={0.8} dash={[4, 3]}
+          />
+          <Rect
+            x={intLeft + iW + 6} y={-10}
+            width={58} height={20}
+            fill="#0C447C" cornerRadius={4}
+          />
+          <Text
+            x={intLeft + iW + 6} y={-4}
+            width={58}
+            text={`${dragInfo.yCm} cm`}
+            align="center"
+            fill="#E6F1FB" fontSize={11} fontStyle="bold"
+          />
+        </Group>
+      )}
     </Group>
   );
 }
 
 // ── Rod (tringle draggable) ───────────────────────────────────────────────────
 
-function RodItem({ item, intLeft, intTop, intBottom, iW, iH, isEraseTool, onItemMove, onItemRemove }) {
+function RodItem({ item, intLeft, intTop, intBottom, iW, iH, cabInteriorCm, isEraseTool, onItemMove, onItemRemove }) {
   const [hovered, setHovered] = useState(false);
+  const [dragInfo, setDragInfo] = useState(null);
   const groupRef = useRef(null);
 
   const ey = intTop + clamp(toNum(item.yRatio, 0.32), 0, 1) * iH;
@@ -116,11 +148,19 @@ function RodItem({ item, intLeft, intTop, intBottom, iW, iH, isEraseTool, onItem
     };
   }, [intTop, intBottom]);
 
+  const handleDragMove = useCallback(() => {
+    const posY   = groupRef.current?.y() ?? 0;
+    const yRatio = clamp((posY - intTop) / Math.max(1, iH), 0, 1);
+    const yCm    = Math.round((1 - yRatio) * toNum(cabInteriorCm));
+    setDragInfo({ yCm });
+  }, [intTop, iH, cabInteriorCm]);
+
   const handleDragEnd = useCallback((e) => {
     const newY      = e.target.y();
     const newYRatio = clamp((newY - intTop) / Math.max(1, iH), 0, 1);
     e.target.y(intTop + newYRatio * iH);
     onItemMove?.(item.id, newYRatio);
+    setDragInfo(null);
   }, [intTop, iH, item.id, onItemMove]);
 
   return (
@@ -130,6 +170,7 @@ function RodItem({ item, intLeft, intTop, intBottom, iW, iH, isEraseTool, onItem
       y={ey}
       draggable={!isEraseTool}
       dragBoundFunc={dragBoundFunc}
+      onDragMove={handleDragMove}
       onDragEnd={handleDragEnd}
       onClick={(e) => { e.cancelBubble = true; if (isEraseTool) onItemRemove?.(item.id); }}
       onTap={(e)   => { e.cancelBubble = true; if (isEraseTool) onItemRemove?.(item.id); }}
@@ -157,6 +198,27 @@ function RodItem({ item, intLeft, intTop, intBottom, iW, iH, isEraseTool, onItem
       {isEraseTool && hovered && (
         <Rect x={intLeft + 8} y={-14} width={iW - 20} height={28}
           fill="red" opacity={0.25} cornerRadius={4} listening={false} />
+      )}
+      {/* Badge cote live pendant le drag */}
+      {!isEraseTool && dragInfo !== null && (
+        <Group listening={false}>
+          <Line
+            points={[intLeft, 0, intLeft + iW, 0]}
+            stroke="#378ADD" strokeWidth={0.8} dash={[4, 3]}
+          />
+          <Rect
+            x={intLeft + iW + 6} y={-10}
+            width={58} height={20}
+            fill="#0C447C" cornerRadius={4}
+          />
+          <Text
+            x={intLeft + iW + 6} y={-4}
+            width={58}
+            text={`${dragInfo.yCm} cm`}
+            align="center"
+            fill="#E6F1FB" fontSize={11} fontStyle="bold"
+          />
+        </Group>
       )}
     </Group>
   );
@@ -523,6 +585,7 @@ export default function FacadeKonvaItems({
             intBottom={intBottom}
             iW={iW}
             iH={iH}
+            cabInteriorCm={cabInteriorCm}
             isEraseTool={isEraseTool}
             onItemMove={onItemMove}
             onItemRemove={onItemRemove}
@@ -567,6 +630,7 @@ export default function FacadeKonvaItems({
             intBottom={intBottom}
             iW={iW}
             iH={iH}
+            cabInteriorCm={cabInteriorCm}
             isEraseTool={isEraseTool}
             onItemMove={onItemMove}
             onItemRemove={onItemRemove}
