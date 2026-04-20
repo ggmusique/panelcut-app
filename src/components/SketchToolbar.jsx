@@ -81,6 +81,16 @@ const IconRedo = () => (
   </svg>
 );
 
+const IconGrid = () => (
+  <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6">
+    <rect x="2" y="2" width="14" height="14" rx="1"/>
+    <line x1="2" y1="7" x2="16" y2="7"/>
+    <line x1="2" y1="12" x2="16" y2="12"/>
+    <line x1="7" y1="2" x2="7" y2="16"/>
+    <line x1="12" y1="2" x2="12" y2="16"/>
+  </svg>
+);
+
 const IconZoomIn = () => (
   <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6">
     <circle cx="8" cy="8" r="5"/>
@@ -179,7 +189,7 @@ function ToolBtn({ tool, isActive, onClick }) {
 
 // ── Action button (undo/redo/zoom) ────────────────────────────────────────────
 
-function ActionBtn({ icon, label, shortcut, onClick, disabled }) {
+function ActionBtn({ icon, label, shortcut, onClick, disabled, active }) {
   const [visible, setVisible] = useState(false);
   const timerRef = useRef(null);
 
@@ -205,10 +215,10 @@ function ActionBtn({ icon, label, shortcut, onClick, disabled }) {
           padding: '5px 7px',
           background: 'none',
           border: 'none',
-          borderBottom: '2px solid transparent',
+          borderBottom: active ? '2px solid #EA580C' : '2px solid transparent',
           borderRadius: 0,
           cursor: disabled ? 'default' : 'pointer',
-          color: disabled ? '#475569' : '#94a3b8',
+          color: active ? '#EA580C' : disabled ? '#475569' : '#94a3b8',
           transition: 'color 0.15s',
           opacity: disabled ? 0.4 : 1,
         }}
@@ -287,6 +297,9 @@ export default function SketchToolbar({
   onSave,
   // Réordonnancement des modules
   onMoveModule,
+  // Grille
+  showGrid,
+  onToggleGrid,
 }) {
   const [dragOverIdx, setDragOverIdx] = useState(null);
   const dragSrcIdx = useRef(null);
@@ -322,6 +335,15 @@ export default function SketchToolbar({
         <Sep />
         <ActionBtn icon={<IconZoomIn />}  label="Zoom +"  onClick={onZoomIn} />
         <ActionBtn icon={<IconZoomOut />} label="Zoom −"  onClick={onZoomOut} />
+
+        {/* Grille */}
+        <Sep />
+        <ActionBtn
+          icon={<IconGrid />}
+          label={showGrid ? 'Masquer grille' : 'Afficher grille'}
+          onClick={onToggleGrid}
+          active={showGrid}
+        />
 
         {!isCompactMobile && <div className="ml-auto text-xs text-slate-400 self-center px-2 whitespace-nowrap">{hint}</div>}
       </div>

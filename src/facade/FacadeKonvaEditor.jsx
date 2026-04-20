@@ -66,6 +66,113 @@ function computeKonvaMRects({ facadeModules, joints, thPx, drawW, mL, mT, innerH
   });
 }
 
+// ── Grid + Ruler component ────────────────────────────────────────────────────
+
+/**
+ * GridLayer — grille fine + règles cm (rendu sur un Layer séparé, non-interactif).
+ * Positionné après le Layer principal pour que la grille soit visible par-dessus
+ * le fond intérieur du meuble.
+ */
+function GridLayer({ mL, mT, drawW, drawH, cabW, cabH, scaleRatio }) {
+  const RULER_H  = 20; // hauteur règle horizontale (pixels canvas)
+  const RULER_W  = 20; // largeur règle verticale  (pixels canvas)
+  const fontSize = Math.max(6, 8 * scaleRatio);
+
+  const cmToPxH = drawW / Math.max(1, cabW);
+  const cmToPxV = drawH / Math.max(1, cabH);
+
+  const maxI = Math.ceil(cabW / 10) + 2;
+  const maxJ = Math.ceil(cabH / 10) + 2;
+
+  const vLines  = []; // lignes verticales de la grille
+  const hLines  = []; // lignes horizontales de la grille
+  const hTicks  = []; // graduations + labels règle horizontale
+  const vTicks  = []; // graduations + labels règle verticale
+
+  // Lignes verticales + graduations règle du haut
+  for (let i = 0; i <= maxI; i++) {
+    const x = mL + i * 10 * cmToPxH;
+    if (x > mL + drawW + 0.5) break;
+    const is50 = i % 5 === 0;
+    vLines.push(
+      <Line key={`vg${i}`}
+        points={[x, mT, x, mT + drawH]}
+        stroke={is50 ? 'rgba(180,180,160,0.3)' : 'rgba(180,180,160,0.15)'}
+        strokeWidth={is50 ? 0.8 : 0.5}
+        listening={false}
+      />
+    );
+    hTicks.push(
+      <Line key={`hrt${i}`}
+        points={[x, mT - (is50 ? 8 : 4), x, mT]}
+        stroke="#aaa" strokeWidth={0.8}
+        listening={false}
+      />
+    );
+    if (is50) {
+      hTicks.push(
+        <Text key={`hrl${i}`}
+          x={x - 12} y={mT - RULER_H + 2}
+          width={24} text={`${i * 10}`}
+          align="center" fontSize={fontSize} fill="#888"
+          listening={false}
+        />
+      );
+    }
+  }
+
+  // Lignes horizontales + graduations règle de gauche
+  for (let j = 0; j <= maxJ; j++) {
+    const y = mT + j * 10 * cmToPxV;
+    if (y > mT + drawH + 0.5) break;
+    const is50 = j % 5 === 0;
+    hLines.push(
+      <Line key={`hg${j}`}
+        points={[mL, y, mL + drawW, y]}
+        stroke={is50 ? 'rgba(180,180,160,0.3)' : 'rgba(180,180,160,0.15)'}
+        strokeWidth={is50 ? 0.8 : 0.5}
+        listening={false}
+      />
+    );
+    vTicks.push(
+      <Line key={`vrt${j}`}
+        points={[mL - (is50 ? 8 : 4), y, mL, y]}
+        stroke="#aaa" strokeWidth={0.8}
+        listening={false}
+      />
+    );
+    if (is50) {
+      vTicks.push(
+        <Text key={`vrl${j}`}
+          x={mL - RULER_W + 2} y={y - fontSize / 2}
+          width={RULER_W - 6} text={`${j * 10}`}
+          align="right" fontSize={fontSize} fill="#888"
+          listening={false}
+        />
+      );
+    }
+  }
+
+  return (
+    <Layer listening={false}>
+      {/* Fonds des règles */}
+      <Rect x={mL}          y={mT - RULER_H} width={drawW}   height={RULER_H}
+        fill="rgba(240,238,233,0.9)" listening={false} />
+      <Rect x={mL - RULER_W} y={mT}           width={RULER_W} height={drawH}
+        fill="rgba(240,238,233,0.9)" listening={false} />
+      {/* Coin supérieur-gauche */}
+      <Rect x={mL - RULER_W} y={mT - RULER_H} width={RULER_W} height={RULER_H}
+        fill="rgba(240,238,233,0.9)" listening={false} />
+      {/* Lignes de grille */}
+      {vLines}
+      {hLines}
+      {/* Graduations et labels */}
+      {hTicks}
+      {vTicks}
+    </Layer>
+  );
+}
+
 // ── Wood gradient helpers ─────────────────────────────────────────────────────
 
 /** Horizontal wood gradient (left-to-right) filling a rect of width `w`. */
@@ -140,6 +247,7 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
   onDrawerResize,
   onModuleSelect,
   activeTool      = 'select',
+  showGrid        = true,
   onChange,
   onModuleChange,
   onItemChange,
@@ -846,6 +954,25 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
             );
           })()}
 
+          {/* ── SNAP HORIZONTAL GUIDES — tablette-alignment guides during resize ── */}
+          {snapActive && facadeItems
+            .filter(it => it.type === 'shelf' || it.type === 'rod')
+            .map(it => {
+              const yGuide = mT + thPx + toNum(it.yRatio, 0.5) * (innerH - 2 * thPx);
+              return (
+                <Line
+                  key={`snapH-${it.id}`}
+                  points={[mL, yGuide, mL + drawW, yGuide]}
+                  stroke="#EF9F27"
+                  strokeWidth={1}
+                  dash={[4, 3]}
+                  opacity={0.6}
+                  listening={false}
+                />
+              );
+            })
+          }
+
           {/* ── LIVE WIDTH BADGE — shown during module resize when not snapped ── */}
           {!snapActive && resizeWidthCm !== null && (() => {
             const badgeText = `${resizeWidthCm} cm`;
@@ -880,6 +1007,16 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
           })()}
 
         </Layer>
+
+        {/* ── GRID + RULER LAYER (au-dessus du fond, non-interactif) ── */}
+        {showGrid && (
+          <GridLayer
+            mL={mL} mT={mT}
+            drawW={drawW} drawH={drawH}
+            cabW={toNum(cabW)} cabH={toNum(cabH)}
+            scaleRatio={scaleRatio}
+          />
+        )}
       </Stage>
     </div>
   );
