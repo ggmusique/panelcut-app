@@ -35,11 +35,8 @@ function ShelfItem({ item, intLeft, intTop, intBottom, iW, iH, cabInteriorCm, is
   // Coordonnée Y en espace contenu (content-space)
   const ey = intTop + clamp(toNum(item.yRatio, 0.5), 0, 1) * iH;
 
-  // dragBoundFunc reçoit ET doit retourner des coordonnées ABSOLUES (pixels canvas),
-  // c'est-à-dire après application du scaleX/Y et x/y du Stage.
-  // intTop/intBottom sont en espace contenu → on les convertit en absolu.
-  // Pour l'axe X, on verrouille le Group à content-x=0 :
-  //   absX = 0 * scaleX + stageX = stageX.
+  // dragBoundFunc reçoit ET doit retourner des coordonnées ABSOLUES (pixels canvas).
+  // Le Group est positionné à content-x = intLeft → on verrouille x à intLeft.
   const dragBoundFunc = useCallback((pos) => {
     const stage  = groupRef.current?.getStage?.();
     const scaleX = stage?.scaleX?.() ?? 1;
@@ -47,10 +44,10 @@ function ShelfItem({ item, intLeft, intTop, intBottom, iW, iH, cabInteriorCm, is
     const stX    = stage?.x?.()     ?? 0;
     const stY    = stage?.y?.()     ?? 0;
     return {
-      x: 0 * scaleX + stX,  // maintient content-x = 0
+      x: intLeft * scaleX + stX,  // verrouille content-x = intLeft
       y: clamp(pos.y, intTop * scaleY + stY, intBottom * scaleY + stY),
     };
-  }, [intTop, intBottom]);
+  }, [intLeft, intTop, intBottom]);
 
   const handleDragMove = useCallback(() => {
     const posY   = groupRef.current?.y() ?? 0;
@@ -60,19 +57,19 @@ function ShelfItem({ item, intLeft, intTop, intBottom, iW, iH, cabInteriorCm, is
   }, [intTop, iH, cabInteriorCm]);
 
   const handleDragEnd = useCallback((e) => {
-    // e.target.y() retourne la position Y LOCALE (espace contenu) après drag
     const newY      = e.target.y();
     const newYRatio = clamp((newY - intTop) / Math.max(1, iH), 0, 1);
     // Remet la position Konva à la valeur snappée (avant que React ne re-rende)
+    e.target.x(intLeft);
     e.target.y(intTop + newYRatio * iH);
     onItemMove?.(item.id, newYRatio);
     setDragInfo(null);
-  }, [intTop, iH, item.id, onItemMove]);
+  }, [intLeft, intTop, iH, item.id, onItemMove]);
 
   return (
     <Group
       ref={groupRef}
-      x={0}
+      x={intLeft}
       y={ey}
       draggable={!isEraseTool}
       dragBoundFunc={dragBoundFunc}
@@ -83,14 +80,14 @@ function ShelfItem({ item, intLeft, intTop, intBottom, iW, iH, cabInteriorCm, is
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      {/* Planche — coordonnées relatives au Group (y=0 = position de la tablette) */}
-      <Rect x={intLeft} y={-3.5} width={iW} height={7}
+      {/* Planche — coordonnées relatives au Group (x=0 = bord gauche du Group, positionné à intLeft) */}
+      <Rect x={0} y={-3.5} width={iW} height={7}
         fill={SHELF_FILL} stroke={SHELF_STROKE} strokeWidth={1} />
       {/* Chevilles */}
-      <Circle x={intLeft + 9}      y={0} radius={2.5} fill={SHELF_STROKE} />
-      <Circle x={intLeft + iW - 9} y={0} radius={2.5} fill={SHELF_STROKE} />
+      <Circle x={9}       y={0} radius={2.5} fill={SHELF_STROKE} />
+      <Circle x={iW - 9}  y={0} radius={2.5} fill={SHELF_STROKE} />
       {/* Zone de hit plus large pour faciliter le drag */}
-      <Rect x={intLeft} y={-10} width={iW} height={20}
+      <Rect x={0} y={-10} width={iW} height={20}
         fill="transparent"
         onClick={(e) => { if (isEraseTool) { e.cancelBubble = true; onItemRemove?.(item.id); } }}
         onMouseEnter={(e) => { const c = e.target.getStage()?.container(); if (c && !isEraseTool) c.style.cursor = 'ns-resize'; }}
@@ -98,23 +95,23 @@ function ShelfItem({ item, intLeft, intTop, intBottom, iW, iH, cabInteriorCm, is
       />
       {/* Overlay erase */}
       {isEraseTool && hovered && (
-        <Rect x={intLeft} y={-10} width={iW} height={20}
+        <Rect x={0} y={-10} width={iW} height={20}
           fill="red" opacity={0.3} listening={false} />
       )}
       {/* Badge cote live pendant le drag */}
       {!isEraseTool && dragInfo !== null && (
         <Group listening={false}>
           <Line
-            points={[intLeft, 0, intLeft + iW, 0]}
+            points={[0, 0, iW, 0]}
             stroke="#378ADD" strokeWidth={0.8} dash={[4, 3]}
           />
           <Rect
-            x={intLeft + iW + 6} y={-10}
+            x={iW + 6} y={-10}
             width={58} height={20}
             fill="#0C447C" cornerRadius={4}
           />
           <Text
-            x={intLeft + iW + 6} y={-4}
+            x={iW + 6} y={-4}
             width={58}
             text={`${dragInfo.yCm} cm`}
             align="center"
@@ -135,7 +132,7 @@ function RodItem({ item, intLeft, intTop, intBottom, iW, iH, cabInteriorCm, isEr
 
   const ey = intTop + clamp(toNum(item.yRatio, 0.32), 0, 1) * iH;
 
-  // Même correction que ShelfItem : convertir intTop/intBottom en coordonnées absolues.
+  // Même correction que ShelfItem : Group à content-x = intLeft, enfants en relatif.
   const dragBoundFunc = useCallback((pos) => {
     const stage  = groupRef.current?.getStage?.();
     const scaleX = stage?.scaleX?.() ?? 1;
@@ -143,10 +140,10 @@ function RodItem({ item, intLeft, intTop, intBottom, iW, iH, cabInteriorCm, isEr
     const stX    = stage?.x?.()     ?? 0;
     const stY    = stage?.y?.()     ?? 0;
     return {
-      x: 0 * scaleX + stX,
+      x: intLeft * scaleX + stX,  // verrouille content-x = intLeft
       y: clamp(pos.y, intTop * scaleY + stY, intBottom * scaleY + stY),
     };
-  }, [intTop, intBottom]);
+  }, [intLeft, intTop, intBottom]);
 
   const handleDragMove = useCallback(() => {
     const posY   = groupRef.current?.y() ?? 0;
@@ -158,15 +155,16 @@ function RodItem({ item, intLeft, intTop, intBottom, iW, iH, cabInteriorCm, isEr
   const handleDragEnd = useCallback((e) => {
     const newY      = e.target.y();
     const newYRatio = clamp((newY - intTop) / Math.max(1, iH), 0, 1);
+    e.target.x(intLeft);
     e.target.y(intTop + newYRatio * iH);
     onItemMove?.(item.id, newYRatio);
     setDragInfo(null);
-  }, [intTop, iH, item.id, onItemMove]);
+  }, [intLeft, intTop, iH, item.id, onItemMove]);
 
   return (
     <Group
       ref={groupRef}
-      x={0}
+      x={intLeft}
       y={ey}
       draggable={!isEraseTool}
       dragBoundFunc={dragBoundFunc}
@@ -178,17 +176,17 @@ function RodItem({ item, intLeft, intTop, intBottom, iW, iH, cabInteriorCm, isEr
       onMouseLeave={() => setHovered(false)}
     >
       {/* Support gauche */}
-      <Rect x={intLeft + 8} y={-10} width={7} height={18} fill="#6b7280" cornerRadius={2} />
+      <Rect x={8} y={-10} width={7} height={18} fill="#6b7280" cornerRadius={2} />
       {/* Support droit */}
-      <Rect x={intLeft + iW - 15} y={-10} width={7} height={18} fill="#6b7280" cornerRadius={2} />
+      <Rect x={iW - 15} y={-10} width={7} height={18} fill="#6b7280" cornerRadius={2} />
       {/* Barre principale */}
-      <Line points={[intLeft + 16, 0, intLeft + iW - 15, 0]}
+      <Line points={[16, 0, iW - 15, 0]}
         stroke={ROD_STROKE} strokeWidth={6} lineCap="round" />
       {/* Reflet */}
-      <Line points={[intLeft + 16, -2, intLeft + iW - 15, -2]}
+      <Line points={[16, -2, iW - 15, -2]}
         stroke="#d1d5db" strokeWidth={2} lineCap="round" opacity={0.7} />
       {/* Zone de hit */}
-      <Rect x={intLeft + 8} y={-14} width={iW - 20} height={28}
+      <Rect x={8} y={-14} width={iW - 20} height={28}
         fill="transparent"
         onClick={(e) => { if (isEraseTool) { e.cancelBubble = true; onItemRemove?.(item.id); } }}
         onMouseEnter={(e) => { const c = e.target.getStage()?.container(); if (c && !isEraseTool) c.style.cursor = 'ns-resize'; }}
@@ -196,23 +194,23 @@ function RodItem({ item, intLeft, intTop, intBottom, iW, iH, cabInteriorCm, isEr
       />
       {/* Overlay erase */}
       {isEraseTool && hovered && (
-        <Rect x={intLeft + 8} y={-14} width={iW - 20} height={28}
+        <Rect x={8} y={-14} width={iW - 20} height={28}
           fill="red" opacity={0.25} cornerRadius={4} listening={false} />
       )}
       {/* Badge cote live pendant le drag */}
       {!isEraseTool && dragInfo !== null && (
         <Group listening={false}>
           <Line
-            points={[intLeft, 0, intLeft + iW, 0]}
+            points={[0, 0, iW, 0]}
             stroke="#378ADD" strokeWidth={0.8} dash={[4, 3]}
           />
           <Rect
-            x={intLeft + iW + 6} y={-10}
+            x={iW + 6} y={-10}
             width={58} height={20}
             fill="#0C447C" cornerRadius={4}
           />
           <Text
-            x={intLeft + iW + 6} y={-4}
+            x={iW + 6} y={-4}
             width={58}
             text={`${dragInfo.yCm} cm`}
             align="center"
@@ -520,7 +518,8 @@ export default function FacadeKonvaItems({
   })();
 
   // ── Tablettes et tringles depuis facadeItems ────────────────────────────────
-  const moduleItems = facadeItems.filter((it) => Number(it.modIdx) === Number(modIdx));
+  // facadeItems est déjà filtré pour ce module par FacadeKonvaEditor.
+  const moduleItems = facadeItems;
 
   return (
     <Group>

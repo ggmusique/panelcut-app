@@ -137,6 +137,17 @@ export default function FacadeKonvaModule({
         />
       )}
 
+      {/* ── Zone de clic générale rendue AVANT les items pour que les items draggables soient au-dessus en z-order ── */}
+      {!isPlace && !isAdd && (
+        <Rect
+          x={intLeft} y={intTop}
+          width={iW} height={iH}
+          fill="transparent"
+          listening={!isErase}
+          onClick={handleGroupClick}
+        />
+      )}
+
       {/* ── Interior elements (drawers, doors, shelves, rods, drawer separators) ── */}
       <FacadeKonvaItems
         moduleRect={moduleRect}
@@ -149,6 +160,7 @@ export default function FacadeKonvaModule({
         onRemoveElement={(_mIdx, type, idx) => onRemoveElement?.(type, idx)}
         onDrawerResize={onDrawerResize}
       />
+
       {/* ── Module number badge ── */}
       <Circle
         x={intLeft + iW / 2} y={numCy}
@@ -190,7 +202,7 @@ export default function FacadeKonvaModule({
         listening={false}
       />
 
-      {/* ── Hit zone for shelf / rod placement (captures click position) ── */}
+      {/* ── Zone de clic pour placement tablette / tringle (au-dessus — capture la position du clic) ── */}
       {isPlace && (
         <Rect
           x={intLeft} y={intTop}
@@ -207,23 +219,12 @@ export default function FacadeKonvaModule({
         />
       )}
 
-      {/* ── Hit zone for add-element tools (no position needed) ── */}
+      {/* ── Zone de clic pour outils d'ajout (au-dessus — pas de position nécessaire) ── */}
       {isAdd && (
         <Rect
           x={intLeft} y={intTop}
           width={iW} height={iH}
           fill="transparent"
-          onClick={handleGroupClick}
-        />
-      )}
-
-      {/* ── General click zone (select / erase passthrough) ── */}
-      {!isPlace && !isAdd && (
-        <Rect
-          x={intLeft} y={intTop}
-          width={iW} height={iH}
-          fill="transparent"
-          listening={!isErase}
           onClick={handleGroupClick}
         />
       )}

@@ -221,8 +221,14 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
       if (!isNavMode) return;  // vérification rapide avant les calculs Konva
       const stage = stageRef.current;
       if (!stage) return;
-      const pos   = stage.getPointerPosition();
-      if (!pos) return;
+      // Calcul de la position en espace contenu depuis l'événement natif
+      // (stage.getPointerPosition() peut être périmée dans un handler DOM natif).
+      const cr        = stage.container().getBoundingClientRect();
+      const stageScale = stage.scaleX();
+      const pos = {
+        x: (e.clientX - cr.left - stage.x()) / stageScale,
+        y: (e.clientY - cr.top  - stage.y()) / stageScale,
+      };
       // N'active le pan que si l'on clique sur le fond (aucun nœud draggable)
       const shape = stage.getIntersection(pos);
       let node = shape;
