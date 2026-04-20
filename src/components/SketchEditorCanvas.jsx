@@ -61,6 +61,7 @@ const SketchEditorCanvas = forwardRef(function SketchEditorCanvas(
   konvaEditorRef
 ) {
   const [selectedModule, setSelectedModule] = useState(null); // { modIdx, x, y } | null
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [show3D, setShow3D] = useState(() => typeof window !== 'undefined' ? window.innerWidth >= 768 : true);
   const show3DUserOverride = useRef(false);
   const wrapperRef = useRef(null);
@@ -87,6 +88,12 @@ const SketchEditorCanvas = forwardRef(function SketchEditorCanvas(
         ? prev.map((m, i) => i === idx ? { ...m, ...changes } : m)
         : prev
     );
+  }, [onModuleChange]);
+
+  // Adapter for bulk module replacement (alignment operations in panel)
+  const handleModulesChangeForPanel = useCallback((newModules) => {
+    if (typeof onModuleChange !== 'function') return;
+    onModuleChange(() => newModules);
   }, [onModuleChange]);
 
   // ── Keyboard shortcuts: tool selection + undo/redo ──────────────────────
@@ -134,6 +141,10 @@ const SketchEditorCanvas = forwardRef(function SketchEditorCanvas(
     setSelectedModule({ modIdx, x: screenX - rect.left, y: screenY - rect.top });
   }, []);
 
+  const handleSelectionChange = useCallback((ids) => {
+    setSelectedIds(new Set(ids));
+  }, []);
+
   return (
     <>
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
@@ -163,6 +174,7 @@ const SketchEditorCanvas = forwardRef(function SketchEditorCanvas(
               onItemChange={onItemChange}
               onDrawerResize={onDrawerResize}
               onModuleSelect={handleModuleSelect}
+              onSelectionChange={handleSelectionChange}
               onHistoryChange={onHistoryChange}
               showGrid={showGrid}
             />
@@ -246,10 +258,12 @@ const SketchEditorCanvas = forwardRef(function SketchEditorCanvas(
           <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
             <SketchPropertiesPanel
               selectedModuleIdx={selectedModule?.modIdx ?? null}
+              selectedIds={selectedIds}
               facadeModules={facadeModules}
               moduleDetails={moduleDetails}
               cabinetDims={{ width: cabW, height: cabH, plinth: plinth || 0 }}
               onModuleChange={handleModuleChangeForPanel}
+              onModulesChange={handleModulesChangeForPanel}
               onModuleDetailsChange={onModuleDetailsChange}
               canUndo={canUndo}
               canRedo={canRedo}
