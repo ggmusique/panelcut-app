@@ -257,6 +257,7 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
         plinth={cabinetDims.plinth}
         thick={thickness}
         facadeModules={facadeModules}
+        moduleDetails={moduleDetails}
         cabinetModules={currentCabinet?.modules || []}
         facadeItems={facadeItems}
         joints={joints}
@@ -277,6 +278,11 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
         onHistoryChange={handleHistoryChange}
         onModuleChange={setFacadeModules}
         onItemChange={setFacadeItems}
+        onModuleDetailsChange={(idx, changes) =>
+          setModuleDetails(prev => prev.map((d, i) => i === idx ? { ...d, ...changes } : d))
+        }
+        canUndo={canUndo}
+        canRedo={canRedo}
         onDrawerResize={handleDrawerResize}
         generalNotes={generalNotes}
         onGeneralNotesChange={setGeneralNotes}
