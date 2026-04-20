@@ -269,8 +269,10 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
   useEffect(() => {
     const el = containerRef.current;
     if (!el || mousePanRef.current.active) return;
-    el.style.cursor = isNavMode ? 'grab' : 'default';
-  }, [isNavMode]);
+    if (isNavMode) el.style.cursor = 'grab';
+    else if (isErase) el.style.cursor = 'crosshair';
+    else el.style.cursor = 'default';
+  }, [isNavMode, isErase]);
 
   const { w: stageW, h: stageH } = stageSize;
 
@@ -481,7 +483,7 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
     if (type === 'item') {
       onItemErase?.(id);
     } else {
-      onModuleErase?.(modIdx, type);
+      onModuleErase?.(modIdx, type, id);
     }
   }, [onItemErase, onModuleErase]);
 

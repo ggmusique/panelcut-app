@@ -82,6 +82,7 @@ function ShelfItem({ item, intLeft, intTop, intBottom, iW, iH, isEraseTool, onIt
       {/* Zone de hit plus large pour faciliter le drag */}
       <Rect x={intLeft} y={-10} width={iW} height={20}
         fill="transparent"
+        onClick={(e) => { if (isEraseTool) { e.cancelBubble = true; onItemRemove?.(item.id); } }}
         onMouseEnter={(e) => { const c = e.target.getStage()?.container(); if (c && !isEraseTool) c.style.cursor = 'ns-resize'; }}
         onMouseLeave={(e) => { const c = e.target.getStage()?.container(); if (c) c.style.cursor = 'default'; }}
       />
@@ -148,6 +149,7 @@ function RodItem({ item, intLeft, intTop, intBottom, iW, iH, isEraseTool, onItem
       {/* Zone de hit */}
       <Rect x={intLeft + 8} y={-14} width={iW - 20} height={28}
         fill="transparent"
+        onClick={(e) => { if (isEraseTool) { e.cancelBubble = true; onItemRemove?.(item.id); } }}
         onMouseEnter={(e) => { const c = e.target.getStage()?.container(); if (c && !isEraseTool) c.style.cursor = 'ns-resize'; }}
         onMouseLeave={(e) => { const c = e.target.getStage()?.container(); if (c) c.style.cursor = 'default'; }}
       />
@@ -274,8 +276,8 @@ function DrawerItem({ top, height: dh, intLeft, iW, modIdx, drawerIdx, isEraseTo
     <Group
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      onClick={(e) => { e.cancelBubble = true; if (isEraseTool) onRemoveElement?.(modIdx, 'drawer'); }}
-      onTap={(e)   => { e.cancelBubble = true; if (isEraseTool) onRemoveElement?.(modIdx, 'drawer'); }}
+      onClick={(e) => { e.cancelBubble = true; if (isEraseTool) onRemoveElement?.(modIdx, 'drawer', drawerIdx); }}
+      onTap={(e)   => { e.cancelBubble = true; if (isEraseTool) onRemoveElement?.(modIdx, 'drawer', drawerIdx); }}
     >
       {/* Façade tiroir */}
       <Rect x={intLeft + 2} y={top + 2} width={iW - 4} height={safeH - 4}
