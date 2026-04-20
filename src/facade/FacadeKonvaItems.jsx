@@ -25,7 +25,28 @@ import {
 const toNum = (v, d = 0) => { const n = Number(v); return Number.isFinite(n) ? n : d; };
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
-// ── Shelf (tablette draggable) ────────────────────────────────────────────────
+// ── Shared delete cross button ────────────────────────────────────────────────
+
+const DELETE_CROSS_SIZE = 14;
+const DELETE_CROSS_COLOR = '#E24B4A';
+
+/**
+ * Red circular cross button rendered in Konva.
+ * x, y = top-left corner of the button (absolute or relative to parent Group).
+ */
+function DeleteCross({ x, y, onClick }) {
+  return (
+    <Group
+      onClick={onClick}
+      onMouseEnter={(e) => { const c = e.target.getStage()?.container(); if (c) c.style.cursor = 'pointer'; }}
+      onMouseLeave={(e) => { const c = e.target.getStage()?.container(); if (c) c.style.cursor = 'default'; }}
+    >
+      <Rect x={x} y={y} width={DELETE_CROSS_SIZE} height={DELETE_CROSS_SIZE} cornerRadius={7} fill={DELETE_CROSS_COLOR} />
+      <Text x={x} y={y} width={DELETE_CROSS_SIZE} height={DELETE_CROSS_SIZE} text="×" align="center" verticalAlign="middle" fill="white" fontSize={11} fontStyle="bold" listening={false} />
+    </Group>
+  );
+}
+
 
 function ShelfItem({ item, intLeft, intTop, intBottom, iW, iH, cabInteriorCm, isEraseTool, interactionMode, onItemMove, onItemRemove }) {
   const [hovered, setHovered] = useState(false);
@@ -116,6 +137,10 @@ function ShelfItem({ item, intLeft, intTop, intBottom, iW, iH, cabInteriorCm, is
       {isEraseTool && hovered && (
         <Rect x={0} y={-10} width={iW} height={20}
           fill="rgba(226,75,74,0.2)" listening={false} />
+      )}
+      {/* Delete cross (hover, non-erase mode) */}
+      {hovered && !isEraseTool && (
+        <DeleteCross x={iW - 16} y={-8} onClick={(e) => { e.cancelBubble = true; onItemRemove?.(item.id); }} />
       )}
       {/* Badge cote live pendant le drag */}
       {!isEraseTool && dragInfo !== null && (
@@ -230,6 +255,10 @@ function RodItem({ item, intLeft, intTop, intBottom, iW, iH, cabInteriorCm, isEr
       {isEraseTool && hovered && (
         <Rect x={8} y={-14} width={iW - 20} height={28}
           fill="rgba(226,75,74,0.2)" cornerRadius={4} listening={false} />
+      )}
+      {/* Delete cross (hover, non-erase mode) */}
+      {hovered && !isEraseTool && (
+        <DeleteCross x={iW - 16} y={-8} onClick={(e) => { e.cancelBubble = true; onItemRemove?.(item.id); }} />
       )}
       {/* Badge cote live pendant le drag */}
       {!isEraseTool && dragInfo !== null && (
@@ -391,6 +420,10 @@ function DrawerItem({ top, height: dh, intLeft, iW, modIdx, drawerIdx, isEraseTo
         <Rect x={intLeft + 2} y={top + 2} width={iW - 4} height={safeH - 4}
           fill="red" opacity={0.22} cornerRadius={1} listening={false} />
       )}
+      {/* Delete cross (hover, non-erase mode) */}
+      {hovered && !isEraseTool && (
+        <DeleteCross x={intLeft + iW - 16} y={top - 8} onClick={(e) => { e.cancelBubble = true; onRemoveElement?.(modIdx, 'drawer', drawerIdx); }} />
+      )}
     </Group>
   );
 }
@@ -426,6 +459,10 @@ function DoorItem({ doorIdx, nbDoors, intLeft, intTop, iW, iH, modIdx, isEraseTo
         <Rect x={dx + 2} y={intTop + 2} width={dw - 4} height={iH - 4}
           fill="red" opacity={0.18} cornerRadius={1} listening={false} />
       )}
+      {/* Delete cross (hover, non-erase mode) */}
+      {hovered && !isEraseTool && (
+        <DeleteCross x={dx + dw - 16} y={intTop - 8} onClick={(e) => { e.cancelBubble = true; onRemoveElement?.(modIdx, 'door'); }} />
+      )}
     </Group>
   );
 }
@@ -456,6 +493,11 @@ function SlidingDoorsItem({ intLeft, intTop, iW, iH, modIdx, isEraseTool, onRemo
       {isEraseTool && hovered && (
         <Rect x={intLeft} y={intTop} width={iW} height={iH}
           fill="red" opacity={0.18} listening={false} />
+      )}
+      {/* Delete cross (hover, non-erase mode) */}
+      {hovered && !isEraseTool && (
+        <DeleteCross x={intLeft + iW - 16} y={intTop - 8} onClick={(e) => { e.cancelBubble = true; onRemoveElement?.(modIdx, 'sliding'); }} />
+      )}
       )}
     </Group>
   );
