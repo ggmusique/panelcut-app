@@ -5,6 +5,7 @@ import {
   buildSketchContextPrompt,
 } from '../utils/sketchEditorHelpers';
 import { LS_SKETCH_KEY, defaultDrawerParts } from '../utils/sketchEditorConstants';
+import { generatePiecesFromCabinet } from '../utils/generatePiecesFromCabinet';
 
 const toNum = (v, d = 0) => { const n = Number(v); return Number.isFinite(n) ? n : d; };
 const jointThickness = (isDouble, t) => isDouble ? t * 2 : t;
@@ -59,6 +60,7 @@ export function useSketchState({ initialResult, draft, konvaEditorRef, onComplet
   const [elements,      setElements]      = useState(savedState?.elements || []);
   const [loading,       setLoading]       = useState(false);
   const [error,         setError]         = useState(null);
+  const [infoMessage,   setInfoMessage]   = useState(null);
   const [capturing,     setCapturing]     = useState(false);
   const [generalNotes,  setGeneralNotes]  = useState(savedState?.generalNotes || '');
   const [cabinetDims,   setCabinetDims]   = useState(
@@ -125,6 +127,24 @@ export function useSketchState({ initialResult, draft, konvaEditorRef, onComplet
     return normalizeItemsFromResult(initialResult);
   });
 
+  // ─── Fingerprints structurel / positionnel ────────────────────────────────
+  // structuralFingerprint : change quand la structure du meuble change
+  // (dimensions, nb modules, tiroirs, portes) → nécessite un nouveau scan IA.
+  // positionalFingerprint : change uniquement quand des positions bougent
+  // (tablettes, tringles, hauteurs de tiroirs) → recalcul local suffisant.
+
+  const structuralFingerprint = useMemo(() => JSON.stringify({
+    width:   cabinetDims.width,
+    height:  cabinetDims.height,
+    plinth:  cabinetDims.plinth,
+    modules: facadeModules.map(m => ({ width: m.width, drawers: m.drawers, doors: m.doors })),
+  }), [cabinetDims, facadeModules]);
+
+  const positionalFingerprint = useMemo(() => JSON.stringify({
+    facadeItems:  facadeItems.map(it => ({ id: it.id, yRatio: it.yRatio })),
+    drawerHeights: moduleDetails.map(d => d.drawerHeights),
+  }), [facadeItems, moduleDetails]);
+
   const nbJoints = Math.max(0, facadeModules.length - 1);
   const [joints, setJoints] = useState(
     () => savedState?.joints || Array(nbJoints).fill(true)
@@ -150,6 +170,8 @@ export function useSketchState({ initialResult, draft, konvaEditorRef, onComplet
 
   // ─── FIX v3.6 : Re-synchronise tous les états quand initialResult change ─────
   const prevResultRef = useRef(initialResult);
+  // Mémorise le structuralFingerprint du dernier scan serveur réussi
+  const lastScannedStructuralRef = useRef(null);
   useEffect(() => {
     if (prevResultRef.current === initialResult) return;
     prevResultRef.current = initialResult;
@@ -329,7 +351,24 @@ export function useSketchState({ initialResult, draft, konvaEditorRef, onComplet
   const handleRelancer = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setInfoMessage(null);
     try {
+      // ── Optimisation : si seule la position a changé depuis le dernier scan,
+      //    inutile de solliciter le serveur — on génère les pièces localement.
+      if (
+        lastScannedStructuralRef.current !== null &&
+        structuralFingerprint === lastScannedStructuralRef.current
+      ) {
+        const depth   = toNum(initialResult?.cabinet?.depth, 60);
+        const cabinet = { ...currentCabinet, depth, thickness };
+        const pieces  = generatePiecesFromCabinet(cabinet, thickness);
+        setInfoMessage('Aucun scan nécessaire — génère les pièces en local');
+        setTimeout(() => setInfoMessage(null), 4000);
+        if (onComplete) onComplete({ pieces, cabinet: currentCabinet });
+        return;
+      }
+
+      // ── Changement structurel détecté → scan serveur ──────────────────────
       // Show "Capture en cours…" indicator only if the two render frames take > 100 ms.
       const captureTimer = setTimeout(() => setCapturing(true), 100);
       await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
@@ -377,6 +416,7 @@ export function useSketchState({ initialResult, draft, konvaEditorRef, onComplet
         },
       };
 
+      lastScannedStructuralRef.current = structuralFingerprint;
       if (onComplete) onComplete(enrichedResult);
     } catch (err) {
       console.error('💥 RELANCER FULL ERROR:', err.response?.data || err.message);
@@ -386,7 +426,8 @@ export function useSketchState({ initialResult, draft, konvaEditorRef, onComplet
       setLoading(false);
     }
   }, [onComplete, elements, cabinetDims, facadeModules, facadeItems,
-      generalNotes, joints, getContextPrompt, currentCabinet, konvaEditorRef]);
+      generalNotes, joints, getContextPrompt, currentCabinet, konvaEditorRef,
+      structuralFingerprint, thickness, initialResult]);
 
   return {
     // state
@@ -401,10 +442,13 @@ export function useSketchState({ initialResult, draft, konvaEditorRef, onComplet
     widthInputs,   setWidthInputs,
     loading,
     error,
+    infoMessage,
     capturing,
     // memos
     currentCabinet,
     sketchFingerprint,
+    structuralFingerprint,
+    positionalFingerprint,
     // handlers
     commitWidth,
     toggleJoint,
