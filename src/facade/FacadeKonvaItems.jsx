@@ -90,13 +90,32 @@ function ShelfItem({ item, intLeft, intTop, intBottom, iW, iH, cabInteriorCm, is
       <Rect x={0} y={-10} width={iW} height={20}
         fill="transparent"
         onClick={(e) => { if (isEraseTool) { e.cancelBubble = true; onItemRemove?.(item.id); } }}
-        onMouseEnter={(e) => { const c = e.target.getStage()?.container(); if (c && !isEraseTool) c.style.cursor = 'ns-resize'; }}
+        onTap={(e) => { if (isEraseTool) { e.cancelBubble = true; onItemRemove?.(item.id); } }}
+        onMouseEnter={(e) => { const c = e.target.getStage()?.container(); if (c) c.style.cursor = isEraseTool ? 'crosshair' : 'ns-resize'; }}
         onMouseLeave={(e) => { const c = e.target.getStage()?.container(); if (c) c.style.cursor = 'default'; }}
       />
+      {/* Poignées de drag aux extrémités (ew-resize) */}
+      {!isEraseTool && (
+        <>
+          <Circle x={0} y={0} radius={5} fill="#3b82f6" opacity={0.7}
+            onMouseEnter={(e) => { const c = e.target.getStage()?.container(); if (c) c.style.cursor = 'ew-resize'; }}
+            onMouseLeave={(e) => { const c = e.target.getStage()?.container(); if (c) c.style.cursor = 'default'; }}
+          />
+          <Circle x={iW} y={0} radius={5} fill="#3b82f6" opacity={0.7}
+            onMouseEnter={(e) => { const c = e.target.getStage()?.container(); if (c) c.style.cursor = 'ew-resize'; }}
+            onMouseLeave={(e) => { const c = e.target.getStage()?.container(); if (c) c.style.cursor = 'default'; }}
+          />
+        </>
+      )}
+      {/* Highlight hover (mode normal) */}
+      {!isEraseTool && hovered && (
+        <Rect x={0} y={-5} width={iW} height={10}
+          fill="rgba(59,130,246,0.15)" listening={false} />
+      )}
       {/* Overlay erase */}
       {isEraseTool && hovered && (
         <Rect x={0} y={-10} width={iW} height={20}
-          fill="red" opacity={0.3} listening={false} />
+          fill="rgba(226,75,74,0.2)" listening={false} />
       )}
       {/* Badge cote live pendant le drag */}
       {!isEraseTool && dragInfo !== null && (
@@ -176,12 +195,21 @@ function RodItem({ item, intLeft, intTop, intBottom, iW, iH, cabInteriorCm, isEr
       onMouseLeave={() => setHovered(false)}
     >
       {/* Support gauche */}
-      <Rect x={8} y={-10} width={7} height={18} fill="#6b7280" cornerRadius={2} />
+      <Rect x={8} y={-10} width={7} height={18} fill="#6b7280" cornerRadius={2}
+        onMouseEnter={(e) => { const c = e.target.getStage()?.container(); if (c) c.style.cursor = 'ns-resize'; }}
+        onMouseLeave={(e) => { const c = e.target.getStage()?.container(); if (c) c.style.cursor = 'default'; }}
+      />
       {/* Support droit */}
-      <Rect x={iW - 15} y={-10} width={7} height={18} fill="#6b7280" cornerRadius={2} />
+      <Rect x={iW - 15} y={-10} width={7} height={18} fill="#6b7280" cornerRadius={2}
+        onMouseEnter={(e) => { const c = e.target.getStage()?.container(); if (c) c.style.cursor = 'ns-resize'; }}
+        onMouseLeave={(e) => { const c = e.target.getStage()?.container(); if (c) c.style.cursor = 'default'; }}
+      />
       {/* Barre principale */}
       <Line points={[16, 0, iW - 15, 0]}
-        stroke={ROD_STROKE} strokeWidth={6} lineCap="round" />
+        stroke={ROD_STROKE} strokeWidth={6} lineCap="round"
+        onMouseEnter={(e) => { const c = e.target.getStage()?.container(); if (c) c.style.cursor = 'ns-resize'; }}
+        onMouseLeave={(e) => { const c = e.target.getStage()?.container(); if (c) c.style.cursor = 'default'; }}
+      />
       {/* Reflet */}
       <Line points={[16, -2, iW - 15, -2]}
         stroke="#d1d5db" strokeWidth={2} lineCap="round" opacity={0.7} />
@@ -189,13 +217,19 @@ function RodItem({ item, intLeft, intTop, intBottom, iW, iH, cabInteriorCm, isEr
       <Rect x={8} y={-14} width={iW - 20} height={28}
         fill="transparent"
         onClick={(e) => { if (isEraseTool) { e.cancelBubble = true; onItemRemove?.(item.id); } }}
-        onMouseEnter={(e) => { const c = e.target.getStage()?.container(); if (c && !isEraseTool) c.style.cursor = 'ns-resize'; }}
+        onTap={(e) => { if (isEraseTool) { e.cancelBubble = true; onItemRemove?.(item.id); } }}
+        onMouseEnter={(e) => { const c = e.target.getStage()?.container(); if (c) c.style.cursor = isEraseTool ? 'crosshair' : 'ns-resize'; }}
         onMouseLeave={(e) => { const c = e.target.getStage()?.container(); if (c) c.style.cursor = 'default'; }}
       />
+      {/* Highlight hover (mode normal) */}
+      {!isEraseTool && hovered && (
+        <Rect x={0} y={-5} width={iW} height={10}
+          fill="rgba(59,130,246,0.15)" listening={false} />
+      )}
       {/* Overlay erase */}
       {isEraseTool && hovered && (
         <Rect x={8} y={-14} width={iW - 20} height={28}
-          fill="red" opacity={0.25} cornerRadius={4} listening={false} />
+          fill="rgba(226,75,74,0.2)" cornerRadius={4} listening={false} />
       )}
       {/* Badge cote live pendant le drag */}
       {!isEraseTool && dragInfo !== null && (
