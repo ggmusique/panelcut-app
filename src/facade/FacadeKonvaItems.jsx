@@ -9,7 +9,7 @@
  * - Tiroirs : hauteurs px calculées depuis les vraies hauteurs cm via cmToPx
  */
 import React, { useState, useCallback, useRef } from 'react';
-import { Group, Rect, Line, Circle, Ellipse } from 'react-konva';
+import { Group, Rect, Line, Circle, Ellipse, Text } from 'react-konva';
 import {
   WOOD_STROKE,
   SHELF_FILL,
@@ -160,6 +160,110 @@ function RodItem({ item, intLeft, intTop, intBottom, iW, iH, isEraseTool, onItem
   );
 }
 
+// ── DrawerSeparator (séparation draggable entre deux tiroirs) ─────────────────
+
+function DrawerSeparatorItem({
+  modIdx, drawerIdx,
+  separatorY,    // position Y courante du séparateur (= top du tiroir inférieur)
+  fixedBottomI,  // bas fixe du tiroir inférieur (ne change pas pendant ce drag)
+  fixedTopI1,    // haut fixe du tiroir supérieur (ne change pas pendant ce drag)
+  cmToPx,        // facteur d'échelle px/cm
+  intLeft, iW,
+  isEraseTool,
+  onDrawerResize,
+}) {
+  const groupRef = useRef(null);
+  const [tooltipText, setTooltipText] = useState(null);
+
+  const minHpx       = Math.max(20, cmToPx > 0 ? 8 * cmToPx : 20);
+  const minBoundaryY = fixedTopI1  + minHpx;
+  const maxBoundaryY = fixedBottomI - minHpx;
+
+  const dragBoundFunc = useCallback((pos) => {
+    const stage  = groupRef.current?.getStage?.();
+    const scaleX = stage?.scaleX?.() ?? 1;
+    const scaleY = stage?.scaleY?.() ?? 1;
+    const stX    = stage?.x?.() ?? 0;
+    const stY    = stage?.y?.() ?? 0;
+    return {
+      x: 0 * scaleX + stX,
+      y: clamp(pos.y, minBoundaryY * scaleY + stY, maxBoundaryY * scaleY + stY),
+    };
+  }, [minBoundaryY, maxBoundaryY]);
+
+  const handleDragMove = useCallback((e) => {
+    const newY    = e.target.y();
+    const newHPx  = fixedBottomI - newY;
+    if (cmToPx > 0) {
+      const newHCm = Math.round((newHPx / cmToPx) * 10) / 10;
+      setTooltipText(`${newHCm} cm`);
+    }
+  }, [fixedBottomI, cmToPx]);
+
+  const handleDragEnd = useCallback((e) => {
+    const newY = clamp(e.target.y(), minBoundaryY, maxBoundaryY);
+    e.target.y(newY);
+    setTooltipText(null);
+    if (cmToPx > 0) {
+      const newHCm = Math.max(8, Math.round(((fixedBottomI - newY) / cmToPx) * 10) / 10);
+      onDrawerResize?.(modIdx, drawerIdx, newHCm);
+    }
+  }, [minBoundaryY, maxBoundaryY, fixedBottomI, cmToPx, modIdx, drawerIdx, onDrawerResize]);
+
+  // Ne pas rendre si pas de callback ou si les contraintes sont impossibles
+  if (!onDrawerResize || maxBoundaryY <= minBoundaryY) return null;
+
+  return (
+    <Group
+      ref={groupRef}
+      x={0}
+      y={separatorY}
+      draggable={!isEraseTool}
+      dragBoundFunc={dragBoundFunc}
+      onDragMove={handleDragMove}
+      onDragEnd={handleDragEnd}
+    >
+      {/* Ligne de séparation visible */}
+      <Rect
+        x={intLeft + 4} y={-1}
+        width={iW - 8} height={2}
+        fill="#6b7280" opacity={0.45}
+        listening={false}
+      />
+      {/* Indicateur de poignée (3 points) */}
+      <Circle x={intLeft + iW / 2 - 6} y={0} radius={2} fill="#9ca3af" opacity={0.7} listening={false} />
+      <Circle x={intLeft + iW / 2}      y={0} radius={2} fill="#9ca3af" opacity={0.7} listening={false} />
+      <Circle x={intLeft + iW / 2 + 6} y={0} radius={2} fill="#9ca3af" opacity={0.7} listening={false} />
+      {/* Zone de hit (12 px de haut, transparent) */}
+      <Rect
+        x={intLeft} y={-6}
+        width={iW} height={12}
+        fill="transparent"
+        onMouseEnter={(e) => { const c = e.target.getStage()?.container(); if (c && !isEraseTool) c.style.cursor = 'ns-resize'; }}
+        onMouseLeave={(e) => { const c = e.target.getStage()?.container(); if (c) c.style.cursor = 'default'; }}
+      />
+      {/* Tooltip pendant le drag */}
+      {tooltipText !== null && (
+        <Group listening={false}>
+          <Rect
+            x={intLeft + iW / 2 - 30} y={-30}
+            width={60} height={20}
+            fill="white" stroke="#111827" strokeWidth={1}
+            cornerRadius={3}
+          />
+          <Text
+            x={intLeft + iW / 2 - 30} y={-24}
+            width={60}
+            text={tooltipText}
+            align="center"
+            fill="#111827" fontSize={11} fontStyle="bold"
+          />
+        </Group>
+      )}
+    </Group>
+  );
+}
+
 // ── Drawer (tiroir) ───────────────────────────────────────────────────────────
 
 function DrawerItem({ top, height: dh, intLeft, iW, modIdx, drawerIdx, isEraseTool, onRemoveElement }) {
@@ -279,6 +383,7 @@ function SlidingDoorsItem({ intLeft, intTop, iW, iH, modIdx, isEraseTool, onRemo
  *   onItemMove      — (itemId, newYRatio) => void  ← DOIT être branché sur setFacadeItems
  *   onItemRemove    — (itemId) => void
  *   onRemoveElement — (modIdx, type) => void
+ *   onDrawerResize  — (modIdx, drawerIdx, newHeightCm) => void
  */
 export default function FacadeKonvaItems({
   moduleRect,
@@ -289,6 +394,7 @@ export default function FacadeKonvaItems({
   onItemMove,
   onItemRemove,
   onRemoveElement,
+  onDrawerResize,
 }) {
   if (!moduleRect) return null;
 
@@ -420,6 +526,32 @@ export default function FacadeKonvaItems({
             onItemRemove={onItemRemove}
           />
         ))}
+
+      {/* Séparateurs draggables entre tiroirs consécutifs */}
+      {rawDrawerItems && drawerRects.length >= 2 && cmToPx > 0 &&
+        drawerRects.map(({ top: topI, hPx: _hPxI }, di) => {
+          if (di === 0) return null; // pas de séparateur sous le premier tiroir (bas)
+          const prev         = drawerRects[di - 1]; // tiroir juste en dessous (di-1)
+          const separatorY   = prev.top;             // = haut du tiroir di-1 = bas du tiroir di
+          const fixedBottomI = prev.top + prev.hPx;  // bas fixe du tiroir di-1
+          const fixedTopI1   = topI;                 // haut fixe du tiroir di
+          return (
+            <DrawerSeparatorItem
+              key={`drw-sep-${modIdx}-${di}`}
+              modIdx={modIdx}
+              drawerIdx={di - 1}
+              separatorY={separatorY}
+              fixedBottomI={fixedBottomI}
+              fixedTopI1={fixedTopI1}
+              cmToPx={cmToPx}
+              intLeft={intLeft}
+              iW={iW}
+              isEraseTool={isEraseTool}
+              onDrawerResize={onDrawerResize}
+            />
+          );
+        })
+      }
 
       {/* Tringles (draggables) */}
       {moduleItems

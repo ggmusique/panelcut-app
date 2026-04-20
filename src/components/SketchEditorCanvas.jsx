@@ -38,6 +38,7 @@ const SketchEditorCanvas = forwardRef(function SketchEditorCanvas(
     // Notes générales
     generalNotes,
     onGeneralNotesChange,
+    onDrawerResize,
   },
   konvaEditorRef
 ) {
@@ -66,6 +67,7 @@ const SketchEditorCanvas = forwardRef(function SketchEditorCanvas(
           activeTool={activeTool}
           onModuleChange={onModuleChange}
           onItemChange={onItemChange}
+          onDrawerResize={onDrawerResize}
         />
       </div>
 

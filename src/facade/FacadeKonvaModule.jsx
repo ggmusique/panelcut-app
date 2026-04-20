@@ -2,18 +2,10 @@ import React, { useCallback } from 'react';
 import { Group, Rect, Line, Circle, Text } from 'react-konva';
 import {
   WOOD_STROKE,
-  SHELF_FILL,
-  SHELF_STROKE,
-  ROD_STROKE,
-  DRAWER_FILL,
-  DRAWER_STROKE,
-  HANDLE_FILL,
-  HANDLE_STROKE,
-  DOOR_FILL,
-  DOOR_STROKE,
   SELECTION_COLOR,
   DIM_COLOR,
 } from './konvaTheme';
+import FacadeKonvaItems from './FacadeKonvaItems';
 
 const toNum = (v, d = 0) => {
   const n = Number(v);
@@ -34,6 +26,8 @@ const toNum = (v, d = 0) => {
  *   onResizeStart — (konvaEvt) => void — called on mousedown on the right resize handle
  *   onAddElement  — (payload) => void  — payload is { type, yRatio? } or just type string
  *   onRemoveElement — (type, id?) => void
+ *   onItemMove    — (itemId, newYRatio) => void
+ *   onDrawerResize — (modIdx, drawerIdx, newHeightCm) => void
  */
 export default function FacadeKonvaModule({
   moduleRect,
@@ -46,6 +40,8 @@ export default function FacadeKonvaModule({
   onResizeStart,
   onAddElement,
   onRemoveElement,
+  onItemMove,
+  onDrawerResize,
 }) {
   if (!moduleRect) return null;
 
@@ -64,13 +60,10 @@ export default function FacadeKonvaModule({
 
   // Merge module data: prefer moduleDetail for rich data, fall back to module
   const mod = moduleDetail || module || {};
-  const nbDoors   = toNum(mod.doors,        toNum(module?.doors,        0));
-  const nbSliding = toNum(mod.slidingDoors, toNum(module?.slidingDoors, 0));
 
-  // ── Drawers (tiroirs) ───────────────────────────────────────────────────────
-  //
-  // When moduleDetail.drawerItems has cm positions we distribute proportionally.
-  // Otherwise we fall back to evenly spaced items from the bottom.
+  // ── Module number ─────────────────────────────────────────────────────────────
+  // Position the number badge in the upper half, leaving room for drawers at bottom.
+  // Keep drawerRects computation for badge positioning only.
   const rawDrawerItems = Array.isArray(mod.drawerItems) && mod.drawerItems.length > 0
     ? mod.drawerItems
     : null;
@@ -78,25 +71,21 @@ export default function FacadeKonvaModule({
     ? rawDrawerItems.length
     : toNum(mod.drawers, toNum(module?.drawers, 0));
 
-  // Build pixel rects for each drawer { top, height }
   const drawerRects = (() => {
     if (drawerCount === 0) return [];
     if (rawDrawerItems) {
-      // Proportional layout: each item's height relative to total cm height
       const totalH = rawDrawerItems.reduce((s, d) => s + toNum(d.h ?? d.height, 18), 0) || 1;
       let cursor = intBottom;
-      // Items are stored bottom→top by y ascending; reverse to draw bottom→top
       return [...rawDrawerItems]
         .sort((a, b) => toNum(a.y) - toNum(b.y))
         .map((d) => {
-          const hCm   = toNum(d.h ?? d.height, 18);
-          const hPx   = Math.max(10, (hCm / totalH) * iH);
-          const top   = cursor - hPx;
-          cursor      = top;
+          const hCm = toNum(d.h ?? d.height, 18);
+          const hPx = Math.max(10, (hCm / totalH) * iH);
+          const top = cursor - hPx;
+          cursor    = top;
           return { top, height: hPx };
         });
     }
-    // Even distribution from bottom
     const evenH = iH / drawerCount;
     return Array.from({ length: drawerCount }, (_, di) => ({
       top:    intBottom - evenH * (di + 1),
@@ -104,220 +93,6 @@ export default function FacadeKonvaModule({
     }));
   })();
 
-  const drawerElems = drawerRects.map(({ top, height: dh }, di) => (
-    <Group
-      key={`drawer-${di}`}
-      onClick={(e) => {
-        e.cancelBubble = true;
-        if (isErase) onRemoveElement?.('drawer', null);
-      }}
-    >
-      {/* Panel */}
-      <Rect
-        x={intLeft + 2} y={top + 2}
-        width={iW - 4} height={Math.max(4, dh - 4)}
-        fill={DRAWER_FILL} stroke={DRAWER_STROKE} strokeWidth={1} cornerRadius={1}
-      />
-      {/* Handle bar */}
-      <Rect
-        x={intLeft + iW / 2 - 14} y={top + dh / 2 - 3.5}
-        width={28} height={7}
-        fill={HANDLE_FILL} stroke={HANDLE_STROKE} strokeWidth={0.8} cornerRadius={3}
-      />
-      {/* Handle knob */}
-      <Circle
-        x={intLeft + iW / 2} y={top + dh / 2}
-        radius={3} fill="#6b7280"
-      />
-      {/* Erase overlay */}
-      {isErase && (
-        <Rect
-          x={intLeft + 2} y={top + 2}
-          width={iW - 4} height={Math.max(4, dh - 4)}
-          fill="red" opacity={0.18} cornerRadius={1}
-        />
-      )}
-    </Group>
-  ));
-
-  // ── Hinged doors (portes battantes) ─────────────────────────────────────────
-  const nd = Math.min(nbDoors, 2);
-  const doorElems = nd > 0 && nbSliding === 0
-    ? Array.from({ length: nd }, (_, di) => {
-        const dw  = nd === 2 ? iW / 2 : iW;
-        const dx  = nd === 2 && di === 1 ? intLeft + iW / 2 : intLeft;
-        const pad = Math.max(8, dw * 0.08);
-        // Handle on opening edge
-        const hx  = di === 0 ? dx + dw - 14 : dx + 10;
-        return (
-          <Group
-            key={`door-${di}`}
-            onClick={(e) => {
-              e.cancelBubble = true;
-              if (isErase) onRemoveElement?.('door', null);
-            }}
-          >
-            {/* Door panel */}
-            <Rect
-              x={dx + 2} y={intTop + 2}
-              width={dw - 4} height={iH - 4}
-              fill={DOOR_FILL} stroke={DOOR_STROKE} strokeWidth={1.5} cornerRadius={1}
-            />
-            {/* Inner frame */}
-            <Rect
-              x={dx + pad} y={intTop + pad}
-              width={dw - 2 * pad} height={iH - 2 * pad}
-              fill="transparent" stroke={DOOR_STROKE} strokeWidth={0.8} opacity={0.5}
-            />
-            {/* Handle */}
-            <Rect
-              x={hx - 4} y={intTop + iH / 2 - 10}
-              width={8} height={20}
-              fill={HANDLE_FILL} stroke={HANDLE_STROKE} strokeWidth={0.8} cornerRadius={3}
-            />
-            {/* Erase overlay */}
-            {isErase && (
-              <Rect
-                x={dx + 2} y={intTop + 2}
-                width={dw - 4} height={iH - 4}
-                fill="red" opacity={0.15} cornerRadius={1}
-              />
-            )}
-          </Group>
-        );
-      })
-    : [];
-
-  // ── Sliding doors (portes coulissantes) ──────────────────────────────────────
-  const slidingElem = nbSliding > 0 ? (
-    <Group
-      key="sliding"
-      onClick={(e) => {
-        e.cancelBubble = true;
-        if (isErase) onRemoveElement?.('sliding', null);
-      }}
-    >
-      {/* Outer frame */}
-      <Rect
-        x={intLeft + 3} y={intTop + 3}
-        width={iW - 6} height={iH - 6}
-        fill="transparent" stroke="#60a5fa" strokeWidth={1.3} cornerRadius={1}
-      />
-      {/* Top rail */}
-      <Line
-        points={[intLeft + 6, intTop + 8, intLeft + iW - 6, intTop + 8]}
-        stroke="#60a5fa" strokeWidth={1.5}
-      />
-      {/* Bottom rail */}
-      <Line
-        points={[intLeft + 6, intBottom - 8, intLeft + iW - 6, intBottom - 8]}
-        stroke="#60a5fa" strokeWidth={1.5}
-      />
-      {/* Left panel */}
-      <Rect
-        x={intLeft + 6} y={intTop + 12}
-        width={iW * 0.52} height={iH - 24}
-        fill="rgba(147,197,253,0.15)" stroke="#60a5fa" strokeWidth={1}
-      />
-      {/* Right panel (overlapping) */}
-      <Rect
-        x={intLeft + iW * 0.42 - 6} y={intTop + 12}
-        width={iW * 0.52} height={iH - 24}
-        fill="rgba(147,197,253,0.22)" stroke="#3b82f6" strokeWidth={1}
-      />
-      {/* Erase overlay */}
-      {isErase && (
-        <Rect
-          x={intLeft + 3} y={intTop + 3}
-          width={iW - 6} height={iH - 6}
-          fill="red" opacity={0.15} cornerRadius={1}
-        />
-      )}
-    </Group>
-  ) : null;
-
-  // ── Shelves & rods from facadeItems ──────────────────────────────────────────
-  const itemElems = facadeItems.map((item) => {
-    const ey = intTop + toNum(item.yRatio, 0.5) * iH;
-
-    if (item.type === 'shelf') {
-      return (
-        <Group
-          key={item.id}
-          onClick={(e) => {
-            e.cancelBubble = true;
-            if (isErase) onRemoveElement?.('item', item.id);
-          }}
-        >
-          {/* Shelf plank */}
-          <Rect
-            x={intLeft} y={ey - 3.5}
-            width={iW} height={6.5}
-            fill={SHELF_FILL} stroke={SHELF_STROKE} strokeWidth={1}
-          />
-          {/* Shelf pins */}
-          <Circle x={intLeft + 9}       y={ey} radius={2.5} fill={SHELF_STROKE} />
-          <Circle x={intLeft + iW - 9}  y={ey} radius={2.5} fill={SHELF_STROKE} />
-          {/* Erase overlay */}
-          {isErase && (
-            <Rect
-              x={intLeft} y={ey - 8}
-              width={iW} height={16}
-              fill="red" opacity={0.2}
-            />
-          )}
-        </Group>
-      );
-    }
-
-    if (item.type === 'rod') {
-      return (
-        <Group
-          key={item.id}
-          onClick={(e) => {
-            e.cancelBubble = true;
-            if (isErase) onRemoveElement?.('item', item.id);
-          }}
-        >
-          {/* Left bracket */}
-          <Rect
-            x={intLeft + 8} y={ey - 10}
-            width={7} height={18}
-            fill="#6b7280" cornerRadius={2}
-          />
-          {/* Right bracket */}
-          <Rect
-            x={intLeft + iW - 15} y={ey - 10}
-            width={7} height={18}
-            fill="#6b7280" cornerRadius={2}
-          />
-          {/* Rod body */}
-          <Line
-            points={[intLeft + 16, ey, intLeft + iW - 15, ey]}
-            stroke={ROD_STROKE} strokeWidth={6} lineCap="round"
-          />
-          {/* Highlight */}
-          <Line
-            points={[intLeft + 16, ey - 2, intLeft + iW - 15, ey - 2]}
-            stroke="#d1d5db" strokeWidth={2} lineCap="round" opacity={0.7}
-          />
-          {/* Erase overlay */}
-          {isErase && (
-            <Rect
-              x={intLeft + 8} y={ey - 12}
-              width={iW - 20} height={24}
-              fill="red" opacity={0.18} cornerRadius={4}
-            />
-          )}
-        </Group>
-      );
-    }
-
-    return null;
-  });
-
-  // ── Module number ─────────────────────────────────────────────────────────────
-  // Position the number badge in the upper half, leaving room for drawers at bottom
   const drawerZonePx = drawerRects.length > 0
     ? intBottom - (drawerRects[drawerRects.length - 1]?.top ?? intBottom)
     : 0;
@@ -362,18 +137,18 @@ export default function FacadeKonvaModule({
         />
       )}
 
-      {/* ── Drawers ── */}
-      {drawerElems}
-
-      {/* ── Hinged doors ── */}
-      {doorElems}
-
-      {/* ── Sliding doors ── */}
-      {slidingElem}
-
-      {/* ── Shelves & rods ── */}
-      {itemElems}
-
+      {/* ── Interior elements (drawers, doors, shelves, rods, drawer separators) ── */}
+      <FacadeKonvaItems
+        moduleRect={moduleRect}
+        facadeItems={facadeItems}
+        module={module}
+        moduleDetail={moduleDetail}
+        isEraseTool={isErase}
+        onItemMove={onItemMove}
+        onItemRemove={(itemId) => onRemoveElement?.('item', itemId)}
+        onRemoveElement={(_mIdx, type) => onRemoveElement?.(type, null)}
+        onDrawerResize={onDrawerResize}
+      />
       {/* ── Module number badge ── */}
       <Circle
         x={intLeft + iW / 2} y={numCy}
