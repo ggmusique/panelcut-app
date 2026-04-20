@@ -137,7 +137,7 @@ export default function FacadeKonvaModule({
         />
       )}
 
-      {/* ── General click zone rendered BELOW items so draggable items sit on top ── */}
+      {/* ── Zone de clic générale rendue AVANT les items pour que les items draggables soient au-dessus en z-order ── */}
       {!isPlace && !isAdd && (
         <Rect
           x={intLeft} y={intTop}
@@ -202,7 +202,7 @@ export default function FacadeKonvaModule({
         listening={false}
       />
 
-      {/* ── Hit zone for shelf / rod placement (on top — captures click position) ── */}
+      {/* ── Zone de clic pour placement tablette / tringle (au-dessus — capture la position du clic) ── */}
       {isPlace && (
         <Rect
           x={intLeft} y={intTop}
@@ -219,7 +219,7 @@ export default function FacadeKonvaModule({
         />
       )}
 
-      {/* ── Hit zone for add-element tools (on top — no position needed) ── */}
+      {/* ── Zone de clic pour outils d'ajout (au-dessus — pas de position nécessaire) ── */}
       {isAdd && (
         <Rect
           x={intLeft} y={intTop}

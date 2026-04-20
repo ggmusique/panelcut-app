@@ -80,7 +80,7 @@ function ShelfItem({ item, intLeft, intTop, intBottom, iW, iH, cabInteriorCm, is
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      {/* Planche — coordonnées relatives au Group (x=0 = bord gauche du module) */}
+      {/* Planche — coordonnées relatives au Group (x=0 = bord gauche du Group, positionné à intLeft) */}
       <Rect x={0} y={-3.5} width={iW} height={7}
         fill={SHELF_FILL} stroke={SHELF_STROKE} strokeWidth={1} />
       {/* Chevilles */}
