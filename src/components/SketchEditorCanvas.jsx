@@ -51,6 +51,8 @@ const SketchEditorCanvas = forwardRef(function SketchEditorCanvas(
     generalNotes,
     onGeneralNotesChange,
     onDrawerResize,
+    // Grille
+    showGrid,
   },
   konvaEditorRef
 ) {
@@ -143,6 +145,7 @@ const SketchEditorCanvas = forwardRef(function SketchEditorCanvas(
               onDrawerResize={onDrawerResize}
               onModuleSelect={handleModuleSelect}
               onHistoryChange={onHistoryChange}
+              showGrid={showGrid}
             />
 
             {selectedModule !== null && (() => {

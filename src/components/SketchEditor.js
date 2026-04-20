@@ -21,6 +21,7 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
   const [selectedModuleIdx, setSelectedModuleIdx] = useState(0);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
+  const [showGrid, setShowGrid] = useState(true);
 
   const handleUndo = useCallback(() => { konvaEditorRef.current?.undo?.(); }, []);
   const handleRedo = useCallback(() => { konvaEditorRef.current?.redo?.(); }, []);
@@ -248,6 +249,8 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
         onModuleDetailsChange={setModuleDetails}
         onSave={() => { void triggerRemoteSave(); }}
         onMoveModule={(fromIdx, toIdx) => { handleMoveModule(fromIdx, toIdx); setSelectedModuleIdx(toIdx); }}
+        showGrid={showGrid}
+        onToggleGrid={() => setShowGrid(v => !v)}
       />
 
       <SketchEditorCanvas
@@ -286,6 +289,7 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
         onDrawerResize={handleDrawerResize}
         generalNotes={generalNotes}
         onGeneralNotesChange={setGeneralNotes}
+        showGrid={showGrid}
       />
     </div>
   );
