@@ -20,6 +20,23 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
   const [isCompactMobile,  setIsCompactMobile]  = useState(() => (typeof window !== 'undefined' ? window.innerWidth < 640 : false));
   const [selectedModuleIdx, setSelectedModuleIdx] = useState(0);
 
+  // Refs for local-mode optimisation (skip server when only positions changed)
+  const lastScannedStructuralRef = useRef(null);
+  const lastScanResultRef        = useRef(null);
+  const structuralFingerprintRef = useRef(null);
+
+  // Wrap onComplete so we can track the last scan result and structural fingerprint.
+  // When the hook calls onComplete for a local recalculation it passes {pieces, cabinet};
+  // merging with the previous server result preserves all server-specific fields.
+  const wrappedOnComplete = useCallback((result) => {
+    const merged = lastScanResultRef.current
+      ? { ...lastScanResultRef.current, ...result }
+      : result;
+    lastScannedStructuralRef.current = structuralFingerprintRef.current;
+    lastScanResultRef.current        = merged;
+    if (onComplete) onComplete(merged);
+  }, [onComplete]);
+
   const {
     cabinetDims,   setCabinetDims,
     facadeModules, setFacadeModules,
@@ -36,6 +53,7 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
     capturing,
     currentCabinet,
     sketchFingerprint,
+    structuralFingerprint,
     commitWidth,
     toggleJoint,
     handleModuleClick,
@@ -48,7 +66,14 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
     handleElementUpdate,
     handleElementRemove,
     handleMoveModule,
-  } = useSketchState({ initialResult, draft, konvaEditorRef, onComplete });
+  } = useSketchState({ initialResult, draft, konvaEditorRef, onComplete: wrappedOnComplete });
+
+  // Keep the ref in sync so wrappedOnComplete always captures the current fingerprint
+  structuralFingerprintRef.current = structuralFingerprint;
+
+  // True when the current structure has already been scanned → local recalculation is enough
+  const isLocalMode = lastScannedStructuralRef.current !== null &&
+                      lastScannedStructuralRef.current === structuralFingerprint;
 
   useEffect(() => {
     setSelectedModuleIdx((idx) => Math.max(0, Math.min(idx, Math.max(0, facadeModules.length - 1))));
@@ -154,8 +179,14 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
             ⚡ Générer pièces
           </button>
           <button onClick={handleRelancer} disabled={loading}
-            className={`px-4 py-1 rounded font-bold text-white ${loading?'bg-orange-800':'bg-orange-600 hover:bg-orange-500'}`}>
-            {loading ? 'Analyse...' : '🚀 Relancer Claude'}
+            className={`px-4 py-1 rounded font-bold text-white ${
+              loading
+                ? 'bg-orange-800'
+                : isLocalMode
+                  ? 'bg-emerald-700 hover:bg-emerald-600'
+                  : 'bg-orange-600 hover:bg-orange-500'
+            }`}>
+            {loading ? 'Analyse...' : isLocalMode ? '⚡ Recalculer (local)' : '🚀 Relancer Claude'}
           </button>
         </div>
       </div>
