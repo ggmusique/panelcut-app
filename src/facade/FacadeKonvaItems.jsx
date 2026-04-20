@@ -8,7 +8,7 @@
  * - onItemMove réellement appelé et branché sur le state parent
  * - Tiroirs : hauteurs px calculées depuis les vraies hauteurs cm via cmToPx
  */
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Group, Rect, Line, Circle, Ellipse, Text } from 'react-konva';
 import {
   WOOD_STROKE,
@@ -52,6 +52,7 @@ function ShelfItem({ item, intLeft, intTop, intBottom, iW, iH, cabInteriorCm, is
   const [hovered, setHovered] = useState(false);
   const [dragInfo, setDragInfo] = useState(null);
   const groupRef = useRef(null);
+  useEffect(() => () => setDragInfo(null), []);
 
   // Coordonnée Y en espace contenu (content-space)
   const ey = intTop + clamp(toNum(item.yRatio, 0.5), 0, 1) * iH;
@@ -150,12 +151,12 @@ function ShelfItem({ item, intLeft, intTop, intBottom, iW, iH, cabInteriorCm, is
             stroke="#378ADD" strokeWidth={0.8} dash={[4, 3]}
           />
           <Rect
-            x={iW + 6} y={-10}
+            x={iW / 2 - 29} y={-26}
             width={58} height={20}
             fill="#0C447C" cornerRadius={4}
           />
           <Text
-            x={iW + 6} y={-4}
+            x={iW / 2 - 29} y={-20}
             width={58}
             text={`${dragInfo.yCm} cm`}
             align="center"
@@ -173,6 +174,7 @@ function RodItem({ item, intLeft, intTop, intBottom, iW, iH, cabInteriorCm, isEr
   const [hovered, setHovered] = useState(false);
   const [dragInfo, setDragInfo] = useState(null);
   const groupRef = useRef(null);
+  useEffect(() => () => setDragInfo(null), []);
 
   const ey = intTop + clamp(toNum(item.yRatio, 0.32), 0, 1) * iH;
 
@@ -268,12 +270,12 @@ function RodItem({ item, intLeft, intTop, intBottom, iW, iH, cabInteriorCm, isEr
             stroke="#378ADD" strokeWidth={0.8} dash={[4, 3]}
           />
           <Rect
-            x={iW + 6} y={-10}
+            x={iW / 2 - 29} y={-26}
             width={58} height={20}
             fill="#0C447C" cornerRadius={4}
           />
           <Text
-            x={iW + 6} y={-4}
+            x={iW / 2 - 29} y={-20}
             width={58}
             text={`${dragInfo.yCm} cm`}
             align="center"

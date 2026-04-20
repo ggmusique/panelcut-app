@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { Group, Rect, Line, Circle, Text } from 'react-konva';
 import {
   WOOD_STROKE,
@@ -44,6 +44,16 @@ export default function FacadeKonvaModule({
   onItemMove,
   onDrawerResize,
 }) {
+  const [isResizing, setIsResizing] = useState(false);
+
+  // Clear isResizing on mouseup (window-level, mirrors handleResizeStart in FacadeKonvaEditor)
+  useEffect(() => {
+    if (!isResizing) return;
+    const onUp = () => setIsResizing(false);
+    window.addEventListener('mouseup', onUp);
+    return () => window.removeEventListener('mouseup', onUp);
+  }, [isResizing]);
+
   if (!moduleRect) return null;
 
   const { modIdx = 0, w, h, intX, intY, intW, intH, widthCm } = moduleRect;
@@ -252,10 +262,35 @@ export default function FacadeKonvaModule({
           }}
           onMouseDown={(e) => {
             e.cancelBubble = true;
+            setIsResizing(true);
             onResizeStart(e);
           }}
         />
       )}
+
+      {/* ── Live width badge during resize ── */}
+      {isResizing && (() => {
+        const bW = 60;
+        const bH = 20;
+        const bX = intLeft + iW - bW / 2;
+        const bY = intTop - bH - 6;
+        return (
+          <Group listening={false}>
+            <Rect
+              x={bX} y={bY}
+              width={bW} height={bH}
+              fill="#1d4ed8" cornerRadius={4}
+            />
+            <Text
+              x={bX} y={bY + 5}
+              width={bW}
+              text={`${toNum(widthCm, 0).toFixed(1)} cm`}
+              align="center"
+              fill="#dbeafe" fontSize={11} fontStyle="bold"
+            />
+          </Group>
+        );
+      })()}
     </Group>
   );
 }
