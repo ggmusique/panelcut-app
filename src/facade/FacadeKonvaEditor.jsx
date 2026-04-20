@@ -143,6 +143,7 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
   onChange,
   onModuleChange,
   onItemChange,
+  onHistoryChange,
 }, ref) {
   // ── 1. RESPONSIVE RESIZE ───────────────────────────────────────────────────
   const containerRef = useRef(null);
@@ -151,7 +152,11 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
   useImperativeHandle(ref, () => ({
     // Returns a PNG data URL (high-res, pixelRatio 3) of the current Konva stage content.
     exportDataUrl: () => stageRef.current?.toDataURL({ mimeType: 'image/png', pixelRatio: 3 }) ?? null,
-  }), []);
+    undo,
+    redo,
+    zoomIn:  () => setScale(s => Math.min(4, s * 1.2)),
+    zoomOut: () => setScale(s => Math.max(0.5, s / 1.2)),
+  }), [undo, redo]);
   const [stageSize, setStageSize] = useState({ w: svgW, h: svgH });
 
   useEffect(() => {
@@ -315,25 +320,10 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
   // Snap line position in Stage coordinate space
   const snapLineX = hookSnapX != null ? hookSnapX + mL : null;
 
-  // ── Keyboard shortcuts: Ctrl+Z undo, Ctrl+Y / Ctrl+Shift+Z redo ──────────
+  // ── Notify parent when undo/redo availability changes ─────────────────────
   useEffect(() => {
-    const handler = (e) => {
-      const tag = e.target?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || e.target?.isContentEditable) return;
-      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === 'z') {
-        e.preventDefault();
-        undo();
-      } else if (
-        (e.ctrlKey || e.metaKey) &&
-        (e.key === 'y' || (e.shiftKey && e.key === 'z'))
-      ) {
-        e.preventDefault();
-        redo();
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [undo, redo]);
+    onHistoryChange?.({ canUndo, canRedo });
+  }, [canUndo, canRedo, onHistoryChange]);
 
   // ── 3. ANNOTATION Y (scaled margins) ─────────────────────────────────────
   const dimLineH   = 26 * scaleRatio;
@@ -521,7 +511,7 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
   return (
     <div ref={containerRef} style={{ width: '100%', position: 'relative' }}>
 
-      {/* ── Undo / Redo + Mode buttons (top-left overlay on the Konva Stage) ── */}
+      {/* ── Mode buttons (top-left overlay on the Konva Stage) ── */}
       <div style={{
         position: 'absolute',
         top: 6,
@@ -531,43 +521,8 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
         gap: 4,
         pointerEvents: 'auto',
       }}>
-        <button
-          onClick={undo}
-          disabled={!canUndo}
-          title="Annuler (Ctrl+Z)"
-          style={{
-            padding: '3px 10px',
-            fontSize: 13,
-            borderRadius: 4,
-            border: '1px solid #d1d5db',
-            background: canUndo ? '#fff' : '#f3f4f6',
-            color: canUndo ? '#1f2937' : '#9ca3af',
-            cursor: canUndo ? 'pointer' : 'default',
-            lineHeight: 1.4,
-          }}
-        >
-          ↩ Annuler
-        </button>
-        <button
-          onClick={redo}
-          disabled={!canRedo}
-          title="Rétablir (Ctrl+Y)"
-          style={{
-            padding: '3px 10px',
-            fontSize: 13,
-            borderRadius: 4,
-            border: '1px solid #d1d5db',
-            background: canRedo ? '#fff' : '#f3f4f6',
-            color: canRedo ? '#1f2937' : '#9ca3af',
-            cursor: canRedo ? 'pointer' : 'default',
-            lineHeight: 1.4,
-          }}
-        >
-          ↪ Rétablir
-        </button>
 
         {/* ── Mode buttons ── */}
-        <div style={{ width: 1, background: '#d1d5db', margin: '2px 2px' }} />
 
         <button
           onClick={() => setInteractionMode('navigation')}
