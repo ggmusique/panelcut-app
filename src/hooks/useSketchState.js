@@ -276,6 +276,34 @@ export function useSketchState({ initialResult, draft, konvaEditorRef, onComplet
   const handleElementUpdate = useCallback((el) => setElements(prev => prev.map(e => e.id === el.id ? el : e)), []);
   const handleElementRemove = useCallback((id) => setElements(prev => prev.filter(e => e.id !== id)), []);
 
+  const handleMoveModule = useCallback((fromIdx, toIdx) => {
+    if (fromIdx === toIdx) return;
+    setFacadeModules(prev => {
+      const next = [...prev];
+      const [removed] = next.splice(fromIdx, 1);
+      next.splice(toIdx, 0, removed);
+      return next;
+    });
+    setFacadeItems(prev => prev.map(it => {
+      const idx = Number(it.modIdx);
+      let newIdx = idx;
+      if (idx === fromIdx) {
+        newIdx = toIdx;
+      } else if (fromIdx < toIdx && idx > fromIdx && idx <= toIdx) {
+        newIdx = idx - 1;
+      } else if (fromIdx > toIdx && idx < fromIdx && idx >= toIdx) {
+        newIdx = idx + 1;
+      }
+      return newIdx !== idx ? { ...it, modIdx: newIdx } : it;
+    }));
+    setModuleDetails(prev => {
+      const next = [...prev];
+      const [removed] = next.splice(fromIdx, 1);
+      next.splice(toIdx, 0, removed);
+      return next;
+    });
+  }, []);
+
   const getContextPrompt = useCallback(() => buildSketchContextPrompt({
     elements, dimensionsFromWizard, cabinetDims, thickness, joints,
     totalJointsWidth, totalInteriorWidth, facadeModules, facadeItems,
@@ -374,5 +402,6 @@ export function useSketchState({ initialResult, draft, konvaEditorRef, onComplet
     handleElementAdd,
     handleElementUpdate,
     handleElementRemove,
+    handleMoveModule,
   };
 }

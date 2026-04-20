@@ -1,3 +1,4 @@
+import { useState, useRef } from 'react';
 import { defaultDrawerParts } from '../utils/sketchEditorConstants';
 
 const TOOLS = [
@@ -43,7 +44,11 @@ export default function SketchToolbar({
   onModuleDetailsChange,
   // Sauvegarde
   onSave,
+  // Réordonnancement des modules
+  onMoveModule,
 }) {
+  const [dragOverIdx, setDragOverIdx] = useState(null);
+  const dragSrcIdx = useRef(null);
   return (
     <>
       {/* ── Barre outils ── */}
@@ -128,8 +133,29 @@ export default function SketchToolbar({
             {facadeModules.map((_, i) => (
               <button
                 key={`md-${i}`}
+                draggable="true"
+                onDragStart={(e) => {
+                  dragSrcIdx.current = i;
+                  e.dataTransfer.effectAllowed = 'move';
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'move';
+                  setDragOverIdx(i);
+                }}
+                onDragLeave={(e) => {
+                  if (!e.currentTarget.contains(e.relatedTarget)) setDragOverIdx(null);
+                }}
+                onDragEnd={() => { setDragOverIdx(null); dragSrcIdx.current = null; }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragOverIdx(null);
+                  const from = dragSrcIdx.current;
+                  dragSrcIdx.current = null;
+                  if (from !== null && from !== i) onMoveModule?.(from, i);
+                }}
                 onClick={() => onSelectModuleIdx(i)}
-                className={`px-2 py-1 rounded border ${selectedModuleIdx === i ? 'bg-amber-500/20 border-amber-400 text-amber-300' : 'bg-slate-800 border-slate-600 text-slate-300'}`}
+                className={`px-2 py-1 rounded border ${selectedModuleIdx === i ? 'bg-amber-500/20 border-amber-400 text-amber-300' : 'bg-slate-800 border-slate-600 text-slate-300'} ${dragOverIdx === i ? 'border-l-[2px] border-l-blue-500' : ''}`}
               >
                 M{i + 1}
               </button>
