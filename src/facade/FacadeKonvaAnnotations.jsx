@@ -487,7 +487,8 @@ function computeAutoLabel(x1, y1, x2, y2, drawW, drawH, cabW, cabH) {
  *   onElementUpdate — (element) => void
  *   onElementRemove — (id) => void
  *   stageRef        — ref to the Konva Stage (for getBoundingClientRect)
- *   cabW, cabH      — cabinet outer dimensions in cm (for auto-labelling)
+ *   cabW, cabH      — cabinet outer dimensions in cm (for auto-labelling); defaults match
+ *                     typical stage proportions and are overridden by FacadeKonvaEditor
  *   drawW, drawH    — drawing area size in stage content pixels (for auto-labelling)
  */
 export default function FacadeKonvaAnnotations({
