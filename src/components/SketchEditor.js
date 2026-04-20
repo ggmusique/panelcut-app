@@ -5,6 +5,7 @@ import SketchEditorCanvas from './SketchEditorCanvas';
 import { useSketchPersistence } from '../hooks/useSketchPersistence';
 import { useSketchState } from '../hooks/useSketchState';
 import { LS_SKETCH_KEY, uid } from '../utils/sketchEditorConstants';
+import { generatePiecesFromCabinet } from '../utils/generatePiecesFromCabinet';
 
 const toNum = (v, d = 0) => { const n = Number(v); return Number.isFinite(n) ? n : d; };
 const jointThickness = (isDouble, t) => isDouble ? t * 2 : t;
@@ -55,6 +56,15 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
   const thickness          = toNum(initialCab.thickness ?? initialCab.panel_thickness, 1.8);
   const totalJointsWidth   = joints.reduce((s, d) => s + jointThickness(d, thickness), 0);
   const totalInteriorWidth = Math.max(1, toNum(cabinetDims.width, 200) - thickness * 2 - totalJointsWidth);
+
+  const handleGenerateLocal = useCallback(() => {
+    if (!currentCabinet) return;
+    // depth is not tracked in the canvas editor; fall back to the original scan value or default 60 cm
+    const depth   = toNum(initialCab.depth, 60);
+    const cabinet = { ...currentCabinet, depth, thickness };
+    const pieces  = generatePiecesFromCabinet(cabinet, thickness);
+    if (onComplete) onComplete({ pieces, cabinet: currentCabinet });
+  }, [currentCabinet, initialCab, thickness, onComplete]);
 
   const { triggerRemoteSave } = useSketchPersistence({
     elements, cabinetDims, facadeModules, facadeItems,
@@ -132,6 +142,14 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
             aria-label="Enregistrer"
           >
             <Disc className="w-4 h-4" />
+          </button>
+          <button
+            onClick={handleGenerateLocal}
+            disabled={!currentCabinet}
+            className="px-4 py-1 rounded font-bold text-white bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40"
+            title="Calcule les pièces localement sans appel serveur"
+          >
+            ⚡ Générer pièces
           </button>
           <button onClick={handleRelancer} disabled={loading}
             className={`px-4 py-1 rounded font-bold text-white ${loading?'bg-orange-800':'bg-orange-600 hover:bg-orange-500'}`}>
