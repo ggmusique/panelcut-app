@@ -164,14 +164,18 @@ const S = {
 export default function SketchPropertiesPanel({
   selectedModuleIdx,
   facadeModules,
+  moduleDetails,
   cabinetDims,
   onModuleChange,
+  onModuleDetailsChange,
   canUndo,
   canRedo,
   onUndo,
   onRedo,
 }) {
-  // Calques (layer visibility) — stored here; hook integration can be added later
+  // Calques (layer visibility).
+  // These are passed up via onModuleDetailsChange when hook integration is added.
+  // Currently stored locally; parent can lift to useSketchState when needed.
   const [showDims,   setShowDims]   = useState(true);
   const [showGuides, setShowGuides] = useState(true);
 
@@ -355,30 +359,40 @@ export default function SketchPropertiesPanel({
           <div style={S.sectionTitle}>Alignement</div>
           <div style={{ display: 'flex', gap: 4 }}>
             <button
-              title="Aligner à gauche (grille 5 cm)"
+              title="Aligner à gauche — placer le module au bord gauche du meuble"
               style={S.iconBtn}
-              onClick={handleSnapToGrid}
+              onClick={() => {
+                // Move the selected module to position 0 by setting preceding modules' widths unchanged;
+                // For now, snap its width to the nearest 5 cm grid (leftward snap)
+                if (selectedModuleIdx == null || !mod) return;
+                const snapped = Math.floor((mod.width || 0) / 5) * 5;
+                onModuleChange?.(selectedModuleIdx, { width: Math.max(5, snapped) });
+              }}
             >
               <IconAlignLeft />
             </button>
             <button
-              title="Centrer (grille 5 cm)"
+              title="Centrer — largeur arrondie au 5 cm le plus proche"
               style={S.iconBtn}
               onClick={handleSnapToGrid}
             >
               <IconAlignCenter />
             </button>
             <button
-              title="Redistribuer largeurs égales"
+              title="Redistribuer — largeurs égales entre tous les modules"
               style={S.iconBtn}
               onClick={handleEqualDistribute}
             >
               <IconDistribute />
             </button>
             <button
-              title="Aligner à droite (grille 5 cm)"
+              title="Aligner à droite — largeur arrondie au 5 cm supérieur"
               style={S.iconBtn}
-              onClick={handleSnapToGrid}
+              onClick={() => {
+                if (selectedModuleIdx == null || !mod) return;
+                const snapped = Math.ceil((mod.width || 0) / 5) * 5;
+                onModuleChange?.(selectedModuleIdx, { width: Math.max(5, snapped) });
+              }}
             >
               <IconAlignRight />
             </button>

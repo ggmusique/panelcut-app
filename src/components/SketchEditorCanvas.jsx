@@ -57,9 +57,15 @@ const SketchEditorCanvas = forwardRef(function SketchEditorCanvas(
   const [selectedModule, setSelectedModule] = useState(null); // { modIdx, x, y } | null
   const wrapperRef = useRef(null);
 
-  // Adapter: panel calls onModuleChange(idx, changes); canvas receives setFacadeModules
+  // Adapter: panel calls onModuleChange(idx, changes);
+  // canvas receives setFacadeModules which accepts a React functional-update.
   const handleModuleChangeForPanel = useCallback((idx, changes) => {
-    onModuleChange(prev => prev.map((m, i) => i === idx ? { ...m, ...changes } : m));
+    if (typeof onModuleChange !== 'function') return;
+    onModuleChange(prev =>
+      Array.isArray(prev)
+        ? prev.map((m, i) => i === idx ? { ...m, ...changes } : m)
+        : prev
+    );
   }, [onModuleChange]);
 
   // ── Keyboard shortcuts: tool selection + undo/redo ──────────────────────
