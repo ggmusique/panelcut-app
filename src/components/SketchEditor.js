@@ -1,17 +1,18 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
-import { Disc } from 'lucide-react';
 import SketchToolbar from './SketchToolbar';
 import SketchEditorCanvas from './SketchEditorCanvas';
 import { useSketchPersistence } from '../hooks/useSketchPersistence';
 import { useSketchState } from '../hooks/useSketchState';
 import { LS_SKETCH_KEY, uid } from '../utils/sketchEditorConstants';
 import { generatePiecesFromCabinet } from '../utils/generatePiecesFromCabinet';
+import { useAuth } from '../contexts/AuthContext';
 
 const toNum = (v, d = 0) => { const n = Number(v); return Number.isFinite(n) ? n : d; };
 const jointThickness = (isDouble, t) => isDouble ? t * 2 : t;
 
-export default function SketchEditor({ image, scanImage, initialResult, draft, onDraftChange, onComplete, onCancel, onSave }) {
+export default function SketchEditor({ image, scanImage, initialResult, draft, onDraftChange, onComplete, onCancel, onSave, project }) {
   const konvaEditorRef = useRef(null);
+  const { user } = useAuth();
 
   const initialCab           = initialResult?.cabinet || {};
   const dimensionsFromWizard = Boolean(initialResult?._dimensionsFromWizard);
@@ -22,6 +23,8 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [showGrid, setShowGrid] = useState(true);
+  const [saveStatus, setSaveStatus] = useState('idle'); // 'idle' | 'saving' | 'saved'
+  const [toastMsg, setToastMsg] = useState('');
 
   const handleUndo = useCallback(() => { konvaEditorRef.current?.undo?.(); }, []);
   const handleRedo = useCallback(() => { konvaEditorRef.current?.redo?.(); }, []);
@@ -97,12 +100,18 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
 
   const handleGenerateLocal = useCallback(() => {
     if (!currentCabinet) return;
-    // depth is not tracked in the canvas editor; fall back to the original scan value or default 60 cm
-    const depth   = toNum(initialCab.depth, 60);
-    const cabinet = { ...currentCabinet, depth, thickness };
-    const pieces  = generatePiecesFromCabinet(cabinet, thickness);
-    if (onComplete) onComplete({ pieces, cabinet: currentCabinet });
-  }, [currentCabinet, initialCab, thickness, onComplete]);
+    const existingCount = (project?.pieces || []).length;
+    if (existingCount > 0) {
+      const ok = window.confirm(`Remplacer les ${existingCount} pièces existantes par celles générées depuis le plan ?`);
+      if (!ok) return;
+    }
+    const panelThickness = project?.panel?.thickness || 1.8;
+    const pieces = generatePiecesFromCabinet(currentCabinet, panelThickness);
+    if (!pieces.length) return;
+    wrappedOnComplete({ pieces, cabinet: currentCabinet });
+    setToastMsg(`${pieces.length} pièces générées depuis le plan ✓`);
+    setTimeout(() => setToastMsg(''), 3000);
+  }, [currentCabinet, project, wrappedOnComplete]);
 
   const { triggerRemoteSave } = useSketchPersistence({
     elements, cabinetDims, facadeModules, facadeItems,
@@ -175,17 +184,27 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
           {error && <span className="text-red-400 text-sm self-center mr-2">{error}</span>}
           <button onClick={onCancel} className="px-3 py-1 bg-slate-700 text-white rounded">Annuler</button>
           <button
-            onClick={() => { void triggerRemoteSave(); }}
-            className="p-1.5 rounded-lg text-slate-300 hover:text-green-400 hover:bg-white/10 transition-colors"
-            title="Enregistrer"
-            aria-label="Enregistrer"
+            onClick={async () => {
+              if (!onSave || !currentCabinet) return;
+              setSaveStatus('saving');
+              try {
+                await onSave(currentCabinet);
+                setSaveStatus('saved');
+                setTimeout(() => setSaveStatus('idle'), 2000);
+              } catch {
+                setSaveStatus('idle');
+              }
+            }}
+            disabled={!user || saveStatus === 'saving'}
+            className="px-3 py-1 rounded font-bold text-white bg-slate-600 hover:bg-slate-500 disabled:opacity-40"
+            title={!user ? 'Connexion requise pour sauvegarder' : 'Sauvegarder le projet'}
           >
-            <Disc className="w-4 h-4" />
+            {saveStatus === 'saving' ? '⏳' : saveStatus === 'saved' ? 'Sauvegardé ✓' : '💾 Sauvegarder'}
           </button>
           <button
             onClick={handleGenerateLocal}
             disabled={!currentCabinet}
-            className="px-4 py-1 rounded font-bold text-white bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40"
+            className="px-4 py-1 rounded font-bold text-white bg-orange-600 hover:bg-orange-500 disabled:opacity-40"
             title="Calcule les pièces localement sans appel serveur"
           >
             ⚡ Générer pièces
@@ -292,6 +311,23 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
         showGrid={showGrid}
         currentCabinet={currentCabinet}
       />
+
+      {toastMsg && (
+        <div style={{
+          position: 'absolute',
+          bottom: '1rem',
+          right: '1rem',
+          background: '#1D9E75',
+          color: 'white',
+          borderRadius: '8px',
+          padding: '8px 16px',
+          fontSize: '13px',
+          zIndex: 100,
+          pointerEvents: 'none',
+        }}>
+          {toastMsg}
+        </div>
+      )}
     </div>
   );
 }

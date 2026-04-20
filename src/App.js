@@ -342,6 +342,7 @@ export default function App() {
           onDraftChange={(draft) => setProject(p => ({ ...p, sketchDraft: draft }))}
           onComplete={handleRefinementComplete}
           onCancel={() => setScreen(SCREENS.PIECES)}
+          project={project}
           onSave={async (currentCabinet) => {
             const updatedProject = {
               ...project,
