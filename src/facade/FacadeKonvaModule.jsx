@@ -205,7 +205,8 @@ export default function FacadeKonvaModule({
       />
 
       {/* ── Zone de clic pour placement tablette / tringle (au-dessus — capture la position du clic) ── */}
-      {isPlace && (
+      {/* En mode 'move', cette zone est désactivée pour ne pas bloquer le drag des items draggables. */}
+      {isPlace && interactionMode !== 'move' && (
         <Rect
           x={intLeft} y={intTop}
           width={iW} height={iH}
@@ -222,7 +223,8 @@ export default function FacadeKonvaModule({
       )}
 
       {/* ── Zone de clic pour outils d'ajout (au-dessus — pas de position nécessaire) ── */}
-      {isAdd && (
+      {/* En mode 'move', cette zone est désactivée pour ne pas bloquer le drag des séparateurs de tiroirs. */}
+      {isAdd && interactionMode !== 'move' && (
         <Rect
           x={intLeft} y={intTop}
           width={iW} height={iH}
