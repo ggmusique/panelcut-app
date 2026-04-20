@@ -9,7 +9,6 @@ const TOOLS = [
   { id: 'sliding',icon: '🚪↔️', label: 'Coulissante', color: '#93c5fd' },
   { id: 'dim',    icon: '📏', label: 'Cote',         color: '#22d3ee' },
   { id: 'note',   icon: '📝', label: 'Note',         color: '#fb923c' },
-  { id: 'erase',  icon: '🧹', label: 'Effacer',      color: '#f87171' },
 ];
 
 const toNum = (v, d = 0) => { const n = Number(v); return Number.isFinite(n) ? n : d; };

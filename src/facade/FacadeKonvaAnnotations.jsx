@@ -11,6 +11,23 @@ const DIM_BUBBLE_EMPTY = '#164e63';
 const NOTE_FILL        = '#fb923c';
 const BUBBLE_W         = 48;
 const BUBBLE_H         = 20;
+const DELETE_CROSS_SIZE  = 14;
+const DELETE_CROSS_COLOR = '#E24B4A';
+
+// ── Shared delete cross button ─────────────────────────────────────────────────
+
+function DeleteCross({ x, y, onClick }) {
+  return (
+    <Group
+      onClick={onClick}
+      onMouseEnter={(e) => { const c = e.target.getStage()?.container(); if (c) c.style.cursor = 'pointer'; }}
+      onMouseLeave={(e) => { const c = e.target.getStage()?.container(); if (c) c.style.cursor = 'default'; }}
+    >
+      <Rect x={x} y={y} width={DELETE_CROSS_SIZE} height={DELETE_CROSS_SIZE} cornerRadius={7} fill={DELETE_CROSS_COLOR} />
+      <Text x={x} y={y} width={DELETE_CROSS_SIZE} height={DELETE_CROSS_SIZE} text="×" align="center" verticalAlign="middle" fill="white" fontSize={11} fontStyle="bold" listening={false} />
+    </Group>
+  );
+}
 
 // ── HTML input overlay (portal) ───────────────────────────────────────────────
 
@@ -257,6 +274,10 @@ function DimElement({
             listening={false}
           />
         )}
+        {/* Delete cross (hover, non-erase mode) */}
+        {hovered && !isErase && (
+          <DeleteCross x={Math.max(x1, x2) - 8} y={Math.min(y1, y2) - 8} onClick={(e) => { e.cancelBubble = true; onRemove?.(id); }} />
+        )}
       </Group>
 
       {/* Draggable endpoint handles (always on top, not part of draggable group) */}
@@ -409,6 +430,10 @@ function NoteElement({ el, isErase, onUpdate, onRemove, stageRef }) {
             cornerRadius={5}
             listening={false}
           />
+        )}
+        {/* Delete cross (hover, non-erase mode) */}
+        {hovered && !isErase && (
+          <DeleteCross x={approxW - 8} y={-8} onClick={(e) => { e.cancelBubble = true; onRemove?.(id); }} />
         )}
       </Group>
 
