@@ -216,36 +216,6 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
     const el = containerRef.current;
     if (!el) return;
 
-    const onMouseDown = (e) => {
-      if (e.button !== 0) return;
-      if (!isNavMode) return;  // vérification rapide avant les calculs Konva
-      const stage = stageRef.current;
-      if (!stage) return;
-      // Calcul de la position en espace contenu depuis l'événement natif
-      // (stage.getPointerPosition() peut être périmée dans un handler DOM natif).
-      const cr        = stage.container().getBoundingClientRect();
-      const stageScale = stage.scaleX();
-      const pos = {
-        x: (e.clientX - cr.left - stage.x()) / stageScale,
-        y: (e.clientY - cr.top  - stage.y()) / stageScale,
-      };
-      // N'active le pan que si l'on clique sur le fond (aucun nœud draggable)
-      const shape = stage.getIntersection(pos);
-      let node = shape;
-      while (node && node !== stage) {
-        if (node.draggable?.()) return; // cède le contrôle au drag Konva
-        node = node.parent;
-      }
-      mousePanRef.current = {
-        active: true,
-        startX: e.clientX,
-        startY: e.clientY,
-        stageX: stage.x(),
-        stageY: stage.y(),
-      };
-      el.style.cursor = 'grabbing';
-    };
-
     const onMouseMove = (e) => {
       if (!mousePanRef.current.active) return;
       const dx = e.clientX - mousePanRef.current.startX;
@@ -263,12 +233,10 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
       }
     };
 
-    el.addEventListener('mousedown', onMouseDown);
     el.addEventListener('mousemove', onMouseMove);
     el.addEventListener('mouseup',   stopPan);
     el.addEventListener('mouseleave', stopPan);
     return () => {
-      el.removeEventListener('mousedown', onMouseDown);
       el.removeEventListener('mousemove', onMouseMove);
       el.removeEventListener('mouseup',   stopPan);
       el.removeEventListener('mouseleave', stopPan);
@@ -367,6 +335,31 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
   const rightDimX  = mL + drawW + 24 * scaleRatio;
 
   // ── 5. EVENT HANDLERS ─────────────────────────────────────────────────────
+
+  // ── Pan souris — démarrage (Konva onMouseDown) ────────────────────────────
+  // Utilise le système de détection de Konva plutôt que stage.getIntersection()
+  // avec des coordonnées converties manuellement (source d'erreur avec zoom/pan).
+  // La détection Konva gère correctement les Rects transparents (listening=true).
+  const handleStagePanStart = useCallback((e) => {
+    if (!isNavMode) return;
+    if (e.evt.button !== 0) return;
+    // Cède le contrôle si un ancêtre est draggable (tablette, tringle, etc.)
+    let node = e.target;
+    while (node && node.getType?.() !== 'Stage') {
+      if (node.draggable?.()) return;
+      node = node.parent;
+    }
+    const stage = stageRef.current;
+    if (!stage) return;
+    mousePanRef.current = {
+      active: true,
+      startX: e.evt.clientX,
+      startY: e.evt.clientY,
+      stageX: stage.x(),
+      stageY: stage.y(),
+    };
+    stage.container().style.cursor = 'grabbing';
+  }, [isNavMode]);
 
   // ── Touch gesture handlers ────────────────────────────────────────────────
 
@@ -575,6 +568,7 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
         scaleY={scale}
         x={position.x}
         y={position.y}
+        onMouseDown={handleStagePanStart}
         onTouchStart={handleStageTouchStart}
         onTouchMove={handleStageTouchMove}
         onTouchEnd={handleStageTouchEnd}
