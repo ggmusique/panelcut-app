@@ -1,5 +1,6 @@
 import React, { useRef, useState, useEffect, useMemo, useCallback, useImperativeHandle } from 'react';
 import { Stage, Layer, Rect, Line, Text, Group } from 'react-konva';
+import { Hand, MousePointer2 } from 'lucide-react';
 import { WOOD_STROKE, DIM_COLOR } from './konvaTheme';
 import FacadeKonvaModule from './FacadeKonvaModule';
 import FacadeKonvaAnnotations from './FacadeKonvaAnnotations';
@@ -164,7 +165,12 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
     return () => obs.disconnect();
   }, [svgW, svgH]);
 
-  // ── 1b. VIEWPORT STATE (zoom / pan) ────────────────────────────────────────
+  // ── 1b. INTERACTION MODE (move | navigation) ──────────────────────────────
+  // "navigation" → pan + zoom, drag des éléments désactivé
+  // "move"       → drag des éléments activé, pan désactivé
+  const [interactionMode, setInteractionMode] = useState('navigation');
+
+  // ── 1c. VIEWPORT STATE (zoom / pan) ────────────────────────────────────────
   const [scale,    setScale]    = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const lastCenter    = useRef(null);
@@ -181,7 +187,7 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
   const isErase   = activeTool === 'erase';
   const isPlace   = activeTool === 'shelf' || activeTool === 'rod';
   const isAdd     = activeTool === 'drawer' || activeTool === 'door' || activeTool === 'sliding';
-  const isNavMode = activeTool === 'select';
+  const isNavMode = interactionMode === 'navigation';
 
   // Non-passive wheel listener so we can call preventDefault()
   useEffect(() => {
@@ -515,7 +521,7 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
   return (
     <div ref={containerRef} style={{ width: '100%', position: 'relative' }}>
 
-      {/* ── Undo / Redo bandeau (top-left overlay on the Konva Stage) ── */}
+      {/* ── Undo / Redo + Mode buttons (top-left overlay on the Konva Stage) ── */}
       <div style={{
         position: 'absolute',
         top: 6,
@@ -558,6 +564,53 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
           }}
         >
           ↪ Rétablir
+        </button>
+
+        {/* ── Mode buttons ── */}
+        <div style={{ width: 1, background: '#d1d5db', margin: '2px 2px' }} />
+
+        <button
+          onClick={() => setInteractionMode('navigation')}
+          title="Mode Navigation — pan et zoom de la vue"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 5,
+            padding: '3px 10px',
+            fontSize: 13,
+            borderRadius: 4,
+            border: `1.5px solid ${interactionMode === 'navigation' ? '#3b82f6' : '#d1d5db'}`,
+            background: interactionMode === 'navigation' ? '#eff6ff' : '#fff',
+            color: interactionMode === 'navigation' ? '#1d4ed8' : '#374151',
+            cursor: 'pointer',
+            fontWeight: interactionMode === 'navigation' ? 600 : 400,
+            lineHeight: 1.4,
+          }}
+        >
+          <MousePointer2 size={14} />
+          Navigation
+        </button>
+
+        <button
+          onClick={() => setInteractionMode('move')}
+          title="Mode Déplacer — glisser les étagères, tringles et modules"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 5,
+            padding: '3px 10px',
+            fontSize: 13,
+            borderRadius: 4,
+            border: `1.5px solid ${interactionMode === 'move' ? '#10b981' : '#d1d5db'}`,
+            background: interactionMode === 'move' ? '#ecfdf5' : '#fff',
+            color: interactionMode === 'move' ? '#065f46' : '#374151',
+            cursor: 'pointer',
+            fontWeight: interactionMode === 'move' ? 600 : 400,
+            lineHeight: 1.4,
+          }}
+        >
+          <Hand size={14} />
+          Déplacer
         </button>
       </div>
       <Stage
@@ -697,6 +750,7 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
                 facadeItems={moduleItems}
                 isSelected={selectedId === i}
                 activeTool={activeTool}
+                interactionMode={interactionMode}
                 onSelect={() => {
                   selectModule(i);
                   if (activeTool === 'select') {

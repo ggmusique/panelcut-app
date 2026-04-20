@@ -27,7 +27,7 @@ const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
 // ── Shelf (tablette draggable) ────────────────────────────────────────────────
 
-function ShelfItem({ item, intLeft, intTop, intBottom, iW, iH, cabInteriorCm, isEraseTool, onItemMove, onItemRemove }) {
+function ShelfItem({ item, intLeft, intTop, intBottom, iW, iH, cabInteriorCm, isEraseTool, interactionMode, onItemMove, onItemRemove }) {
   const [hovered, setHovered] = useState(false);
   const [dragInfo, setDragInfo] = useState(null);
   const groupRef = useRef(null);
@@ -71,7 +71,7 @@ function ShelfItem({ item, intLeft, intTop, intBottom, iW, iH, cabInteriorCm, is
       ref={groupRef}
       x={intLeft}
       y={ey}
-      draggable={!isEraseTool}
+      draggable={interactionMode === 'move' && !isEraseTool}
       dragBoundFunc={dragBoundFunc}
       onDragMove={handleDragMove}
       onDragEnd={handleDragEnd}
@@ -125,7 +125,7 @@ function ShelfItem({ item, intLeft, intTop, intBottom, iW, iH, cabInteriorCm, is
 
 // ── Rod (tringle draggable) ───────────────────────────────────────────────────
 
-function RodItem({ item, intLeft, intTop, intBottom, iW, iH, cabInteriorCm, isEraseTool, onItemMove, onItemRemove }) {
+function RodItem({ item, intLeft, intTop, intBottom, iW, iH, cabInteriorCm, isEraseTool, interactionMode, onItemMove, onItemRemove }) {
   const [hovered, setHovered] = useState(false);
   const [dragInfo, setDragInfo] = useState(null);
   const groupRef = useRef(null);
@@ -166,7 +166,7 @@ function RodItem({ item, intLeft, intTop, intBottom, iW, iH, cabInteriorCm, isEr
       ref={groupRef}
       x={intLeft}
       y={ey}
-      draggable={!isEraseTool}
+      draggable={interactionMode === 'move' && !isEraseTool}
       dragBoundFunc={dragBoundFunc}
       onDragMove={handleDragMove}
       onDragEnd={handleDragEnd}
@@ -232,6 +232,7 @@ function DrawerSeparatorItem({
   cmToPx,        // facteur d'échelle px/cm
   intLeft, iW,
   isEraseTool,
+  interactionMode,
   onDrawerResize,
 }) {
   const groupRef = useRef(null);
@@ -281,7 +282,7 @@ function DrawerSeparatorItem({
       ref={groupRef}
       x={0}
       y={separatorY}
-      draggable={!isEraseTool}
+      draggable={interactionMode === 'move' && !isEraseTool}
       dragBoundFunc={dragBoundFunc}
       onDragMove={handleDragMove}
       onDragEnd={handleDragEnd}
@@ -448,6 +449,7 @@ export default function FacadeKonvaItems({
   module,
   moduleDetail,
   isEraseTool = false,
+  interactionMode = 'navigation',
   onItemMove,
   onItemRemove,
   onRemoveElement,
@@ -581,6 +583,7 @@ export default function FacadeKonvaItems({
             iH={iH}
             cabInteriorCm={cabInteriorCm}
             isEraseTool={isEraseTool}
+            interactionMode={interactionMode}
             onItemMove={onItemMove}
             onItemRemove={onItemRemove}
           />
@@ -606,6 +609,7 @@ export default function FacadeKonvaItems({
               intLeft={intLeft}
               iW={iW}
               isEraseTool={isEraseTool}
+              interactionMode={interactionMode}
               onDrawerResize={onDrawerResize}
             />
           );
@@ -626,6 +630,7 @@ export default function FacadeKonvaItems({
             iH={iH}
             cabInteriorCm={cabInteriorCm}
             isEraseTool={isEraseTool}
+            interactionMode={interactionMode}
             onItemMove={onItemMove}
             onItemRemove={onItemRemove}
           />
