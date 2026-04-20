@@ -256,23 +256,24 @@ function DrawerSeparatorItem({
   }, [minBoundaryY, maxBoundaryY]);
 
   const handleDragMove = useCallback((e) => {
-    const newY    = e.target.y();
-    const newHPx  = fixedBottomI - newY;
+    const newY = e.target.y();
     if (cmToPx > 0) {
-      const newHCm = Math.round((newHPx / cmToPx) * 10) / 10;
-      setTooltipText(`${newHCm} cm`);
+      const upperH = Math.round((newY - fixedTopI1)  / cmToPx);
+      const lowerH = Math.round((fixedBottomI - newY) / cmToPx);
+      setTooltipText(`↑ ${upperH} cm | ↓ ${lowerH} cm`);
     }
-  }, [fixedBottomI, cmToPx]);
+  }, [fixedTopI1, fixedBottomI, cmToPx]);
 
   const handleDragEnd = useCallback((e) => {
     const newY = clamp(e.target.y(), minBoundaryY, maxBoundaryY);
     e.target.y(newY);
     setTooltipText(null);
     if (cmToPx > 0) {
-      const newHCm = Math.max(8, Math.round(((fixedBottomI - newY) / cmToPx) * 10) / 10);
-      onDrawerResize?.(modIdx, drawerIdx, newHCm);
+      const newH_lower = Math.max(8, Math.round(((fixedBottomI - newY) / cmToPx) * 10) / 10);
+      const newH_upper = Math.max(8, Math.round(((newY - fixedTopI1)  / cmToPx) * 10) / 10);
+      onDrawerResize?.(modIdx, drawerIdx, newH_lower, newH_upper);
     }
-  }, [minBoundaryY, maxBoundaryY, fixedBottomI, cmToPx, modIdx, drawerIdx, onDrawerResize]);
+  }, [minBoundaryY, maxBoundaryY, fixedBottomI, fixedTopI1, cmToPx, modIdx, drawerIdx, onDrawerResize]);
 
   // Ne pas rendre si pas de callback ou si les contraintes sont impossibles
   if (!onDrawerResize || maxBoundaryY <= minBoundaryY) return null;
@@ -287,17 +288,12 @@ function DrawerSeparatorItem({
       onDragMove={handleDragMove}
       onDragEnd={handleDragEnd}
     >
-      {/* Ligne de séparation visible */}
-      <Rect
-        x={intLeft + 4} y={-1}
-        width={iW - 8} height={2}
-        fill="#6b7280" opacity={0.45}
+      {/* Ligne visuelle de séparation */}
+      <Line
+        points={[intLeft, 0, intLeft + iW, 0]}
+        stroke="#8b6914" strokeWidth={1.5} dash={[4, 3]}
         listening={false}
       />
-      {/* Indicateur de poignée (3 points) */}
-      <Circle x={intLeft + iW / 2 - 6} y={0} radius={2} fill="#9ca3af" opacity={0.7} listening={false} />
-      <Circle x={intLeft + iW / 2}      y={0} radius={2} fill="#9ca3af" opacity={0.7} listening={false} />
-      <Circle x={intLeft + iW / 2 + 6} y={0} radius={2} fill="#9ca3af" opacity={0.7} listening={false} />
       {/* Zone de hit (12 px de haut, transparent) */}
       <Rect
         x={intLeft} y={-6}
@@ -306,21 +302,20 @@ function DrawerSeparatorItem({
         onMouseEnter={(e) => { const c = e.target.getStage()?.container(); if (c && !isEraseTool) c.style.cursor = 'ns-resize'; }}
         onMouseLeave={(e) => { const c = e.target.getStage()?.container(); if (c) c.style.cursor = 'default'; }}
       />
-      {/* Tooltip pendant le drag */}
+      {/* Badge cote live pendant le drag */}
       {tooltipText !== null && (
         <Group listening={false}>
           <Rect
-            x={intLeft + iW / 2 - 30} y={-30}
-            width={60} height={20}
-            fill="white" stroke="#111827" strokeWidth={1}
-            cornerRadius={3}
+            x={intLeft + iW / 2 - 65} y={-18}
+            width={130} height={20}
+            fill="#0C447C" cornerRadius={4}
           />
           <Text
-            x={intLeft + iW / 2 - 30} y={-24}
-            width={60}
+            x={intLeft + iW / 2 - 65} y={-12}
+            width={130}
             text={tooltipText}
             align="center"
-            fill="#111827" fontSize={11} fontStyle="bold"
+            fill="#E6F1FB" fontSize={11} fontStyle="bold"
           />
         </Group>
       )}
@@ -447,7 +442,7 @@ function SlidingDoorsItem({ intLeft, intTop, iW, iH, modIdx, isEraseTool, onRemo
  *   onItemMove      — (itemId, newYRatio) => void  ← DOIT être branché sur setFacadeItems
  *   onItemRemove    — (itemId) => void
  *   onRemoveElement — (modIdx, type) => void
- *   onDrawerResize  — (modIdx, drawerIdx, newHeightCm) => void
+ *   onDrawerResize  — (modIdx, drawerIdx, newH_lower, newH_upper) => void
  */
 export default function FacadeKonvaItems({
   moduleRect,

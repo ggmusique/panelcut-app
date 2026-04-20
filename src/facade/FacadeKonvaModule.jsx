@@ -27,7 +27,7 @@ const toNum = (v, d = 0) => {
  *   onAddElement  — (payload) => void  — payload is { type, yRatio? } or just type string
  *   onRemoveElement — (type, id?) => void
  *   onItemMove    — (itemId, newYRatio) => void
- *   onDrawerResize — (modIdx, drawerIdx, newHeightCm) => void
+ *   onDrawerResize — (modIdx, drawerIdx, newH_lower, newH_upper) => void
  */
 export default function FacadeKonvaModule({
   moduleRect,
