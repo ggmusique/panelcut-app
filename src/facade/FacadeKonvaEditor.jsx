@@ -137,6 +137,7 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
   onElementUpdate,
   onElementRemove,
   onDrawerResize,
+  onModuleSelect,
   activeTool      = 'select',
   onChange,
   onModuleChange,
@@ -458,6 +459,24 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
   }, [resizeModule, setResizingModuleId]);
 
   /**
+   * Computes the screen (client) coordinates of the center of a module,
+   * accounting for the stage's current scale and pan position.
+   */
+  const computeModuleScreenCenter = useCallback((moduleRect) => {
+    const stage = stageRef.current;
+    if (!stage) return { x: 0, y: 0 };
+    const container    = stage.container();
+    const containerRect = container.getBoundingClientRect();
+    const stageScale   = stage.scaleX();
+    const modCx = moduleRect.intX + moduleRect.intW / 2;
+    const modCy = moduleRect.intY + moduleRect.intH / 2;
+    return {
+      x: containerRect.left + stage.x() + modCx * stageScale,
+      y: containerRect.top  + stage.y() + modCy * stageScale,
+    };
+  }, []);
+
+  /**
    * Called by FacadeKonvaModule's onAddElement.
    * payload = { type, yRatio } for shelf/rod, or a tool string for drawer/door/sliding.
    */
@@ -553,6 +572,11 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
         onTouchStart={handleStageTouchStart}
         onTouchMove={handleStageTouchMove}
         onTouchEnd={handleStageTouchEnd}
+        onClick={(e) => {
+          if (e.target === e.target.getStage()) {
+            onModuleSelect?.(null, 0, 0);
+          }
+        }}
       >
         <Layer>
 
@@ -673,7 +697,13 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
                 facadeItems={moduleItems}
                 isSelected={selectedId === i}
                 activeTool={activeTool}
-                onSelect={() => selectModule(i)}
+                onSelect={() => {
+                  selectModule(i);
+                  if (activeTool === 'select') {
+                    const { x, y } = computeModuleScreenCenter(moduleRect);
+                    onModuleSelect?.(i, x, y);
+                  }
+                }}
                 onResizeStart={(e) => handleResizeStart(i, moduleRect.w, m.width, e)}
                 onAddElement={(payload) => handleModuleAddElement(i, payload)}
                 onRemoveElement={(type, id) => handleModuleRemoveElement(i, type, id)}
