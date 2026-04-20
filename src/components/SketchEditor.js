@@ -44,6 +44,7 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
     handleElementAdd,
     handleElementUpdate,
     handleElementRemove,
+    handleMoveModule,
   } = useSketchState({ initialResult, draft, konvaEditorRef, onComplete });
 
   useEffect(() => {
@@ -177,6 +178,7 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
         moduleDetails={moduleDetails}
         onModuleDetailsChange={setModuleDetails}
         onSave={() => { void triggerRemoteSave(); }}
+        onMoveModule={(fromIdx, toIdx) => { handleMoveModule(fromIdx, toIdx); setSelectedModuleIdx(toIdx); }}
       />
 
       <SketchEditorCanvas
