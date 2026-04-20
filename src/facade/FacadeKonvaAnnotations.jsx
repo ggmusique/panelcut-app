@@ -453,6 +453,24 @@ function NoteElement({ el, isErase, onUpdate, onRemove, stageRef }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
+// ── Auto-label helpers ────────────────────────────────────────────────────────
+
+/**
+ * Converts a drawn dim line (in stage content coords) to a cm label.
+ * Uses horizontal scale if the line is mostly horizontal, vertical otherwise.
+ */
+function computeAutoLabel(x1, y1, x2, y2, drawW, drawH, cabW, cabH) {
+  const dx = Math.abs(x2 - x1);
+  const dy = Math.abs(y2 - y1);
+  let cm;
+  if (dx >= dy) {
+    cm = (dx / Math.max(1, drawW)) * Math.max(1, cabW);
+  } else {
+    cm = (dy / Math.max(1, drawH)) * Math.max(1, cabH);
+  }
+  return String(Math.round(cm * 10) / 10);
+}
+
 /**
  * FacadeKonvaAnnotations
  *
@@ -468,9 +486,10 @@ function NoteElement({ el, isErase, onUpdate, onRemove, stageRef }) {
  *   onElementAdd    — (element) => void
  *   onElementUpdate — (element) => void
  *   onElementRemove — (id) => void
- *   isDrawingDim    — boolean (controlled from parent, optional)
- *   dimStart        — {x,y} (controlled from parent, optional)
  *   stageRef        — ref to the Konva Stage (for getBoundingClientRect)
+ *   cabW, cabH      — cabinet outer dimensions in cm (for auto-labelling); defaults match
+ *                     typical stage proportions and are overridden by FacadeKonvaEditor
+ *   drawW, drawH    — drawing area size in stage content pixels (for auto-labelling)
  */
 export default function FacadeKonvaAnnotations({
   elements = [],
@@ -481,15 +500,15 @@ export default function FacadeKonvaAnnotations({
   onElementUpdate,
   onElementRemove,
   stageRef,
+  cabW   = 0,
+  cabH   = 0,
+  drawW  = 800,
+  drawH  = 600,
 }) {
   // ── Drawing state ──────────────────────────────────────────────────────────
   const [drawing,    setDrawing]    = useState(false);  // dim creation in progress
   const [dimStart,   setDimStart]   = useState(null);   // {x, y}
   const [dimPreview, setDimPreview] = useState(null);   // {x2, y2}
-
-  // For the pending dim awaiting a label after mouseup
-  const [pendingDim,     setPendingDim]     = useState(null); // element object
-  const [pendingLabelPos, setPendingLabelPos] = useState(null); // {x, y} screen coords
 
   // For note creation
   const [noteInputPos, setNoteInputPos] = useState(null); // {x, y} screen coords
@@ -540,6 +559,8 @@ export default function FacadeKonvaAnnotations({
       return;
     }
 
+    // Auto-compute the label from plan dimensions — no manual input required
+    const autoLabel = computeAutoLabel(dimStart.x, dimStart.y, pos.x, pos.y, drawW, drawH, cabW, cabH);
     const newDim = {
       id:    uid(),
       type:  'dim',
@@ -547,22 +568,13 @@ export default function FacadeKonvaAnnotations({
       y1:    dimStart.y,
       x2:    pos.x,
       y2:    pos.y,
-      label: '',
+      label: autoLabel,
     };
 
     setDimStart(null);
     setDimPreview(null);
-
-    // Open label input immediately
-    const cr = stage?.container().getBoundingClientRect();
-    const mx = (newDim.x1 + newDim.x2) / 2;
-    const my = (newDim.y1 + newDim.y2) / 2;
-    setPendingDim(newDim);
-    setPendingLabelPos({
-      x: (cr?.left ?? 0) + mx - BUBBLE_W / 2,
-      y: (cr?.top  ?? 0) + my - BUBBLE_H / 2 - 4,
-    });
-  }, [isDim, drawing, dimStart]);
+    onElementAdd?.(newDim);
+  }, [isDim, drawing, dimStart, drawW, drawH, cabW, cabH, onElementAdd]);
 
   const handleStageClick = useCallback((e) => {
     if (!isNote) return;
@@ -577,20 +589,6 @@ export default function FacadeKonvaAnnotations({
       y: (cr?.top  ?? 0) + pos.y - 14,
     });
   }, [isNote]);
-
-  // ── Commit pending dim label ───────────────────────────────────────────────
-  const commitPendingDim = useCallback((label) => {
-    if (!pendingDim) return;
-    const el = { ...pendingDim, label };
-    setPendingDim(null);
-    setPendingLabelPos(null);
-    onElementAdd?.(el);
-  }, [pendingDim, onElementAdd]);
-
-  const cancelPendingDim = useCallback(() => {
-    setPendingDim(null);
-    setPendingLabelPos(null);
-  }, []);
 
   // ── Commit pending note text ───────────────────────────────────────────────
   const commitNote = useCallback((text) => {
@@ -612,15 +610,16 @@ export default function FacadeKonvaAnnotations({
   return (
     <Group>
       {/* ── Transparent overlay to capture stage events ──
-           Utilise une taille généreuse pour couvrir n'importe quel niveau de zoom
-           (à scale < 1 l'espace contenu est plus grand que stageWidth/stageHeight). */}
+           Uses a size that covers the entire drawing area at any zoom level.
+           perfectDrawEnabled={false} prevents extra Konva rendering passes. */}
       {(isDim || isNote) && (
         <Rect
           x={-20000}
           y={-20000}
           width={40000}
           height={40000}
-          fill="transparent"
+          fill="rgba(0,0,0,0)"
+          perfectDrawEnabled={false}
           onMouseDown={handleStageMouseDown}
           onMouseMove={handleStageMouseMove}
           onMouseUp={handleStageMouseUp}
@@ -667,18 +666,6 @@ export default function FacadeKonvaAnnotations({
             stageRef={stageRef}
           />
         ))}
-
-      {/* ── Pending dim label input ── */}
-      {pendingDim && pendingLabelPos && (
-        <OverlayInput
-          x={pendingLabelPos.x}
-          y={pendingLabelPos.y}
-          value=""
-          placeholder="valeur"
-          onCommit={commitPendingDim}
-          onCancel={cancelPendingDim}
-        />
-      )}
 
       {/* ── Note text input ── */}
       {noteInputPos && (

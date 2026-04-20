@@ -995,6 +995,10 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
             onElementUpdate={onElementUpdate}
             onElementRemove={onElementRemove}
             stageRef={stageRef}
+            cabW={toNum(cabW)}
+            cabH={toNum(cabH)}
+            drawW={drawW}
+            drawH={drawH}
           />
 
           {/* ── SNAP LINE — amber vertical guide + badge shown during module resize ── */}
