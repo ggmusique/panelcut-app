@@ -230,6 +230,33 @@ const SketchEditorCanvas = forwardRef(function SketchEditorCanvas(
                 </div>
               );
             })()}
+
+            {/* ── 3D Floating overlay — présentation mode au-dessus du calque ── */}
+            {show3D && debouncedCabinet && (
+              <div style={{
+                position: 'absolute',
+                top: 8,
+                right: 8,
+                width: 260,
+                zIndex: 20,
+                borderRadius: 10,
+                overflow: 'hidden',
+                background: '#0f172a',
+                boxShadow: '0 6px 24px rgba(0,0,0,0.6)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                // Let pointer events pass through to the Konva canvas when using
+                // tools that require canvas interaction (dim drawing, note placement)
+                pointerEvents: (activeTool === 'dim' || activeTool === 'note') ? 'none' : 'auto',
+              }}>
+                <ProfessionalRealisticViewer
+                  cabinet={debouncedCabinet}
+                  fullScreen={false}
+                  presentationMode={true}
+                  miniMode={true}
+                  height={200}
+                />
+              </div>
+            )}
           </div>
         </div>
 
@@ -271,19 +298,6 @@ const SketchEditorCanvas = forwardRef(function SketchEditorCanvas(
               onRedo={onRedo}
             />
           </div>
-
-          {/* 3D mini preview */}
-          {show3D && debouncedCabinet && (
-            <div style={{ flexShrink: 0, padding: '6px 8px 8px', borderTop: '1px solid var(--border, #334155)', background: '#0f172a' }}>
-              <ProfessionalRealisticViewer
-                cabinet={debouncedCabinet}
-                fullScreen={false}
-                presentationMode={false}
-                miniMode={true}
-                height={250}
-              />
-            </div>
-          )}
         </div>
       </div>
 
