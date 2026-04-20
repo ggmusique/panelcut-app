@@ -150,8 +150,8 @@ function DimElement({
       <Group
         draggable={!isErase}
         onDragEnd={handleGroupDragEnd}
-        onClick={(e) => { e.cancelBubble = true; if (isErase) { onRemove?.(id); } }}
-        onTap={(e)   => { e.cancelBubble = true; if (isErase) { onRemove?.(id); } }}
+        onClick={(e) => { if (isErase) { e.cancelBubble = true; onRemove?.(id); } }}
+        onTap={(e)   => { if (isErase) { e.cancelBubble = true; onRemove?.(id); } }}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
       >
