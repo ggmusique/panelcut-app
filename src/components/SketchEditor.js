@@ -87,6 +87,11 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
   const totalJointsWidth   = joints.reduce((s, d) => s + jointThickness(d, thickness), 0);
   const totalInteriorWidth = Math.max(1, toNum(cabinetDims.width, 200) - thickness * 2 - totalJointsWidth);
   const [jointsOpen, setJointsOpen] = useState(false);
+  const [snapshotCabinet, setSnapshotCabinet] = useState(null);
+  // Initialise le snapshot au premier currentCabinet disponible
+  useEffect(() => {
+    if (currentCabinet && !snapshotCabinet) setSnapshotCabinet(currentCabinet);
+  }, [currentCabinet]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleGenerateLocal = useCallback(() => {
     if (!currentCabinet) return;
@@ -372,19 +377,29 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
 
         <aside className="hidden w-[332px] shrink-0 border-l border-white/10 bg-[linear-gradient(180deg,#10192d,#0a1120)] xl:flex xl:flex-col">
           <div className="border-b border-white/10 px-4 py-3">
-            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-              <ScanSearch className="h-4 w-4 text-sky-300" />
-              Aperçu 3D client
-            </div>
-            <div className="mt-2 text-[13px] text-slate-300">
-              Le rendu client se met à jour à partir de la structure actuelle du meuble.
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                <ScanSearch className="h-4 w-4 text-sky-300" />
+                Aperçu 3D client
+              </div>
+              <button
+                onClick={() => setSnapshotCabinet(currentCabinet)}
+                title="Mettre à jour l'aperçu 3D"
+                style={{
+                  fontSize: 11, padding: '2px 8px', borderRadius: 4, cursor: 'pointer',
+                  background: 'rgba(56,139,253,0.15)', border: '1px solid rgba(56,139,253,0.3)',
+                  color: '#388bfd', fontWeight: 600,
+                }}
+              >
+                ↺ Rafraîchir
+              </button>
             </div>
           </div>
 
           <div className="px-3 pt-3">
             <div className="overflow-hidden rounded-[24px] border border-white/10 bg-white/[0.03] shadow-[0_18px_50px_rgba(0,0,0,0.28)]">
               <ProfessionalRealisticViewer
-                cabinet={currentCabinet}
+                cabinet={snapshotCabinet}
                 name="Aperçu meuble"
                 presentationMode
                 embedded
