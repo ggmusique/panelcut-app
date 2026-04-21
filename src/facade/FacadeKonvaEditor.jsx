@@ -473,8 +473,18 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
     if (e.evt.button !== 0) return;
 
     if (isNavMode) {
-      // Navigation mode → pan only on background (not on interactive module shapes)
-      if (e.target.getType?.() !== 'Stage') return;
+      // Navigation mode : PAN sur tout sauf les items draggables
+      let node = e.target;
+      let isDraggableItem = false;
+      while (node && node.getType?.() !== 'Stage') {
+        if (node.draggable?.() && node.name?.() !== MODULE_HITBOX_NAME) {
+          isDraggableItem = true;
+          break;
+        }
+        node = node.parent;
+      }
+      if (isDraggableItem) return; // laisse le drag de l'item se faire
+
       const stage = stageRef.current;
       if (!stage) return;
       mousePanRef.current = {
@@ -495,7 +505,6 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
       if (node.name?.() === MODULE_HITBOX_NAME) return;
       node = node.parent;
     }
-    // Only start rubber band when clicking empty background
     const stage = stageRef.current;
     if (!stage) return;
     const pt = stage.getPointerPosition();
