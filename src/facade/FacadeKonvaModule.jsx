@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { Group, Rect, Line, Circle, Text } from 'react-konva';
 import {
   WOOD_STROKE,
@@ -35,6 +35,7 @@ export default function FacadeKonvaModule({
   moduleDetail,
   facadeItems = [],
   isSelected = false,
+  hasSelection = false,
   activeTool = 'select',
   interactionMode = 'navigation',
   onSelect,
@@ -44,6 +45,16 @@ export default function FacadeKonvaModule({
   onItemMove,
   onDrawerResize,
 }) {
+  const [isResizing, setIsResizing] = useState(false);
+
+  // Clear isResizing on mouseup (window-level, mirrors handleResizeStart in FacadeKonvaEditor)
+  useEffect(() => {
+    if (!isResizing) return;
+    const onUp = () => setIsResizing(false);
+    window.addEventListener('mouseup', onUp);
+    return () => window.removeEventListener('mouseup', onUp);
+  }, [isResizing]);
+
   if (!moduleRect) return null;
 
   const { modIdx = 0, w, h, intX, intY, intW, intH, widthCm } = moduleRect;
@@ -114,11 +125,11 @@ export default function FacadeKonvaModule({
       onAddElement?.(activeTool);
       return;
     }
-    onSelect?.();
+    onSelect?.(e);
   }, [isErase, isPlace, isAdd, activeTool, onSelect, onAddElement]);
 
   return (
-    <Group>
+    <Group opacity={hasSelection && !isSelected ? 0.7 : 1}>
       {/* ── Interior background ── */}
       <Rect
         x={intLeft} y={intTop}
@@ -205,12 +216,13 @@ export default function FacadeKonvaModule({
       />
 
       {/* ── Zone de clic pour placement tablette / tringle (au-dessus — capture la position du clic) ── */}
-      {/* En mode 'move', cette zone est désactivée pour ne pas bloquer le drag des items draggables. */}
-      {isPlace && interactionMode !== 'move' && (
+      {/* listening=false en mode 'move' pour ne pas bloquer le drag des items draggables. */}
+      {isPlace && (
         <Rect
           x={intLeft} y={intTop}
           width={iW} height={iH}
           fill="transparent"
+          listening={interactionMode !== 'move'}
           onClick={(e) => {
             e.cancelBubble = true;
             const stage = e.target.getStage();
@@ -223,12 +235,13 @@ export default function FacadeKonvaModule({
       )}
 
       {/* ── Zone de clic pour outils d'ajout (au-dessus — pas de position nécessaire) ── */}
-      {/* En mode 'move', cette zone est désactivée pour ne pas bloquer le drag des séparateurs de tiroirs. */}
-      {isAdd && interactionMode !== 'move' && (
+      {/* listening=false en mode 'move' pour ne pas bloquer le drag des séparateurs de tiroirs. */}
+      {isAdd && (
         <Rect
           x={intLeft} y={intTop}
           width={iW} height={iH}
           fill="transparent"
+          listening={interactionMode !== 'move'}
           onClick={handleGroupClick}
         />
       )}
@@ -252,10 +265,35 @@ export default function FacadeKonvaModule({
           }}
           onMouseDown={(e) => {
             e.cancelBubble = true;
+            setIsResizing(true);
             onResizeStart(e);
           }}
         />
       )}
+
+      {/* ── Live width badge during resize ── */}
+      {isResizing && (() => {
+        const bW = 60;
+        const bH = 20;
+        const bX = intLeft + iW - bW / 2;
+        const bY = intTop - bH - 6;
+        return (
+          <Group listening={false}>
+            <Rect
+              x={bX} y={bY}
+              width={bW} height={bH}
+              fill="#1d4ed8" cornerRadius={4}
+            />
+            <Text
+              x={bX} y={bY + 5}
+              width={bW}
+              text={`${toNum(widthCm, 0).toFixed(1)} cm`}
+              align="center"
+              fill="#dbeafe" fontSize={11} fontStyle="bold"
+            />
+          </Group>
+        );
+      })()}
     </Group>
   );
 }

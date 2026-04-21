@@ -104,7 +104,7 @@ export function useFacadeKonva({
   }, [initialModules, initialItems, currentSnapshot.modules, currentSnapshot.items]);
 
   // ── État de l'UI ──────────────────────────────────────────────────────────
-  const [selectedId,        setSelectedId]        = useState(null);
+  const [selectedIds,       setSelectedIds]       = useState(() => new Set());
   const [draggingModuleId,  setDraggingModuleId]  = useState(null);
   const [resizingModuleId,  setResizingModuleId]  = useState(null);
   const [snapActive,        setSnapActive]        = useState(false);
@@ -139,9 +139,22 @@ export function useFacadeKonva({
   }, [onChange]);
 
   // ── Actions de sélection ──────────────────────────────────────────────────
-  const selectModule   = useCallback((id) => setSelectedId(id), []);
-  const selectItem     = useCallback((id) => setSelectedId(id), []);
-  const clearSelection = useCallback(() => setSelectedId(null), []);
+  const selectModule = useCallback((idx, addToSelection = false) => {
+    setSelectedIds(prev => {
+      if (addToSelection) {
+        const next = new Set(prev);
+        next.add(idx);
+        return next;
+      }
+      return new Set([idx]);
+    });
+  }, []);
+
+  /** Remplace la sélection par un ensemble arbitraire d'indices (rubber band). */
+  const selectModules  = useCallback((indices) => setSelectedIds(new Set(indices)), []);
+  /** selectItem est conservé pour la compatibilité API mais n'affecte pas la sélection de modules. */
+  const selectItem     = useCallback((_id) => {}, []);
+  const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
 
   // ── Ré-ordonnancement des modules (drag & drop) ───────────────────────────
   const moveModuleOrder = useCallback((fromIdx, toIdx) => {
@@ -261,7 +274,7 @@ export function useFacadeKonva({
     moduleRects,
 
     // UI
-    selectedId,
+    selectedIds,
     draggingModuleId,
     resizingModuleId,
     snapActive,
@@ -273,6 +286,7 @@ export function useFacadeKonva({
 
     // Actions de sélection
     selectModule,
+    selectModules,
     selectItem,
     clearSelection,
 

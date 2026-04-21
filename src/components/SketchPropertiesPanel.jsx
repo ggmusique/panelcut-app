@@ -1,0 +1,478 @@
+import { useState } from 'react';
+
+// ── Module type & material options ────────────────────────────────────────────
+
+const MODULE_TYPES = [
+  { value: 'open',     label: 'Étagères ouvertes' },
+  { value: 'drawers',  label: 'Tiroirs' },
+  { value: 'wardrobe', label: 'Penderie' },
+  { value: 'mixed',    label: 'Mixte' },
+];
+
+const MATERIALS = [
+  { value: 'oak',       label: 'Chêne' },
+  { value: 'white_mat', label: 'Blanc mat' },
+  { value: 'walnut',    label: 'Noyer' },
+  { value: 'wenge',     label: 'Wengé' },
+  { value: 'mdf',       label: 'MDF brut' },
+];
+
+// ── Inline SVG icons ──────────────────────────────────────────────────────────
+
+const IconAlignLeft = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6">
+    <line x1="2" y1="2" x2="2" y2="14" strokeWidth="2"/>
+    <rect x="4" y="4" width="7" height="8" rx="1"/>
+  </svg>
+);
+
+const IconAlignCenter = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6">
+    <line x1="8" y1="2" x2="8" y2="14" strokeWidth="2"/>
+    <rect x="3" y="4" width="10" height="8" rx="1"/>
+  </svg>
+);
+
+const IconDistribute = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6">
+    <line x1="2" y1="2" x2="2" y2="14" strokeWidth="1.5"/>
+    <line x1="14" y1="2" x2="14" y2="14" strokeWidth="1.5"/>
+    <rect x="5" y="5" width="6" height="6" rx="1"/>
+  </svg>
+);
+
+const IconAlignRight = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6">
+    <line x1="14" y1="2" x2="14" y2="14" strokeWidth="2"/>
+    <rect x="5" y="4" width="7" height="8" rx="1"/>
+  </svg>
+);
+
+// ── Styles (inline, matching the dark theme from App.css) ─────────────────────
+
+const S = {
+  panel: {
+    width: 280,
+    flexShrink: 0,
+    background: 'var(--bg-card)',
+    borderLeft: '0.5px solid var(--border)',
+    padding: 16,
+    overflowY: 'auto',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 20,
+    color: 'var(--text1)',
+    fontSize: 12,
+  },
+  sectionTitle: {
+    fontSize: 10,
+    fontWeight: 700,
+    textTransform: 'uppercase',
+    letterSpacing: '0.08em',
+    color: 'var(--text2)',
+    marginBottom: 10,
+  },
+  moduleTitle: {
+    fontSize: 13,
+    fontWeight: 500,
+    marginBottom: 10,
+  },
+  fieldGroup: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+  },
+  field: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 3,
+  },
+  label: {
+    fontSize: 11,
+    color: 'var(--text2)',
+  },
+  select: {
+    width: '100%',
+    background: 'var(--bg-card2)',
+    border: '1px solid var(--border2)',
+    borderRadius: 6,
+    color: 'var(--text1)',
+    fontSize: 12,
+    padding: '5px 8px',
+    cursor: 'pointer',
+    outline: 'none',
+  },
+  input: {
+    width: '100%',
+    background: 'var(--bg-card2)',
+    border: '1px solid var(--border2)',
+    borderRadius: 6,
+    color: 'var(--text1)',
+    fontSize: 12,
+    padding: '5px 8px',
+    outline: 'none',
+  },
+  inputReadonly: {
+    width: '100%',
+    background: 'var(--bg)',
+    border: '1px solid var(--border)',
+    borderRadius: 6,
+    color: 'var(--text2)',
+    fontSize: 12,
+    padding: '5px 8px',
+  },
+  iconBtn: {
+    flex: 1,
+    background: 'var(--bg-card2)',
+    border: '1px solid var(--border2)',
+    borderRadius: 6,
+    color: 'var(--text2)',
+    cursor: 'pointer',
+    padding: '6px 0',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    transition: 'background 0.15s, color 0.15s',
+  },
+  layerRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    fontSize: 12,
+    cursor: 'pointer',
+  },
+};
+
+// ── Component ────────────────────────────────────────────────────────────────
+
+/**
+ * SketchPropertiesPanel
+ *
+ * Right-side properties panel (280 px) for the Sketch editor.
+ * Displays and edits properties of the currently selected facade module.
+ *
+ * Props:
+ *   selectedModuleIdx        {number|null}
+ *   selectedIds              {Set<number>}  — multi-selection from the canvas
+ *   facadeModules            {Array}
+ *   moduleDetails            {Array}
+ *   cabinetDims              {{width, height, plinth}}
+ *   onModuleChange           {(idx: number, changes: object) => void}
+ *   onModulesChange          {(newModules: Array) => void}  — bulk update
+ *   onModuleDetailsChange    {(idx: number, changes: object) => void}
+ *   canUndo, canRedo         {boolean}
+ *   onUndo, onRedo           {() => void}
+ */
+export default function SketchPropertiesPanel({
+  selectedModuleIdx,
+  selectedIds,
+  facadeModules,
+  moduleDetails,
+  cabinetDims,
+  onModuleChange,
+  onModulesChange,
+  onModuleDetailsChange,
+  canUndo,
+  canRedo,
+  onUndo,
+  onRedo,
+}) {
+  // Calques (layer visibility).
+  // These are passed up via onModuleDetailsChange when hook integration is added.
+  // Currently stored locally; parent can lift to useSketchState when needed.
+  const [showDims,   setShowDims]   = useState(true);
+  const [showGuides, setShowGuides] = useState(true);
+
+  // Width edit buffer (local string while the user is typing)
+  const [widthBuffer, setWidthBuffer] = useState(null);
+
+  const mod = (selectedModuleIdx !== null && selectedModuleIdx !== undefined)
+    ? (facadeModules?.[selectedModuleIdx] ?? null)
+    : null;
+
+  // Cumulative X position of the selected module (sum of widths to the left)
+  const moduleX = (() => {
+    if (selectedModuleIdx == null || !facadeModules) return 0;
+    let x = 0;
+    for (let i = 0; i < selectedModuleIdx; i++) {
+      x += facadeModules[i]?.width || 0;
+    }
+    return x;
+  })();
+
+  // ── Handlers ──────────────────────────────────────────────────────────────
+
+  const handleTypeChange = (e) => {
+    if (selectedModuleIdx == null) return;
+    onModuleChange?.(selectedModuleIdx, { moduleType: e.target.value });
+  };
+
+  const handleMaterialChange = (e) => {
+    if (selectedModuleIdx == null) return;
+    onModuleChange?.(selectedModuleIdx, { material: e.target.value });
+  };
+
+  const handleWidthCommit = () => {
+    if (selectedModuleIdx == null || widthBuffer === null) return;
+    const val = parseFloat(widthBuffer);
+    if (Number.isFinite(val) && val >= 5) {
+      onModuleChange?.(selectedModuleIdx, { width: Math.round(val * 10) / 10 });
+    }
+    setWidthBuffer(null);
+  };
+
+  // Determine which module indices the alignment operations should target.
+  // Multiple selected → act on selected only; one or none → act on all.
+  const targetIndices = (selectedIds?.size > 1)
+    ? Array.from(selectedIds).sort((a, b) => a - b)
+    : (facadeModules?.map((_, i) => i) ?? []);
+
+  /** Shared helper: return a new modules array with equal widths for `indices`. */
+  const applyEqualWidths = (indices) => {
+    const totalW = indices.reduce((s, i) => s + (facadeModules[i]?.width || 0), 0);
+    const eqW    = Math.round((totalW / indices.length) * 10) / 10;
+    return facadeModules.map((m, i) =>
+      indices.includes(i) ? { ...m, width: eqW } : m
+    );
+  };
+
+  // "Égaliser largeurs" — equal widths among target modules (selected if >1, else all)
+  const handleEqualWidths = () => {
+    if (!facadeModules?.length || !targetIndices.length) return;
+    onModulesChange?.(applyEqualWidths(targetIndices));
+  };
+
+  // "Aligner sur grille 5cm" — snap each target to nearest 5cm, adjust last to preserve total
+  const MIN_WIDTH_CM = 5;
+  const handleSnapGrid5 = () => {
+    if (!facadeModules?.length || !targetIndices.length) return;
+    const totalOriginal = targetIndices.reduce((s, i) => s + (facadeModules[i]?.width || 0), 0);
+    const newWidths = {};
+    let totalSnapped = 0;
+    targetIndices.forEach((i) => {
+      const snapped = Math.max(MIN_WIDTH_CM, Math.round((facadeModules[i]?.width || 0) / 5) * 5);
+      newWidths[i] = snapped;
+      totalSnapped += snapped;
+    });
+    // Adjust last target module to preserve the total width
+    const lastIdx = targetIndices[targetIndices.length - 1];
+    newWidths[lastIdx] = Math.max(MIN_WIDTH_CM, Math.round((newWidths[lastIdx] + totalOriginal - totalSnapped) * 10) / 10);
+    const newModules = facadeModules.map((m, i) =>
+      newWidths[i] !== undefined ? { ...m, width: newWidths[i] } : m
+    );
+    onModulesChange?.(newModules);
+  };
+
+  // "Distribuer" — redistribute widths evenly among selected modules (always uses selectedIds)
+  const handleDistribute = () => {
+    if (!facadeModules?.length) return;
+    const indices = (selectedIds?.size > 1)
+      ? Array.from(selectedIds).sort((a, b) => a - b)
+      : (facadeModules?.map((_, i) => i) ?? []);
+    if (!indices.length) return;
+    onModulesChange?.(applyEqualWidths(indices));
+  };
+
+  // ── Render ────────────────────────────────────────────────────────────────
+
+  return (
+    <div style={S.panel}>
+
+      {/* ── PROPRIÉTÉS ── */}
+      {mod && (
+        <section>
+          <div style={S.sectionTitle}>Propriétés</div>
+          <div style={S.moduleTitle}>Module {selectedModuleIdx + 1}</div>
+
+          <div style={S.fieldGroup}>
+            {/* Type */}
+            <div style={S.field}>
+              <label style={S.label}>Type</label>
+              <select
+                style={S.select}
+                value={mod.moduleType || 'open'}
+                onChange={handleTypeChange}
+              >
+                {MODULE_TYPES.map(t => (
+                  <option key={t.value} value={t.value}>{t.label}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Matériau */}
+            <div style={S.field}>
+              <label style={S.label}>Matériau</label>
+              <select
+                style={S.select}
+                value={mod.material || 'oak'}
+                onChange={handleMaterialChange}
+              >
+                {MATERIALS.map(m => (
+                  <option key={m.value} value={m.value}>{m.label}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Dimensions (read-only) */}
+            <div style={S.field}>
+              <label style={S.label}>Dimensions</label>
+              <input
+                readOnly
+                style={S.inputReadonly}
+                value={`${(mod.width || 0).toFixed(1)} × ${(cabinetDims?.height || 0).toFixed(1)} cm`}
+              />
+            </div>
+
+            {/* Largeur éditable */}
+            <div style={S.field}>
+              <label style={S.label}>Largeur (cm)</label>
+              <input
+                type="number"
+                style={S.input}
+                min={5}
+                step={0.5}
+                value={widthBuffer !== null ? widthBuffer : (mod.width || 0).toFixed(1)}
+                onChange={e => setWidthBuffer(e.target.value)}
+                onBlur={handleWidthCommit}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') { e.target.blur(); }
+                  if (e.key === 'Escape') { setWidthBuffer(null); }
+                }}
+              />
+            </div>
+
+            {/* Position */}
+            <div style={S.field}>
+              <label style={S.label}>Position</label>
+              <input
+                readOnly
+                style={S.inputReadonly}
+                value={`X : ${moduleX.toFixed(1)} cm · Y : 0 cm`}
+              />
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ── CALQUES ── */}
+      <section>
+        <div style={S.sectionTitle}>Calques</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {/* Plan principal — always visible, non-editable */}
+          <label style={{ ...S.layerRow, cursor: 'default', color: 'var(--text3)' }}>
+            <input
+              type="checkbox"
+              checked
+              disabled
+              style={{ accentColor: 'var(--accent)' }}
+            />
+            <span style={{ fontSize: 14, lineHeight: 1 }}>▦</span>
+            Plan principal
+          </label>
+
+          <label style={{ ...S.layerRow, color: 'var(--text1)' }}>
+            <input
+              type="checkbox"
+              checked={showDims}
+              onChange={() => setShowDims(v => !v)}
+              style={{ accentColor: 'var(--accent)', cursor: 'pointer' }}
+            />
+            <span style={{ fontSize: 14, lineHeight: 1 }}>↔</span>
+            Cotes
+          </label>
+
+          <label style={{ ...S.layerRow, color: 'var(--text1)' }}>
+            <input
+              type="checkbox"
+              checked={showGuides}
+              onChange={() => setShowGuides(v => !v)}
+              style={{ accentColor: 'var(--accent)', cursor: 'pointer' }}
+            />
+            <span style={{ fontSize: 14, lineHeight: 1 }}>⊹</span>
+            Guides
+          </label>
+        </div>
+      </section>
+
+      {/* ── ALIGNEMENT ── */}
+      {facadeModules?.length > 0 && (
+        <section>
+          <div style={S.sectionTitle}>
+            Alignement
+            {selectedIds?.size > 1 && (
+              <span style={{ fontSize: 10, fontWeight: 400, color: 'var(--text3)', marginLeft: 6 }}>
+                ({selectedIds.size} sél.)
+              </span>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: 4 }}>
+            <button
+              title="Égaliser largeurs — largeurs égales entre les modules ciblés"
+              style={S.iconBtn}
+              onClick={handleEqualWidths}
+            >
+              <IconAlignCenter />
+            </button>
+            <button
+              title="Aligner sur grille 5 cm — arrondir au 5 cm le plus proche"
+              style={S.iconBtn}
+              onClick={handleSnapGrid5}
+            >
+              <IconAlignLeft />
+            </button>
+            <button
+              title="Distribuer — répartir équitablement la largeur entre les modules sélectionnés"
+              style={S.iconBtn}
+              onClick={handleDistribute}
+            >
+              <IconDistribute />
+            </button>
+          </div>
+        </section>
+      )}
+
+      {/* ── UNDO / REDO (keyboard shortcut hints) ── */}
+      <section style={{ marginTop: 'auto' }}>
+        <div style={{ display: 'flex', gap: 4 }}>
+          <button
+            title="Annuler (Ctrl+Z)"
+            disabled={!canUndo}
+            onClick={onUndo}
+            style={{
+              ...S.iconBtn,
+              flex: 'none',
+              width: 36,
+              opacity: canUndo ? 1 : 0.35,
+              cursor: canUndo ? 'pointer' : 'default',
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6">
+              <path d="M3 9 A6 6 0 1 1 9 15" strokeLinecap="round"/>
+              <polyline points="3,5 3,9 7,9" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+          <button
+            title="Rétablir (Ctrl+Y)"
+            disabled={!canRedo}
+            onClick={onRedo}
+            style={{
+              ...S.iconBtn,
+              flex: 'none',
+              width: 36,
+              opacity: canRedo ? 1 : 0.35,
+              cursor: canRedo ? 'pointer' : 'default',
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6">
+              <path d="M15 9 A6 6 0 1 0 9 15" strokeLinecap="round"/>
+              <polyline points="15,5 15,9 11,9" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+        </div>
+      </section>
+
+    </div>
+  );
+}
+
+SketchPropertiesPanel.displayName = 'SketchPropertiesPanel';

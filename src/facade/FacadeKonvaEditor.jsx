@@ -13,6 +13,12 @@ const MARGIN = { l: 65, r: 52, t: 55, b: 65 };
 
 const DOUBLE_COLOR = '#d97706';
 
+/** Konva node name set on module hit-box rects for rubber-band detection. */
+const MODULE_HITBOX_NAME = 'module-hitbox';
+
+/** Minimum drag distance (px, in content coords) to trigger rubber-band selection. */
+const MIN_RUBBER_BAND_SIZE = 4;
+
 // Double-separator label geometry
 const DOUBLE_LABEL_OFFSET = 10;
 const DOUBLE_LABEL_WIDTH  = 20;
@@ -64,6 +70,113 @@ function computeKonvaMRects({ facadeModules, joints, thPx, drawW, mL, mT, innerH
     xCur += wPx + (i < facadeModules.length - 1 ? (joints[i] ? 2 * thPx : thPx) : 0);
     return r;
   });
+}
+
+// ── Grid + Ruler component ────────────────────────────────────────────────────
+
+/**
+ * GridLayer — grille fine + règles cm (rendu sur un Layer séparé, non-interactif).
+ * Positionné après le Layer principal pour que la grille soit visible par-dessus
+ * le fond intérieur du meuble.
+ */
+function GridLayer({ mL, mT, drawW, drawH, cabW, cabH, scaleRatio }) {
+  const RULER_H  = 20; // hauteur règle horizontale (pixels canvas)
+  const RULER_W  = 20; // largeur règle verticale  (pixels canvas)
+  const fontSize = Math.max(6, 8 * scaleRatio);
+
+  const cmToPxH = drawW / Math.max(1, cabW);
+  const cmToPxV = drawH / Math.max(1, cabH);
+
+  const maxI = Math.ceil(cabW / 10) + 2;
+  const maxJ = Math.ceil(cabH / 10) + 2;
+
+  const vLines  = []; // lignes verticales de la grille
+  const hLines  = []; // lignes horizontales de la grille
+  const hTicks  = []; // graduations + labels règle horizontale
+  const vTicks  = []; // graduations + labels règle verticale
+
+  // Lignes verticales + graduations règle du haut
+  for (let i = 0; i <= maxI; i++) {
+    const x = mL + i * 10 * cmToPxH;
+    if (x > mL + drawW + 0.5) break;
+    const is50 = i % 5 === 0;
+    vLines.push(
+      <Line key={`vg${i}`}
+        points={[x, mT, x, mT + drawH]}
+        stroke={is50 ? 'rgba(180,180,160,0.3)' : 'rgba(180,180,160,0.15)'}
+        strokeWidth={is50 ? 0.8 : 0.5}
+        listening={false}
+      />
+    );
+    hTicks.push(
+      <Line key={`hrt${i}`}
+        points={[x, mT - (is50 ? 8 : 4), x, mT]}
+        stroke="#aaa" strokeWidth={0.8}
+        listening={false}
+      />
+    );
+    if (is50) {
+      hTicks.push(
+        <Text key={`hrl${i}`}
+          x={x - 12} y={mT - RULER_H + 2}
+          width={24} text={`${i * 10}`}
+          align="center" fontSize={fontSize} fill="#888"
+          listening={false}
+        />
+      );
+    }
+  }
+
+  // Lignes horizontales + graduations règle de gauche
+  for (let j = 0; j <= maxJ; j++) {
+    const y = mT + j * 10 * cmToPxV;
+    if (y > mT + drawH + 0.5) break;
+    const is50 = j % 5 === 0;
+    hLines.push(
+      <Line key={`hg${j}`}
+        points={[mL, y, mL + drawW, y]}
+        stroke={is50 ? 'rgba(180,180,160,0.3)' : 'rgba(180,180,160,0.15)'}
+        strokeWidth={is50 ? 0.8 : 0.5}
+        listening={false}
+      />
+    );
+    vTicks.push(
+      <Line key={`vrt${j}`}
+        points={[mL - (is50 ? 8 : 4), y, mL, y]}
+        stroke="#aaa" strokeWidth={0.8}
+        listening={false}
+      />
+    );
+    if (is50) {
+      vTicks.push(
+        <Text key={`vrl${j}`}
+          x={mL - RULER_W + 2} y={y - fontSize / 2}
+          width={RULER_W - 6} text={`${j * 10}`}
+          align="right" fontSize={fontSize} fill="#888"
+          listening={false}
+        />
+      );
+    }
+  }
+
+  return (
+    <Layer listening={false}>
+      {/* Fonds des règles */}
+      <Rect x={mL}          y={mT - RULER_H} width={drawW}   height={RULER_H}
+        fill="rgba(240,238,233,0.9)" listening={false} />
+      <Rect x={mL - RULER_W} y={mT}           width={RULER_W} height={drawH}
+        fill="rgba(240,238,233,0.9)" listening={false} />
+      {/* Coin supérieur-gauche */}
+      <Rect x={mL - RULER_W} y={mT - RULER_H} width={RULER_W} height={RULER_H}
+        fill="rgba(240,238,233,0.9)" listening={false} />
+      {/* Lignes de grille */}
+      {vLines}
+      {hLines}
+      {/* Graduations et labels */}
+      {hTicks}
+      {vTicks}
+    </Layer>
+  );
 }
 
 // ── Wood gradient helpers ─────────────────────────────────────────────────────
@@ -139,19 +252,18 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
   onElementRemove,
   onDrawerResize,
   onModuleSelect,
+  onSelectionChange,
   activeTool      = 'select',
+  showGrid        = true,
   onChange,
   onModuleChange,
   onItemChange,
+  onHistoryChange,
 }, ref) {
   // ── 1. RESPONSIVE RESIZE ───────────────────────────────────────────────────
   const containerRef = useRef(null);
   const stageRef     = useRef(null);
 
-  useImperativeHandle(ref, () => ({
-    // Returns a PNG data URL (high-res, pixelRatio 3) of the current Konva stage content.
-    exportDataUrl: () => stageRef.current?.toDataURL({ mimeType: 'image/png', pixelRatio: 3 }) ?? null,
-  }), []);
   const [stageSize, setStageSize] = useState({ w: svgW, h: svgH });
 
   useEffect(() => {
@@ -182,6 +294,11 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
 
   // ── 1c. RESIZE LIVE WIDTH ──────────────────────────────────────────────────
   const [resizeWidthCm, setResizeWidthCm] = useState(null);
+
+  // ── 1d. RUBBER BAND SELECTION ─────────────────────────────────────────────
+  // Stored in Stage content coordinates (matching mRects).
+  const [rubberBand, setRubberBand] = useState(null); // { x0, y0, x1, y1 } | null
+  const isRubberBanding = useRef(false);
 
   // ── TOOL FLAGS (declared early — used in useEffect/useCallback dep arrays below) ──
   const isErase   = activeTool === 'erase';
@@ -297,8 +414,10 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
     canRedo,
     snapActive,
     snapX: hookSnapX,
-    selectedId,
+    selectedIds,
     selectModule,
+    selectModules,
+    clearSelection,
     resizeModule,
     setResizingModuleId,
   } = useFacadeKonva({
@@ -315,25 +434,25 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
   // Snap line position in Stage coordinate space
   const snapLineX = hookSnapX != null ? hookSnapX + mL : null;
 
-  // ── Keyboard shortcuts: Ctrl+Z undo, Ctrl+Y / Ctrl+Shift+Z redo ──────────
+  // ── Imperative handle (undo/redo must be defined first) ───────────────────
+  useImperativeHandle(ref, () => ({
+    // Returns a PNG data URL (high-res, pixelRatio 3) of the current Konva stage content.
+    exportDataUrl: () => stageRef.current?.toDataURL({ mimeType: 'image/png', pixelRatio: 3 }) ?? null,
+    undo,
+    redo,
+    zoomIn:  () => setScale(s => Math.min(4, s * 1.2)),
+    zoomOut: () => setScale(s => Math.max(0.5, s / 1.2)),
+  }), [undo, redo]);
+
+  // ── Notify parent when undo/redo availability changes ─────────────────────
   useEffect(() => {
-    const handler = (e) => {
-      const tag = e.target?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || e.target?.isContentEditable) return;
-      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === 'z') {
-        e.preventDefault();
-        undo();
-      } else if (
-        (e.ctrlKey || e.metaKey) &&
-        (e.key === 'y' || (e.shiftKey && e.key === 'z'))
-      ) {
-        e.preventDefault();
-        redo();
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [undo, redo]);
+    onHistoryChange?.({ canUndo, canRedo });
+  }, [canUndo, canRedo, onHistoryChange]);
+
+  // ── Notify parent when selection changes ─────────────────────────────────
+  useEffect(() => {
+    onSelectionChange?.(selectedIds);
+  }, [selectedIds, onSelectionChange]);
 
   // ── 3. ANNOTATION Y (scaled margins) ─────────────────────────────────────
   const dimLineH   = 26 * scaleRatio;
@@ -347,24 +466,40 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
   // avec des coordonnées converties manuellement (source d'erreur avec zoom/pan).
   // La détection Konva gère correctement les Rects transparents (listening=true).
   const handleStagePanStart = useCallback((e) => {
-    if (!isNavMode) return;
     if (e.evt.button !== 0) return;
-    // Cède le contrôle si un ancêtre est draggable (tablette, tringle, etc.)
+
+    if (isNavMode) {
+      // Navigation mode → pan only on background (not on interactive module shapes)
+      if (e.target.getType?.() !== 'Stage') return;
+      const stage = stageRef.current;
+      if (!stage) return;
+      mousePanRef.current = {
+        active: true,
+        startX: e.evt.clientX,
+        startY: e.evt.clientY,
+        stageX: stage.x(),
+        stageY: stage.y(),
+      };
+      stage.container().style.cursor = 'grabbing';
+      return;
+    }
+
+    // Move mode → rubber band on background only (not on module/item)
     let node = e.target;
     while (node && node.getType?.() !== 'Stage') {
       if (node.draggable?.()) return;
+      if (node.name?.() === MODULE_HITBOX_NAME) return;
       node = node.parent;
     }
+    // Only start rubber band when clicking empty background
     const stage = stageRef.current;
     if (!stage) return;
-    mousePanRef.current = {
-      active: true,
-      startX: e.evt.clientX,
-      startY: e.evt.clientY,
-      stageX: stage.x(),
-      stageY: stage.y(),
-    };
-    stage.container().style.cursor = 'grabbing';
+    const pt = stage.getPointerPosition();
+    if (!pt) return;
+    const cx = (pt.x - stage.x()) / stage.scaleX();
+    const cy = (pt.y - stage.y()) / stage.scaleY();
+    isRubberBanding.current = true;
+    setRubberBand({ x0: cx, y0: cy, x1: cx, y1: cy });
   }, [isNavMode]);
 
   // ── Touch gesture handlers ────────────────────────────────────────────────
@@ -441,6 +576,44 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
     touchStartPos.current = null;
     setTimeout(() => { isPinching.current = false; }, PINCH_GESTURE_DELAY_MS);
   }, []);
+
+  // ── Rubber band — mouse move ───────────────────────────────────────────────
+  const handleStageMouseMove = useCallback((e) => {
+    if (!isRubberBanding.current) return;
+    const stage = stageRef.current;
+    if (!stage) return;
+    const pt = stage.getPointerPosition();
+    if (!pt) return;
+    const cx = (pt.x - stage.x()) / stage.scaleX();
+    const cy = (pt.y - stage.y()) / stage.scaleY();
+    setRubberBand(prev => prev ? { ...prev, x1: cx, y1: cy } : prev);
+  }, []);
+
+  // ── Rubber band — mouse up → select matching modules ──────────────────────
+  const handleStageMouseUp = useCallback(() => {
+    if (!isRubberBanding.current) return;
+    isRubberBanding.current = false;
+    setRubberBand(prev => {
+      if (!prev) return null;
+      const { x0, y0, x1, y1 } = prev;
+      const rxMin = Math.min(x0, x1);
+      const rxMax = Math.max(x0, x1);
+      const ryMin = Math.min(y0, y1);
+      const ryMax = Math.max(y0, y1);
+      // Only select if band has meaningful area
+      if (rxMax - rxMin > MIN_RUBBER_BAND_SIZE && ryMax - ryMin > MIN_RUBBER_BAND_SIZE) {
+        const matched = mRects
+          .filter(r => {
+            const cx = r.intX + r.intW / 2;
+            const cy = r.intY + r.intH / 2;
+            return cx >= rxMin && cx <= rxMax && cy >= ryMin && cy <= ryMax;
+          })
+          .map(r => r.modIdx);
+        if (matched.length > 0) selectModules(matched);
+      }
+      return null;
+    });
+  }, [mRects, selectModules]);
 
   /**
    * Module resize drag: called by FacadeKonvaModule's onResizeStart.
@@ -531,7 +704,7 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
   return (
     <div ref={containerRef} style={{ width: '100%', position: 'relative' }}>
 
-      {/* ── Undo / Redo + Mode buttons (top-left overlay on the Konva Stage) ── */}
+      {/* ── Mode buttons (top-left overlay on the Konva Stage) ── */}
       <div style={{
         position: 'absolute',
         top: 6,
@@ -541,43 +714,8 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
         gap: 4,
         pointerEvents: 'auto',
       }}>
-        <button
-          onClick={undo}
-          disabled={!canUndo}
-          title="Annuler (Ctrl+Z)"
-          style={{
-            padding: '3px 10px',
-            fontSize: 13,
-            borderRadius: 4,
-            border: '1px solid #d1d5db',
-            background: canUndo ? '#fff' : '#f3f4f6',
-            color: canUndo ? '#1f2937' : '#9ca3af',
-            cursor: canUndo ? 'pointer' : 'default',
-            lineHeight: 1.4,
-          }}
-        >
-          ↩ Annuler
-        </button>
-        <button
-          onClick={redo}
-          disabled={!canRedo}
-          title="Rétablir (Ctrl+Y)"
-          style={{
-            padding: '3px 10px',
-            fontSize: 13,
-            borderRadius: 4,
-            border: '1px solid #d1d5db',
-            background: canRedo ? '#fff' : '#f3f4f6',
-            color: canRedo ? '#1f2937' : '#9ca3af',
-            cursor: canRedo ? 'pointer' : 'default',
-            lineHeight: 1.4,
-          }}
-        >
-          ↪ Rétablir
-        </button>
 
         {/* ── Mode buttons ── */}
-        <div style={{ width: 1, background: '#d1d5db', margin: '2px 2px' }} />
 
         <button
           onClick={() => setInteractionMode('navigation')}
@@ -632,11 +770,14 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
         x={position.x}
         y={position.y}
         onMouseDown={handleStagePanStart}
+        onMouseMove={handleStageMouseMove}
+        onMouseUp={handleStageMouseUp}
         onTouchStart={handleStageTouchStart}
         onTouchMove={handleStageTouchMove}
         onTouchEnd={handleStageTouchEnd}
         onClick={(e) => {
           if (e.target === e.target.getStage()) {
+            clearSelection();
             onModuleSelect?.(null, 0, 0);
           }
         }}
@@ -751,6 +892,8 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
             const { i, m } = moduleRect;
             const cabInteriorCm = toNum(cabH) - toNum(plinth);
             const moduleItems   = facadeItems.filter((it) => Number(it.modIdx) === i);
+            const isSelected    = selectedIds.has(i);
+            const hasSelection  = selectedIds.size > 0;
             return (
               <FacadeKonvaModule
                 key={`mod-${i}`}
@@ -758,12 +901,14 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
                 module={m}
                 moduleDetail={cabinetModules[i] || null}
                 facadeItems={moduleItems}
-                isSelected={selectedId === i}
+                isSelected={isSelected}
+                hasSelection={hasSelection}
                 activeTool={activeTool}
                 interactionMode={interactionMode}
-                onSelect={() => {
-                  selectModule(i);
-                  if (activeTool === 'select') {
+                onSelect={(konvaEvt) => {
+                  const addToSelection = konvaEvt?.evt?.shiftKey ?? false;
+                  selectModule(i, addToSelection);
+                  if (activeTool === 'select' && !addToSelection) {
                     const { x, y } = computeModuleScreenCenter(moduleRect);
                     onModuleSelect?.(i, x, y);
                   }
@@ -856,6 +1001,10 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
             onElementUpdate={onElementUpdate}
             onElementRemove={onElementRemove}
             stageRef={stageRef}
+            cabW={toNum(cabW)}
+            cabH={toNum(cabH)}
+            drawW={drawW}
+            drawH={drawH}
           />
 
           {/* ── SNAP LINE — amber vertical guide + badge shown during module resize ── */}
@@ -899,6 +1048,25 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
             );
           })()}
 
+          {/* ── SNAP HORIZONTAL GUIDES — tablette-alignment guides during resize ── */}
+          {snapActive && facadeItems
+            .filter(it => it.type === 'shelf' || it.type === 'rod')
+            .map(it => {
+              const yGuide = mT + thPx + toNum(it.yRatio, 0.5) * (innerH - 2 * thPx);
+              return (
+                <Line
+                  key={`snapH-${it.id}`}
+                  points={[mL, yGuide, mL + drawW, yGuide]}
+                  stroke="#EF9F27"
+                  strokeWidth={1}
+                  dash={[4, 3]}
+                  opacity={0.6}
+                  listening={false}
+                />
+              );
+            })
+          }
+
           {/* ── LIVE WIDTH BADGE — shown during module resize when not snapped ── */}
           {!snapActive && resizeWidthCm !== null && (() => {
             const badgeText = `${resizeWidthCm} cm`;
@@ -932,7 +1100,37 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
             );
           })()}
 
+          {/* ── RUBBER BAND SELECTION RECT ── */}
+          {rubberBand && (() => {
+            const { x0, y0, x1, y1 } = rubberBand;
+            const rx = Math.min(x0, x1);
+            const ry = Math.min(y0, y1);
+            const rw = Math.abs(x1 - x0);
+            const rh = Math.abs(y1 - y0);
+            return (
+              <Rect
+                x={rx} y={ry}
+                width={rw} height={rh}
+                fill="rgba(59, 130, 246, 0.12)"
+                stroke="#3b82f6"
+                strokeWidth={1.5}
+                dash={[4, 3]}
+                listening={false}
+              />
+            );
+          })()}
+
         </Layer>
+
+        {/* ── GRID + RULER LAYER (au-dessus du fond, non-interactif) ── */}
+        {showGrid && (
+          <GridLayer
+            mL={mL} mT={mT}
+            drawW={drawW} drawH={drawH}
+            cabW={toNum(cabW)} cabH={toNum(cabH)}
+            scaleRatio={scaleRatio}
+          />
+        )}
       </Stage>
     </div>
   );
