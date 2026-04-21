@@ -216,12 +216,13 @@ export default function FacadeKonvaModule({
       />
 
       {/* ── Zone de clic pour placement tablette / tringle (au-dessus — capture la position du clic) ── */}
-      {/* En mode 'move', cette zone est désactivée pour ne pas bloquer le drag des items draggables. */}
-      {isPlace && interactionMode !== 'move' && (
+      {/* listening=false en mode 'move' pour ne pas bloquer le drag des items draggables. */}
+      {isPlace && (
         <Rect
           x={intLeft} y={intTop}
           width={iW} height={iH}
           fill="transparent"
+          listening={interactionMode !== 'move'}
           onClick={(e) => {
             e.cancelBubble = true;
             const stage = e.target.getStage();
@@ -234,12 +235,13 @@ export default function FacadeKonvaModule({
       )}
 
       {/* ── Zone de clic pour outils d'ajout (au-dessus — pas de position nécessaire) ── */}
-      {/* En mode 'move', cette zone est désactivée pour ne pas bloquer le drag des séparateurs de tiroirs. */}
-      {isAdd && interactionMode !== 'move' && (
+      {/* listening=false en mode 'move' pour ne pas bloquer le drag des séparateurs de tiroirs. */}
+      {isAdd && (
         <Rect
           x={intLeft} y={intTop}
           width={iW} height={iH}
           fill="transparent"
+          listening={interactionMode !== 'move'}
           onClick={handleGroupClick}
         />
       )}
