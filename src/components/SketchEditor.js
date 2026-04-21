@@ -91,7 +91,7 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
   // Initialise le snapshot au premier currentCabinet disponible
   useEffect(() => {
     if (currentCabinet && !snapshotCabinet) setSnapshotCabinet(currentCabinet);
-  }, [currentCabinet]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentCabinet]); // eslint-disable-line
 
   const handleGenerateLocal = useCallback(() => {
     if (!currentCabinet) return;
