@@ -469,12 +469,8 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
     if (e.evt.button !== 0) return;
 
     if (isNavMode) {
-      // Navigation mode → pan
-      let node = e.target;
-      while (node && node.getType?.() !== 'Stage') {
-        if (node.draggable?.()) return;
-        node = node.parent;
-      }
+      // Navigation mode → pan only on background (not on interactive module shapes)
+      if (e.target.getType?.() !== 'Stage') return;
       const stage = stageRef.current;
       if (!stage) return;
       mousePanRef.current = {
