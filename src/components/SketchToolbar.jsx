@@ -1,352 +1,334 @@
 import { useState, useRef } from 'react';
-import {
-  BookOpenText,
-  BetweenHorizonalStart,
-  DoorClosed,
-  Eraser,
-  PanelsTopLeft,
-  PencilRuler,
-  Ruler,
-  Rows3,
-  SquareStack,
-  ToggleLeft,
-} from 'lucide-react';
 import { defaultDrawerParts } from '../utils/sketchEditorConstants';
 
 const TOOLS = [
-  { id: 'drawer',  icon: Rows3,                label: 'Tiroir',       color: '#eab308' },
-  { id: 'shelf',   icon: PanelsTopLeft,        label: 'Tablette',     color: '#10b981' },
-  { id: 'rod',     icon: BetweenHorizonalStart,label: 'Tringle',      color: '#60a5fa' },
-  { id: 'door',    icon: DoorClosed,           label: 'Porte',        color: '#f59e0b' },
-  { id: 'sliding', icon: SquareStack,          label: 'Coulissante',  color: '#8b5cf6' },
-  { id: 'dim',     icon: Ruler,                label: 'Cote',         color: '#06b6d4' },
-  { id: 'note',    icon: PencilRuler,          label: 'Note',         color: '#fb923c' },
-  { id: 'erase',   icon: Eraser,               label: 'Effacer',      color: '#f87171' },
+  { id: 'erase',   label: 'Selection',   key: 'Esc', icon: '↖' },
+  { id: 'drawer',  label: 'Tiroir',      key: 'T',   icon: '▤'  },
+  { id: 'shelf',   label: 'Tablette',    key: 'S',   icon: '═'  },
+  { id: 'rod',     label: 'Tringle',     key: 'R',   icon: '⊣'  },
+  { id: 'door',    label: 'Porte',       key: 'P',   icon: '▭'  },
+  { id: 'sliding', label: 'Coulissante', key: null,  icon: '⇄'  },
+  { id: 'dim',     label: 'Cote',        key: 'C',   icon: '↔'  },
+  { id: 'note',    label: 'Note',        key: 'N',   icon: '✎'  },
 ];
+
+const TOOL_COLORS = {
+  erase:   '#8b949e',
+  drawer:  '#e3b341',
+  shelf:   '#3fb950',
+  rod:     '#388bfd',
+  door:    '#f85149',
+  sliding: '#a371f7',
+  dim:     '#39c5cf',
+  note:    '#fb923c',
+};
 
 const toNum = (v, d = 0) => { const n = Number(v); return Number.isFinite(n) ? n : d; };
 
-/**
- * Barre d'outils complète de l'éditeur : outils, vues, dimensions meuble,
- * largeurs des modules, coulissantes globales, détails menuiserie et FAB mobile.
- */
 export default function SketchToolbar({
-  // Outils
-  activeTool,
-  onToolChange,
-  // Affichage compact
-  isCompactMobile,
-  hint,
-  dimensionsFromWizard,
-  // Dimensions du meuble
-  cabinetDims,
-  onCabinetDimsChange,
-  // Modules façade
-  facadeModules,
-  widthInputs,
-  onWidthInputChange,
-  onCommitWidth,
-  // Coulissantes globales
-  globalSliding,
-  onGlobalSlidingChange,
-  // Détails menuiserie par module
-  selectedModuleIdx,
-  onSelectModuleIdx,
-  moduleDetails,
-  onModuleDetailsChange,
-  // Sauvegarde
-  onSave,
-  // Réordonnancement des modules
-  onMoveModule,
+  activeTool, onToolChange, isCompactMobile, hint, dimensionsFromWizard,
+  cabinetDims, onCabinetDimsChange,
+  facadeModules, widthInputs, onWidthInputChange, onCommitWidth,
+  globalSliding, onGlobalSlidingChange,
+  selectedModuleIdx, onSelectModuleIdx,
+  moduleDetails, onModuleDetailsChange,
+  onSave, onMoveModule,
 }) {
-  const [dragOverIdx, setDragOverIdx] = useState(null);
   const dragSrcIdx = useRef(null);
+  const [dragOverIdx, setDragOverIdx] = useState(null);
+
   return (
     <>
-      <div className="border-b border-white/10 bg-[linear-gradient(180deg,rgba(20,30,49,0.95),rgba(11,18,33,0.92))]">
-        <div className="flex flex-wrap items-center gap-3 px-3 py-1.5">
-          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-            <ToggleLeft className="h-4 w-4 text-amber-300" />
-            Outils d'édition
-          </div>
-          {dimensionsFromWizard && (
-            <span className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-300">
-              Dimensions importées
+      <div style={{
+        width: 72, flexShrink: 0, background: '#0d1117',
+        borderRight: '1px solid #21262d',
+        display: 'flex', flexDirection: 'column', alignItems: 'center',
+        paddingTop: 8, paddingBottom: 8, gap: 4, overflowY: 'auto',
+      }}>
+        {TOOLS.map(t => {
+          const active = activeTool === t.id;
+          const color  = TOOL_COLORS[t.id];
+          return (
+            <button key={t.id}
+              title={t.label + (t.key ? ' (' + t.key + ')' : '')}
+              onClick={() => onToolChange(t.id)}
+              style={{
+                width: 56, borderRadius: 8, cursor: 'pointer',
+                border:     active ? '1px solid ' + color + '60' : '1px solid #21262d',
+                background: active
+                  ? 'linear-gradient(135deg, ' + color + '28 0%, ' + color + '10 100%)'
+                  : 'linear-gradient(135deg, #161b22 0%, #1c2128 100%)',
+                color:      active ? color : '#6e7681',
+                padding: '6px 4px 5px',
+                display: 'flex', flexDirection: 'column',
+                alignItems: 'center', justifyContent: 'center', gap: 3,
+                transition: 'all 0.15s',
+                boxShadow: active ? '0 0 0 1px ' + color + '30' : 'none',
+              }}>
+              <span style={{ fontSize: 17, lineHeight: 1 }}>{t.icon}</span>
+              <span style={{ fontSize: 9, fontWeight: 600, letterSpacing: '0.03em', lineHeight: 1 }}>{t.label}</span>
+              {t.key && <span style={{ fontSize: 8, opacity: 0.4, lineHeight: 1 }}>{t.key}</span>}
+            </button>
+          );
+        })}
+      </div>
+
+      <div style={{
+        width: 280, flexShrink: 0, background: '#0d1117',
+        borderRight: '1px solid #21262d',
+        display: 'flex', flexDirection: 'column', overflowY: 'auto',
+      }}>
+        <div style={{ padding: '10px 12px 4px', display: 'flex', gap: 6 }}>
+          <KpiCard icon="⟷" label="Largeur" unit="cm" color="#388bfd"
+            value={cabinetDims.width} onChange={v => onCabinetDimsChange(d => ({ ...d, width: v }))} min={20} max={600} />
+          <KpiCard icon="↕" label="Hauteur" unit="cm" color="#3fb950"
+            value={cabinetDims.height} onChange={v => onCabinetDimsChange(d => ({ ...d, height: v }))} min={20} max={350} />
+        </div>
+        <div style={{ padding: '0 12px 8px', display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+          <KpiCard icon="⌊" label="Plinthe" unit="cm" color="#e3b341"
+            value={cabinetDims.plinth} onChange={v => onCabinetDimsChange(d => ({ ...d, plinth: v }))} min={0} max={30} />
+          <div style={{
+            flex: 1,
+            background: 'linear-gradient(135deg, #161b22 0%, #1c2128 100%)',
+            border: '1px solid #21262d', borderRadius: 8, padding: '8px 10px',
+            display: 'flex', flexDirection: 'column', gap: 4,
+          }}>
+            <span style={{ fontSize: 9, color: '#6e7681', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Modules</span>
+            <span style={{ fontSize: 18, fontWeight: 700, fontFamily: 'monospace', color: '#388bfd', textAlign: 'right' }}>
+              {facadeModules.length}
             </span>
-          )}
-          {!isCompactMobile && (
-            <div className="ml-auto rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-slate-300">
-              {hint}
-            </div>
-          )}
-        </div>
-
-        <div className="flex gap-1.5 overflow-x-auto px-3 pb-2">
-          {TOOLS.map((t) => {
-            const Icon = t.icon;
-            const active = activeTool === t.id;
-            return (
-              <button
-                key={t.id}
-                onClick={() => onToolChange(t.id)}
-                className={`group min-w-[64px] rounded-xl border px-2 py-1.5 text-left transition ${
-                  active
-                    ? 'border-white/20 bg-white/[0.08] text-white shadow-[0_12px_32px_rgba(0,0,0,0.22)]'
-                    : 'border-white/8 bg-white/[0.03] text-slate-300 hover:border-white/15 hover:bg-white/[0.06]'
-                }`}
-                style={active ? { boxShadow: `inset 0 0 0 1px ${t.color}55` } : {}}
-              >
-                <div
-                  className="mb-1 flex h-7 w-7 items-center justify-center rounded-lg border"
-                  style={{
-                    color: t.color,
-                    borderColor: active ? `${t.color}55` : 'rgba(255,255,255,0.08)',
-                    background: active ? `${t.color}18` : 'rgba(255,255,255,0.03)',
-                  }}
-                >
-                  <Icon className="h-3.5 w-3.5" />
-                </div>
-                <div className="text-[11px] font-semibold">{t.label}</div>
-                {!isCompactMobile && (
-                  <div className="hidden">
-                    {t.id === 'drawer' && 'Façade basse'}
-                    {t.id === 'shelf' && 'Étagère intérieure'}
-                    {t.id === 'rod' && 'Suspension'}
-                    {t.id === 'door' && 'Battante'}
-                    {t.id === 'sliding' && 'Portes frontales'}
-                    {t.id === 'dim' && 'Cotation libre'}
-                    {t.id === 'note' && 'Commentaire'}
-                    {t.id === 'erase' && 'Supprimer'}
-                  </div>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="border-b border-white/10 bg-[#0f1729] px-3 py-1.5">
-        <div className="grid gap-2 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,1.95fr)]">
-          <div className="rounded-xl border border-white/8 bg-white/[0.03] px-2.5 py-2">
-            <div className="mb-1.5 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-              <BookOpenText className="h-4 w-4 text-amber-300" />
-              Dimensions Totales
-            </div>
-            <div className="grid gap-2 sm:grid-cols-3">
-              <label className="text-slate-300">
-                <span className="mb-1 block text-[10px] uppercase tracking-[0.12em] text-slate-500">Largeur</span>
-                <div className="flex h-8 items-center gap-2 rounded-lg border border-white/8 bg-[#121c31] px-2">
-                  <input
-                    value={cabinetDims.width}
-                    onChange={e => onCabinetDimsChange(v => ({ ...v, width: toNum(e.target.value, 0) }))}
-                    className="w-full bg-transparent text-xs text-white outline-none"
-                  />
-                  <span className="text-[11px] text-slate-500">cm</span>
-                </div>
-              </label>
-              <label className="text-slate-300">
-                <span className="mb-1 block text-[10px] uppercase tracking-[0.12em] text-slate-500">Hauteur</span>
-                <div className="flex h-8 items-center gap-2 rounded-lg border border-white/8 bg-[#121c31] px-2">
-                  <input
-                    value={cabinetDims.height}
-                    onChange={e => onCabinetDimsChange(v => ({ ...v, height: toNum(e.target.value, 0) }))}
-                    className="w-full bg-transparent text-xs text-white outline-none"
-                  />
-                  <span className="text-[11px] text-slate-500">cm</span>
-                </div>
-              </label>
-              <label className="text-slate-300">
-                <span className="mb-1 block text-[10px] uppercase tracking-[0.12em] text-slate-500">Plinthe</span>
-                <div className="flex h-8 items-center gap-2 rounded-lg border border-white/8 bg-[#121c31] px-2">
-                  <input
-                    value={cabinetDims.plinth}
-                    onChange={e => onCabinetDimsChange(v => ({ ...v, plinth: toNum(e.target.value, 0) }))}
-                    className="w-full bg-transparent text-xs text-white outline-none"
-                  />
-                  <span className="text-[11px] text-slate-500">cm</span>
-                </div>
-              </label>
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-white/8 bg-white/[0.03] px-2.5 py-2">
-            <div className="mb-1.5 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-              <PanelsTopLeft className="h-4 w-4 text-sky-300" />
-              Largeurs des Modules
-            </div>
-            <div className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-5">
-              {facadeModules.map((m, i) => (
-                <label key={m.id || i} className="text-slate-300">
-                  <span className="mb-1 block text-[10px] uppercase tracking-[0.12em] text-slate-500">M{i + 1}</span>
-                  <div className="flex h-8 items-center gap-2 rounded-lg border border-white/8 bg-[#121c31] px-2">
-                    <input
-                      value={widthInputs[i] ?? ''}
-                      onChange={e => onWidthInputChange(i, e.target.value)}
-                      onBlur={() => onCommitWidth(i)}
-                      onKeyDown={e => { if (e.key === 'Enter') { onCommitWidth(i); e.target.blur(); } }}
-                      className="w-full bg-transparent text-xs text-white outline-none"
-                    />
-                    <span className="text-[11px] text-slate-500">cm</span>
-                  </div>
-                </label>
-              ))}
-            </div>
           </div>
         </div>
-      </div>
 
-      {facadeModules.length > 0 && (
-        <div className="border-b border-white/10 bg-[#0b1221] px-4 py-2.5">
-          <div className="flex flex-wrap items-center gap-2.5 text-xs">
-          <span className="rounded-full border border-cyan-400/20 bg-cyan-500/10 px-2.5 py-1 font-semibold text-cyan-300">Coulissantes meuble</span>
-          <label className="flex items-center gap-1 text-slate-200">
-            <input
-              type="checkbox"
-              checked={globalSliding.enabled}
-              onChange={(e) => onGlobalSlidingChange(v => ({ ...v, enabled: e.target.checked }))}
-            />
-            Activer
-          </label>
-          {globalSliding.enabled && (
-            <>
-              <label className="text-slate-300">Vantaux
-                <input
-                  type="number" min="2" max="4"
-                  value={globalSliding.count}
-                  onChange={(e) => onGlobalSlidingChange(v => ({ ...v, count: Math.max(2, Math.min(4, toNum(e.target.value, 2))) }))}
-                  className="w-12 ml-1 px-1 py-0.5 bg-slate-800 border border-slate-600 rounded"
-                />
-              </label>
-              <label className="text-slate-300">H(cm)
-                <input
-                  type="number" min="40"
-                  value={globalSliding.heightCm}
-                  onChange={(e) => onGlobalSlidingChange(v => ({ ...v, heightCm: Math.max(40, toNum(e.target.value, 180)) }))}
-                  className="w-14 ml-1 px-1 py-0.5 bg-slate-800 border border-slate-600 rounded"
-                />
-              </label>
-            </>
-          )}
-
-          <span className="ml-2 rounded-full border border-amber-400/20 bg-amber-500/10 px-2.5 py-1 font-semibold text-amber-300">Détail menuiserie</span>
-          <div className="flex items-center gap-1">
-            {facadeModules.map((_, i) => (
-              <button
-                key={`md-${i}`}
-                draggable="true"
-                onDragStart={(e) => {
-                  dragSrcIdx.current = i;
-                  e.dataTransfer.effectAllowed = 'move';
-                }}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  e.dataTransfer.dropEffect = 'move';
-                  setDragOverIdx(i);
-                }}
-                onDragLeave={(e) => {
-                  if (!e.currentTarget.contains(e.relatedTarget)) setDragOverIdx(null);
-                }}
+        <Section title={'MODULES (' + facadeModules.length + ')'}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            {facadeModules.map((m, i) => (
+              <div key={m.id || i} draggable
+                onDragStart={() => { dragSrcIdx.current = i; }}
+                onDragOver={e => { e.preventDefault(); setDragOverIdx(i); }}
+                onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDragOverIdx(null); }}
                 onDragEnd={() => { setDragOverIdx(null); dragSrcIdx.current = null; }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  setDragOverIdx(null);
-                  const from = dragSrcIdx.current;
-                  dragSrcIdx.current = null;
+                onDrop={e => {
+                  e.preventDefault(); setDragOverIdx(null);
+                  const from = dragSrcIdx.current; dragSrcIdx.current = null;
                   if (from !== null && from !== i) onMoveModule?.(from, i);
                 }}
-                onClick={() => onSelectModuleIdx(i)}
-                className={`rounded-xl border px-2.5 py-1.5 ${selectedModuleIdx === i ? 'bg-amber-500/20 border-amber-400 text-amber-300' : 'bg-slate-800 border-slate-600 text-slate-300'} ${dragOverIdx === i ? 'border-l-[2px] border-l-blue-500' : ''}`}
-              >
-                M{i + 1}
-              </button>
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6, cursor: 'grab',
+                  borderLeft: dragOverIdx === i ? '2px solid #388bfd' : '2px solid transparent',
+                  paddingLeft: dragOverIdx === i ? 2 : 4,
+                }}>
+                <button onClick={() => onSelectModuleIdx(i)} style={{
+                  width: 26, height: 26, borderRadius: 6, fontSize: 10, fontWeight: 700, cursor: 'pointer', flexShrink: 0,
+                  border:     selectedModuleIdx === i ? '1px solid #388bfd' : '1px solid #30363d',
+                  background: selectedModuleIdx === i ? '#1f3a6e' : '#161b22',
+                  color:      selectedModuleIdx === i ? '#388bfd' : '#6e7681',
+                }}>M{i + 1}</button>
+                <input type="number" min={5} step={0.1}
+                  value={widthInputs[i] ?? m.width}
+                  onChange={e => onWidthInputChange(i, e.target.value)}
+                  onBlur={e => { e.target.style.borderColor = '#30363d'; onCommitWidth(i); }}
+                  onKeyDown={e => { if (e.key === 'Enter') { onCommitWidth(i); e.target.blur(); } }}
+                  onFocus={e => e.target.style.borderColor = '#388bfd'}
+                  style={{
+                    flex: 1, width: 0, height: 28, textAlign: 'right',
+                    background: '#161b22', border: '1px solid #30363d',
+                    borderRadius: 4, color: '#e6edf3', fontSize: 12,
+                    padding: '0 6px', fontFamily: 'monospace', outline: 'none',
+                  }} />
+                <span style={{ fontSize: 10, color: '#484f58', flexShrink: 0 }}>cm</span>
+              </div>
             ))}
           </div>
-          <label className="flex items-center gap-1 text-slate-200">
-            <input
-              type="checkbox"
-              checked={moduleDetails[selectedModuleIdx]?.hasBack ?? true}
-              onChange={(e) => onModuleDetailsChange(prev => prev.map((d, i) => i === selectedModuleIdx ? { ...d, hasBack: e.target.checked } : d))}
-            />
-            Fond module
-          </label>
-          <label className="flex items-center gap-1 text-slate-200">
-            <input
-              type="checkbox"
-              checked={(moduleDetails[selectedModuleIdx]?.slidingDoors || 0) > 0}
-              onChange={(e) => onModuleDetailsChange(prev => prev.map((d, i) => {
-                if (i !== selectedModuleIdx) return d;
-                return { ...d, slidingDoors: e.target.checked ? 2 : 0 };
-              }))}
-            />
-            Portes coulissantes
-          </label>
-          <span className="text-slate-500">Tiroir :</span>
-          {[
-            ['front', 'Façade'],
-            ['back', 'Arrière'],
-            ['left', 'Côté G'],
-            ['right', 'Côté D'],
-            ['bottom', 'Fond'],
-          ].map(([key, label]) => (
-            <label key={key} className="flex items-center gap-1 text-slate-200">
-              <input
-                type="checkbox"
-                checked={moduleDetails[selectedModuleIdx]?.drawerParts?.[key] ?? true}
-                onChange={(e) => onModuleDetailsChange(prev => prev.map((d, i) => {
-                  if (i !== selectedModuleIdx) return d;
-                  return {
-                    ...d,
-                    drawerParts: {
-                      ...defaultDrawerParts(),
-                      ...(d?.drawerParts || {}),
-                      [key]: e.target.checked,
-                    },
-                  };
-                }))}
-              />
-              {label}
-            </label>
-          ))}
-          {(facadeModules[selectedModuleIdx]?.drawers || 0) > 0 && (
-            <div className="flex items-center gap-1">
-              <span className="text-slate-500">Hauteurs (cm):</span>
-              {Array.from({ length: facadeModules[selectedModuleIdx]?.drawers || 0 }, (_, di) => (
-                <label key={`dh-${di}`} className="text-slate-300">
-                  #{di + 1}
-                  <input
-                    type="number" min="5" step="0.5"
-                    value={moduleDetails[selectedModuleIdx]?.drawerHeights?.[di] ?? 18}
-                    onChange={(e) => onModuleDetailsChange(prev => prev.map((d, i) => {
-                      if (i !== selectedModuleIdx) return d;
-                      const curr = Array.isArray(d.drawerHeights) ? d.drawerHeights : [];
-                      const next = Array.from(
-                        { length: facadeModules[selectedModuleIdx]?.drawers || 0 },
-                        (_, idx) => Math.max(5, toNum(curr[idx], 18))
-                      );
-                      next[di] = toNum(e.target.value, next[di] ?? 18);
-                      return { ...d, drawerHeights: next };
-                    }))}
-                    className="w-14 ml-1 px-1 py-0.5 bg-slate-800 border border-slate-600 rounded"
-                  />
-                </label>
-              ))}
-            </div>
-          )}
-        </div>
-        </div>
-      )}
+        </Section>
 
-      {isCompactMobile && (
-        <div className="fixed bottom-4 right-3 z-[60] flex flex-col gap-2">
-          <button
-            onClick={onSave}
-            className="w-11 h-11 rounded-full border border-green-300/30 bg-green-700 text-white shadow-xl text-lg"
-            title="Sauvegarder"
-          >
-            💾
-          </button>
+        {selectedModuleIdx !== null && selectedModuleIdx < facadeModules.length && (
+          <Section title={'MODULE ' + (selectedModuleIdx + 1) + ' — DÉTAIL'}>
+            <ModuleDetailPanel
+              modIdx={selectedModuleIdx}
+              module={facadeModules[selectedModuleIdx]}
+              detail={moduleDetails[selectedModuleIdx]}
+              onDetailChange={onModuleDetailsChange} />
+          </Section>
+        )}
+
+        <Section title="PORTES COULISSANTES">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+              <input type="checkbox" checked={globalSliding.enabled}
+                onChange={e => onGlobalSlidingChange(v => ({ ...v, enabled: e.target.checked }))}
+                style={{ accentColor: '#1f6feb' }} />
+              <span style={{ fontSize: 12, color: '#8b949e' }}>Activer</span>
+            </label>
+            {globalSliding.enabled && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 6 }}>
+                <Field label="Vantaux">
+                  <NumInput value={globalSliding.count} min={2} max={4} step={1}
+                    onChange={v => onGlobalSlidingChange(d => ({ ...d, count: Math.max(2, Math.min(4, v)) }))} />
+                </Field>
+                <Field label="Haut. (cm)">
+                  <NumInput value={globalSliding.heightCm}
+                    onChange={v => onGlobalSlidingChange(d => ({ ...d, heightCm: v }))} />
+                </Field>
+              </div>
+            )}
+          </div>
+        </Section>
+
+        <div style={{ flex: 1 }} />
+
+        <div style={{
+          padding: '8px 12px', borderTop: '1px solid #21262d',
+          fontSize: 11, color: '#484f58', lineHeight: 1.5,
+        }}>
+          {hint || 'Sélectionnez un outil'}
         </div>
-      )}
+      </div>
     </>
+  );
+}
+
+function KpiCard({ icon, label, unit, value, onChange, min, max, step = 0.1, color = '#388bfd' }) {
+  return (
+    <div style={{
+      flex: 1, borderRadius: 8, padding: '8px 10px',
+      background: 'linear-gradient(135deg, #161b22 0%, #1c2128 100%)',
+      border: '1px solid #21262d', display: 'flex', flexDirection: 'column', gap: 4,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+        <span style={{ fontSize: 13, color, lineHeight: 1 }}>{icon}</span>
+        <span style={{ fontSize: 9, color: '#6e7681', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>{label}</span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 3 }}>
+        <input type="number" step={step} min={min} max={max} value={value}
+          onChange={e => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) onChange(v); }}
+          onFocus={e => { e.target.style.borderBottomColor = color; }}
+          onBlur={e => { e.target.style.borderBottomColor = '#30363d'; }}
+          style={{
+            flex: 1, width: 0, background: 'transparent', border: 'none',
+            borderBottom: '1.5px solid #30363d',
+            color, fontSize: 18, fontWeight: 700, fontFamily: 'monospace',
+            padding: '2px 0', outline: 'none', textAlign: 'right',
+          }} />
+        <span style={{ fontSize: 10, color: '#484f58', flexShrink: 0 }}>{unit}</span>
+      </div>
+    </div>
+  );
+}
+
+function StatBadge({ icon, label, value, color }) {
+  return (
+    <div style={{
+      background: color + '18', border: '1px solid ' + color + '40',
+      borderRadius: 20, padding: '3px 8px',
+      display: 'inline-flex', alignItems: 'center', gap: 4,
+    }}>
+      <span style={{ color, fontSize: 9 }}>{icon}</span>
+      <span style={{ color: '#6e7681', fontSize: 9 }}>{label}</span>
+      <span style={{ color, fontWeight: 700, fontFamily: 'monospace', fontSize: 10 }}>{value}</span>
+    </div>
+  );
+}
+
+function Section({ title, children }) {
+  const [open, setOpen] = useState(true);
+  return (
+    <div style={{ borderBottom: '1px solid #21262d' }}>
+      <button onClick={() => setOpen(v => !v)} style={{
+        width: '100%', padding: '8px 12px', background: 'none', border: 'none', cursor: 'pointer',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        color: '#8b949e', fontSize: 10, fontWeight: 700,
+        letterSpacing: '0.08em', textTransform: 'uppercase',
+      }}>
+        {title}
+        <span style={{ fontSize: 10, color: '#484f58' }}>{open ? '▲' : '▼'}</span>
+      </button>
+      {open && <div style={{ padding: '4px 12px 12px' }}>{children}</div>}
+    </div>
+  );
+}
+
+function Field({ label, children }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+      <label style={{ fontSize: 10, color: '#484f58', letterSpacing: '0.04em' }}>{label}</label>
+      {children}
+    </div>
+  );
+}
+
+function NumInput({ value, onChange, min, max, step = 0.1 }) {
+  return (
+    <input type="number" step={step} min={min} max={max} value={value}
+      onChange={e => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) onChange(v); }}
+      onFocus={e => e.target.style.borderColor = '#388bfd'}
+      onBlur={e => e.target.style.borderColor = '#30363d'}
+      style={{
+        width: '100%', height: 28, textAlign: 'right',
+        background: '#161b22', border: '1px solid #30363d',
+        borderRadius: 4, color: '#e6edf3', fontSize: 12,
+        padding: '0 6px', fontFamily: 'monospace', outline: 'none',
+      }} />
+  );
+}
+
+function ModuleDetailPanel({ modIdx, module, detail, onDetailChange }) {
+  const d = detail || {};
+  const drawerCount = module?.drawers || 0;
+  const set = changes => onDetailChange(prev => prev.map((x, i) => i === modIdx ? { ...x, ...changes } : x));
+  const LABEL_ROW = { display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ fontSize: 12, color: '#8b949e' }}>
+        Largeur : <strong style={{ color: '#e6edf3', fontFamily: 'monospace' }}>{module?.width?.toFixed(1)} cm</strong>
+      </div>
+      <label style={LABEL_ROW}>
+        <input type="checkbox" checked={d.hasBack !== false}
+          onChange={e => set({ hasBack: e.target.checked })} style={{ accentColor: '#1f6feb' }} />
+        <span style={{ fontSize: 12, color: '#8b949e' }}>Fond de module</span>
+      </label>
+      <label style={LABEL_ROW}>
+        <input type="checkbox" checked={(d.slidingDoors || 0) > 0}
+          onChange={e => set({ slidingDoors: e.target.checked ? 2 : 0 })} style={{ accentColor: '#1f6feb' }} />
+        <span style={{ fontSize: 12, color: '#8b949e' }}>Portes coulissantes</span>
+      </label>
+      {drawerCount > 0 && (
+        <>
+          <div style={{ fontSize: 10, color: '#484f58', marginTop: 4, letterSpacing: '0.04em' }}>TIROIRS — PARTIES</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+            {[['front','Facade'],['back','Arriere'],['left','Cote G'],['right','Cote D'],['bottom','Fond']].map(([k, lbl]) => (
+              <label key={k} style={LABEL_ROW}>
+                <input type="checkbox" checked={d.drawerParts?.[k] !== false}
+                  onChange={e => set({ drawerParts: { ...defaultDrawerParts(), ...(d.drawerParts || {}), [k]: e.target.checked } })}
+                  style={{ accentColor: '#1f6feb' }} />
+                <span style={{ fontSize: 11, color: '#8b949e' }}>{lbl}</span>
+              </label>
+            ))}
+          </div>
+          <div style={{ fontSize: 10, color: '#484f58', letterSpacing: '0.04em' }}>HAUTEURS TIROIRS (cm)</div>
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+            {Array.from({ length: drawerCount }, (_, di) => (
+              <div key={di} style={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'center' }}>
+                <span style={{ fontSize: 9, color: '#484f58' }}>#{di + 1}</span>
+                <input type="number" min="5" step="0.5"
+                  value={d.drawerHeights?.[di] ?? 18}
+                  onChange={e => {
+                    const arr = Array.from({ length: drawerCount }, (_, idx) => Math.max(5, toNum(d.drawerHeights?.[idx], 18)));
+                    arr[di] = Math.max(5, toNum(e.target.value, 18));
+                    set({ drawerHeights: arr });
+                  }}
+                  style={{
+                    width: 44, height: 26, textAlign: 'right',
+                    background: '#161b22', border: '1px solid #30363d',
+                    borderRadius: 4, color: '#e6edf3', fontSize: 11,
+                    fontFamily: 'monospace', padding: '0 4px',
+                  }} />
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
   );
 }

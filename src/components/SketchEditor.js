@@ -1,5 +1,6 @@
 import { useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import { Disc, Layers3, PencilRuler, ScanSearch, Sparkles, Wand2 } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 import SketchToolbar from './SketchToolbar';
 import SketchEditorCanvas from './SketchEditorCanvas';
 import ProfessionalRealisticViewer from '../visualization/ProfessionalRealisticViewer';
@@ -13,6 +14,7 @@ const jointThickness = (isDouble, t) => isDouble ? t * 2 : t;
 
 export default function SketchEditor({ image, scanImage, initialResult, draft, onDraftChange, onComplete, onCancel, onSave }) {
   const konvaEditorRef = useRef(null);
+  const { user } = useAuth();
 
   const initialCab           = initialResult?.cabinet || {};
   const dimensionsFromWizard = Boolean(initialResult?._dimensionsFromWizard);
@@ -83,6 +85,7 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
   const thickness          = toNum(initialCab.thickness ?? initialCab.panel_thickness, 1.8);
   const totalJointsWidth   = joints.reduce((s, d) => s + jointThickness(d, thickness), 0);
   const totalInteriorWidth = Math.max(1, toNum(cabinetDims.width, 200) - thickness * 2 - totalJointsWidth);
+  const [jointsOpen, setJointsOpen] = useState(false);
 
   const handleGenerateLocal = useCallback(() => {
     if (!currentCabinet) return;
@@ -98,6 +101,8 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
     moduleDetails, generalNotes, joints, globalSliding,
     sketchFingerprint, onSave, onDraftChange, currentCabinet,
   });
+
+  const [saveStatus, setSaveStatus] = useState('idle'); // 'idle' | 'saving' | 'saved'
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -172,6 +177,7 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
         minHeight: '100dvh',
         paddingTop: 'env(safe-area-inset-top)',
         paddingBottom: 'env(safe-area-inset-bottom)',
+        overflow: 'hidden',
       }}
     >
       {showRotateHint && (
@@ -180,107 +186,136 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
         </div>
       )}
 
-      <div className="border-b border-white/10 bg-[linear-gradient(180deg,rgba(14,22,38,0.96),rgba(10,16,29,0.92))] px-4 py-3 backdrop-blur">
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-          <div className="flex items-start gap-3">
-            <div className="mt-1 flex h-10 w-10 items-center justify-center rounded-2xl border border-amber-400/20 bg-amber-500/10 text-amber-300">
-              <PencilRuler className="h-4 w-4" />
-            </div>
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-[1.7rem] font-semibold tracking-tight text-white">Éditeur Intelligent</h2>
-                <span className="rounded-full border border-amber-400/30 bg-amber-400/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.2em] text-amber-300">v4.0</span>
-              </div>
-              <div className="mt-1 flex flex-wrap items-center gap-2 text-[13px] text-slate-400">
-                <span>Propulsé par Konva.js</span>
-                <span className="text-slate-600">|</span>
-                <span>Configuration intelligente des modules</span>
-                {isLocalMode && (
-                  <>
-                    <span className="text-slate-600">|</span>
-                    <span className="text-emerald-300">Mode recalcul local</span>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2 xl:justify-end">
-            {capturing && <span className="self-center text-sm text-amber-300 animate-pulse">Capture en cours...</span>}
-            {infoMessage && <span className="self-center text-sm text-emerald-400">{infoMessage}</span>}
-            {error && <span className="self-center text-sm text-red-400">{error}</span>}
-            <button onClick={onCancel} className="rounded-xl border border-white/10 bg-white/[0.05] px-3.5 py-2 text-sm font-medium text-white transition hover:bg-white/[0.09]">Annuler</button>
-            <button
-              onClick={() => { void triggerRemoteSave(); }}
-              className="inline-flex items-center gap-2 rounded-xl border border-emerald-400/20 bg-emerald-500/10 px-3.5 py-2 text-sm font-semibold text-emerald-300 transition hover:bg-emerald-500/15"
-              title="Enregistrer"
-              aria-label="Enregistrer"
-            >
-              <Disc className="h-4 w-4" />
-              Sauvegarder le projet
-            </button>
-            <button
-              onClick={handleGenerateLocal}
-              disabled={!currentCabinet}
-              className="inline-flex items-center gap-2 rounded-xl bg-[linear-gradient(135deg,#f6b84a,#ff8c2e)] px-3.5 py-2 text-sm font-semibold text-slate-950 shadow-[0_10px_24px_rgba(251,146,60,0.28)] transition hover:brightness-105 disabled:opacity-40"
-              title="Calcule les pièces localement sans appel serveur"
-            >
-              <Sparkles className="h-4 w-4" />
-              Générer les pièces
-            </button>
-            <button
-              onClick={handleRelancer}
-              disabled={loading}
-              className={`inline-flex items-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-semibold transition ${
-                loading
-                  ? 'border-orange-500/30 bg-orange-500/10 text-orange-200'
-                  : isLocalMode
-                    ? 'border-emerald-400/20 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/15'
-                    : 'border-orange-400/30 bg-orange-500/10 text-orange-200 hover:bg-orange-500/15'
-              }`}
-            >
-              <Wand2 className="h-4 w-4" />
-              {loading ? 'Analyse...' : isLocalMode ? 'Recalculer (local)' : 'Relancer Claude'}
-            </button>
-          </div>
+      <div style={{
+        height: 48, flexShrink: 0,
+        background: '#0d1117',
+        borderBottom: '1px solid #21262d',
+        display: 'flex', alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '0 16px', gap: 12,
+        zIndex: 20,
+      }}>
+        {/* Gauche : titre + version */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: '#e6edf3', letterSpacing: '-0.02em' }}>
+            Éditeur Intelligent
+          </span>
+          <span style={{
+            fontSize: 10, fontWeight: 700, fontFamily: 'monospace',
+            color: '#f85149', background: 'rgba(248,81,73,0.15)',
+            border: '1px solid rgba(248,81,73,0.3)',
+            padding: '1px 5px', borderRadius: 3,
+          }}>v4.0</span>
+          <span style={{ fontSize: 11, color: '#484f58' }}>Propulsé par Konva.js</span>
         </div>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <div className="min-w-[180px] rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Largeur nette utile</div>
-            <div className="mt-1 text-lg font-semibold text-white">{totalInteriorWidth.toFixed(1)} cm</div>
-          </div>
-          <div className="min-w-[180px] rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Joints cumulés</div>
-            <div className="mt-1 text-lg font-semibold text-white">{totalJointsWidth.toFixed(1)} cm</div>
-          </div>
-          <div className="min-w-[160px] rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Modules actifs</div>
-            <div className="mt-1 text-lg font-semibold text-white">{facadeModules.length}</div>
-          </div>
+
+        {/* Droite : actions */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {capturing && (
+            <span style={{ fontSize: 11, color: '#e3b341', animation: 'pulse 1s infinite' }}>
+              ⏳ Capture...
+            </span>
+          )}
+          {infoMessage && (
+            <span style={{ fontSize: 11, color: '#3fb950' }}>{infoMessage}</span>
+          )}
+          {error && (
+            <span style={{ fontSize: 11, color: '#f85149' }}>{error}</span>
+          )}
+
+          <button onClick={onCancel}
+            style={{
+              height: 30, padding: '0 12px',
+              background: 'none', border: '1px solid #30363d',
+              borderRadius: 5, cursor: 'pointer', color: '#8b949e',
+              fontSize: 12,
+            }}>Annuler</button>
+
+          <button
+            onClick={async () => {
+              if (!onSave || !currentCabinet) return;
+              setSaveStatus('saving');
+              try { await onSave(currentCabinet); setSaveStatus('saved'); setTimeout(() => setSaveStatus('idle'), 2000); }
+              catch { setSaveStatus('idle'); }
+            }}
+            disabled={!user || saveStatus === 'saving'}
+            style={{
+              height: 30, padding: '0 12px',
+              background: saveStatus === 'saved' ? 'rgba(63,185,80,0.2)' : 'rgba(31,111,235,0.15)',
+              border: `1px solid ${saveStatus === 'saved' ? 'rgba(63,185,80,0.4)' : 'rgba(31,111,235,0.4)'}`,
+              borderRadius: 5, cursor: !user || saveStatus === 'saving' ? 'not-allowed' : 'pointer',
+              color: saveStatus === 'saved' ? '#3fb950' : '#388bfd',
+              fontSize: 12, fontWeight: 600,
+              opacity: !user ? 0.4 : 1,
+            }}>
+            {saveStatus === 'saving' ? '...' : saveStatus === 'saved' ? '✓ Sauvegardé' : '💾 Sauvegarder'}
+          </button>
+
+          <button onClick={handleGenerateLocal} disabled={!currentCabinet}
+            style={{
+              height: 30, padding: '0 14px',
+              background: 'rgba(227,179,65,0.15)',
+              border: '1px solid rgba(227,179,65,0.3)',
+              borderRadius: 5, cursor: !currentCabinet ? 'not-allowed' : 'pointer',
+              color: '#e3b341', fontSize: 12, fontWeight: 600,
+              opacity: !currentCabinet ? 0.4 : 1,
+            }}>
+            ⚡ Générer pièces
+          </button>
+
+          <button onClick={handleRelancer} disabled={loading}
+            style={{
+              height: 30, padding: '0 14px',
+              background: loading ? 'rgba(31,111,235,0.1)' : isLocalMode
+                ? 'rgba(63,185,80,0.15)' : '#1f6feb',
+              border: `1px solid ${loading ? 'rgba(31,111,235,0.2)' : isLocalMode ? 'rgba(63,185,80,0.4)' : '#388bfd'}`,
+              borderRadius: 5,
+              cursor: loading ? 'wait' : 'pointer',
+              color: loading ? '#388bfd' : isLocalMode ? '#3fb950' : '#fff',
+              fontSize: 12, fontWeight: 600,
+            }}>
+            {loading ? '⏳ Analyse...' : isLocalMode ? '⚡ Recalculer' : '🚀 Relancer Claude'}
+          </button>
         </div>
       </div>
 
       {joints.length > 0 && (
-        <div className="flex items-center gap-2 px-3 py-2 bg-slate-800/80 border-b border-amber-900/30 overflow-x-auto">
-          <span className="text-xs font-bold text-amber-400 whitespace-nowrap shrink-0">🔩 Joints :</span>
-          {joints.map((isDouble, i) => (
-            <button key={i} onClick={() => toggleJoint(i)}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border transition-all whitespace-nowrap shrink-0 ${
-                isDouble ? 'bg-amber-500/20 text-amber-300 border-amber-500/60 hover:bg-amber-500/30'
-                          : 'bg-slate-700 text-slate-400 border-slate-600 hover:bg-slate-600'
-              }`}>
-              {isDouble ? '⬛⬛' : '▪️'} M{i+1}|M{i+2}
-              <span className="opacity-60 text-[10px]">({isDouble?(thickness*2).toFixed(1):thickness.toFixed(1)} cm)</span>
-            </button>
-          ))}
-          <span className="ml-auto text-[10px] text-slate-500 whitespace-nowrap shrink-0 pl-3">
-            Joints : <span className="text-amber-400 font-bold">{totalJointsWidth.toFixed(1)} cm</span>
-            {' · '}Net : <span className="text-green-400 font-bold">{totalInteriorWidth.toFixed(1)} cm</span>
-          </span>
+        <div style={{ background: '#161b22', borderBottom: '1px solid #21262d', flexShrink: 0 }}>
+          {/* Ligne résumé + toggle */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 12px', cursor: 'pointer' }}
+            onClick={() => setJointsOpen(v => !v)}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: '#e3b341', whiteSpace: 'nowrap' }}>🔩 Jonctions caissons</span>
+            <span style={{ fontSize: 10, color: '#484f58', marginLeft: 4 }}>
+              {joints.filter(Boolean).length} doubles · Joints&nbsp;
+              <span style={{ color: '#e3b341', fontWeight: 700 }}>{totalJointsWidth.toFixed(1)} cm</span>
+              &nbsp;· Net&nbsp;
+              <span style={{ color: '#3fb950', fontWeight: 700 }}>{totalInteriorWidth.toFixed(1)} cm</span>
+            </span>
+            <span style={{ marginLeft: 'auto', fontSize: 10, color: '#484f58' }}>{jointsOpen ? '▲' : '▼'}</span>
+          </div>
+          {/* Détail des jonctions — visible seulement si ouvert */}
+          {jointsOpen && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, padding: '4px 12px 8px', overflowX: 'auto' }}>
+              {joints.map((isDouble, i) => (
+                <button key={i} onClick={(e) => { e.stopPropagation(); toggleJoint(i); }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 4,
+                    padding: '3px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700,
+                    border: `1px solid ${isDouble ? 'rgba(227,179,65,0.5)' : '#30363d'}`,
+                    background: isDouble ? 'rgba(227,179,65,0.12)' : '#0d1117',
+                    color: isDouble ? '#e3b341' : '#484f58',
+                    cursor: 'pointer', whiteSpace: 'nowrap',
+                  }}>
+                  {isDouble ? '⬛⬛' : '▪'} M{i+1}|M{i+2}
+                  <span style={{ opacity: 0.6, fontSize: 9 }}>({isDouble?(thickness*2).toFixed(1):thickness.toFixed(1)} cm)</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <SketchToolbar
             activeTool={tool}
             onToolChange={setTool}
@@ -330,7 +365,6 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
             generalNotes={generalNotes}
             onGeneralNotesChange={setGeneralNotes}
           />
-        </div>
 
         <aside className="hidden w-[332px] shrink-0 border-l border-white/10 bg-[linear-gradient(180deg,#10192d,#0a1120)] xl:flex xl:flex-col">
           <div className="border-b border-white/10 px-4 py-3">

@@ -1031,7 +1031,7 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
                   width={badgeW} height={badgeH}
                   fill="#fef3c7"
                   stroke="#EF9F27" strokeWidth={1}
-                  cornerRadius={3 * scaleRatio}
+                  cornerRadius={Math.min(3 * scaleRatio, badgeH / 2, badgeW / 2)}
                   listening={false}
                 />
                 <Text
@@ -1083,7 +1083,7 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
                   width={badgeW} height={badgeH}
                   fill="#fef3c7"
                   stroke="#EF9F27" strokeWidth={1}
-                  cornerRadius={3 * scaleRatio}
+                  cornerRadius={Math.min(3 * scaleRatio, badgeH / 2, badgeW / 2)}
                   listening={false}
                 />
                 <Text

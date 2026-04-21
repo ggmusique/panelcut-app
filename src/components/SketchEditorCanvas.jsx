@@ -5,7 +5,7 @@ const FACADE_W = 1140;
 const FACADE_H = 700;
 
 /**
- * Zone de dessin : canvas Konva + zone de notes générales.
+ * Zone de dessin : canvas Konva + barre de cotes + panneau 3D latéral.
  * Aucune logique métier — rendu uniquement.
  */
 const SketchEditorCanvas = forwardRef(function SketchEditorCanvas(
@@ -15,6 +15,7 @@ const SketchEditorCanvas = forwardRef(function SketchEditorCanvas(
     cabH,
     plinth,
     thick,
+    cabinetDims,
     // Données façade
     facadeModules,
     cabinetModules,
@@ -35,34 +36,74 @@ const SketchEditorCanvas = forwardRef(function SketchEditorCanvas(
     // Callbacks undo/redo state sync
     onModuleChange,
     onItemChange,
+    onHistoryChange,
+    onSelectionChange,
     // Notes générales
     generalNotes,
     onGeneralNotesChange,
     onDrawerResize,
+    // Affichage
+    showGrid,
+    currentCabinet,
   },
   konvaEditorRef
 ) {
-  const [selectedModule, setSelectedModule] = useState(null); // { modIdx, x, y } | null
+  const [selectedModule, setSelectedModule] = useState(null);
   const wrapperRef = useRef(null);
 
   const handleModuleSelect = useCallback((modIdx, screenX, screenY) => {
-    if (modIdx === null) {
-      setSelectedModule(null);
-      return;
-    }
+    if (modIdx === null) { setSelectedModule(null); return; }
     const rect = wrapperRef.current?.getBoundingClientRect();
     if (!rect) return;
     setSelectedModule({ modIdx, x: screenX - rect.left, y: screenY - rect.top });
   }, []);
 
+  const handleSelectionChange = useCallback((sel) => {
+    onSelectionChange?.(sel);
+  }, [onSelectionChange]);
+
   return (
-    <>
-      <div className="flex-1 overflow-auto bg-slate-950 flex justify-center p-4">
-        <div
-          ref={wrapperRef}
-          className="rounded-[28px] border border-white/10 bg-[radial-gradient(circle_at_top,#fffef9_0%,#f9f5ea_38%,#efe8d7_100%)] p-4 shadow-[0_24px_80px_rgba(0,0,0,0.35)]"
-          style={{ position: 'relative', overflow: 'visible', width: '100%' }}
-        >
+    <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 }}>
+
+      {/* ── CANVAS ZONE ── */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
+
+        {/* Barre de cotes live */}
+        <div style={{
+          height: 32, flexShrink: 0,
+          background: '#0d1117',
+          borderBottom: '1px solid #21262d',
+          display: 'flex', alignItems: 'center',
+          padding: '0 12px', gap: 20,
+          fontSize: 11, fontFamily: 'monospace',
+          color: '#484f58',
+        }}>
+          <span style={{ color: '#8b949e' }}>L</span>
+          <span style={{ color: '#3fb950' }}>{cabW} cm</span>
+          <span style={{ color: '#8b949e', marginLeft: 4 }}>H</span>
+          <span style={{ color: '#3fb950' }}>{cabH} cm</span>
+          {cabinetDims?.depth > 0 && <>
+            <span style={{ color: '#8b949e', marginLeft: 4 }}>P</span>
+            <span style={{ color: '#3fb950' }}>{cabinetDims.depth} cm</span>
+          </>}
+          {plinth > 0 && <>
+            <span style={{ color: '#8b949e', marginLeft: 4 }}>Plinthe</span>
+            <span>{plinth} cm</span>
+          </>}
+          <span style={{ color: '#21262d' }}>|</span>
+          {facadeModules.map((m, i) => (
+            <span key={i} style={{ color: '#484f58' }}>
+              M{i+1} <span style={{ color: '#e6edf3' }}>{m.width.toFixed(1)}</span>
+            </span>
+          ))}
+          <div style={{ flex: 1 }} />
+          <span style={{ color: '#388bfd' }}>
+            {activeTool === 'dim' ? '↔ Tracez une cote' : activeTool === 'note' ? '✎ Cliquez pour noter' : ''}
+          </span>
+        </div>
+
+        {/* Canvas Konva */}
+        <div ref={wrapperRef} style={{ flex: 1, height: 0, minHeight: 0, overflow: 'hidden', background: '#161b22', position: 'relative' }}>
           <FacadeKonvaEditor
             ref={konvaEditorRef}
             svgW={FACADE_W} svgH={FACADE_H}
@@ -87,8 +128,13 @@ const SketchEditorCanvas = forwardRef(function SketchEditorCanvas(
             onItemChange={onItemChange}
             onDrawerResize={onDrawerResize}
             onModuleSelect={handleModuleSelect}
+            onSelectionChange={handleSelectionChange}
+            onHistoryChange={onHistoryChange}
+            showGrid={showGrid}
+            currentCabinet={currentCabinet}
           />
 
+          {/* Popup module sélectionné */}
           {selectedModule !== null && (() => {
             const mod = facadeModules[selectedModule.modIdx];
             if (!mod) return null;
@@ -97,35 +143,23 @@ const SketchEditorCanvas = forwardRef(function SketchEditorCanvas(
             const left = Math.max(8, Math.min(selectedModule.x - 90, containerWidth - 188));
             return (
               <div style={{
-                position: 'absolute',
-                top,
-                left,
-                background: 'rgba(15, 23, 42, 0.94)',
-                border: '1px solid rgba(255,255,255,0.08)',
-                borderRadius: 16,
-                padding: '12px 14px',
-                boxShadow: '0 18px 48px rgba(15,23,42,.28)',
-                zIndex: 30,
-                minWidth: 180,
-                color: '#f8fafc',
-                backdropFilter: 'blur(10px)',
+                position: 'absolute', top, left, zIndex: 30,
+                background: '#1c2128', border: '1px solid #30363d',
+                borderRadius: 6, padding: '8px 12px',
+                boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                minWidth: 160, fontSize: 12,
               }}>
-                <div style={{ fontSize: 11, letterSpacing: '0.16em', textTransform: 'uppercase', color: '#94a3b8', marginBottom: 4 }}>Module sélectionné</div>
-                <div style={{ fontSize: 15, fontWeight: 600 }}>Module {selectedModule.modIdx + 1}</div>
-                <div style={{ fontSize: 12, color: '#cbd5e1' }}>{mod.width.toFixed(1)} cm</div>
-                <hr style={{ margin: '8px 0', borderColor: 'rgba(255,255,255,0.08)', border: 'none', borderTop: '1px solid rgba(255,255,255,0.08)' }} />
-                <div style={{ display: 'flex', gap: 12, fontSize: 12 }}>
+                <div style={{ color: '#e6edf3', fontWeight: 600, marginBottom: 6 }}>Module {selectedModule.modIdx + 1}</div>
+                <div style={{ color: '#8b949e', fontFamily: 'monospace', marginBottom: 8 }}>{mod.width.toFixed(1)} cm</div>
+                <div style={{ display: 'flex', gap: 6 }}>
                   <button
-                    style={{ background: 'none', border: 'none', color: '#fda4af', cursor: 'pointer', padding: 0, fontSize: 12 }}
-                    onClick={() => {
-                      onModuleErase(selectedModule.modIdx);
-                      setSelectedModule(null);
-                    }}
-                  >
-                    × Supprimer module
+                    onClick={() => { onModuleErase(selectedModule.modIdx); setSelectedModule(null); }}
+                    style={{ flex: 1, padding: '4px 0', background: 'rgba(248,81,73,0.15)',
+                      border: '1px solid rgba(248,81,73,0.3)', borderRadius: 4,
+                      color: '#f85149', cursor: 'pointer', fontSize: 11 }}>
+                    Supprimer
                   </button>
                   <button
-                    style={{ background: 'none', border: 'none', color: '#f8fafc', cursor: 'pointer', padding: 0, fontSize: 12 }}
                     onClick={() => {
                       const { modIdx } = selectedModule;
                       onModuleChange(prev => {
@@ -135,25 +169,38 @@ const SketchEditorCanvas = forwardRef(function SketchEditorCanvas(
                       });
                       setSelectedModule(null);
                     }}
-                  >
-                    ⧉ Dupliquer
+                    style={{ flex: 1, padding: '4px 0', background: 'rgba(31,111,235,0.15)',
+                      border: '1px solid rgba(31,111,235,0.3)', borderRadius: 4,
+                      color: '#388bfd', cursor: 'pointer', fontSize: 11 }}>
+                    Dupliquer
                   </button>
                 </div>
               </div>
             );
           })()}
         </div>
-      </div>
 
-      <div className="border-t border-white/10 bg-[#0c1322] p-3">
-        <textarea
-          value={generalNotes}
-          onChange={e => onGeneralNotesChange(e.target.value)}
-          placeholder="Notes du concepteur: 2 tiroirs en bas du module 3, porte vitrée à gauche, finition chêne clair..."
-          className="h-20 w-full rounded-2xl border border-white/10 bg-[linear-gradient(180deg,#131c31,#0d1526)] px-4 py-3 text-sm text-slate-200 placeholder-slate-500 shadow-inner outline-none resize-none"
-        />
+        {/* Barre de notes */}
+        <div style={{
+          height: 56, flexShrink: 0,
+          background: '#0d1117', borderTop: '1px solid #21262d',
+          padding: '0 12px', display: 'flex', alignItems: 'center', gap: 8,
+        }}>
+          <span style={{ fontSize: 11, color: '#484f58', flexShrink: 0 }}>Notes :</span>
+          <textarea
+            value={generalNotes}
+            onChange={e => onGeneralNotesChange(e.target.value)}
+            placeholder="Notes pour Claude (ex: tiroir bas module 3, porte vitrée gauche...)"
+            style={{
+              flex: 1, height: 36, resize: 'none',
+              background: '#161b22', border: '1px solid #21262d',
+              borderRadius: 4, color: '#8b949e', fontSize: 11,
+              padding: '6px 8px', fontFamily: 'inherit',
+            }}
+          />
+        </div>
       </div>
-    </>
+    </div>
   );
 });
 

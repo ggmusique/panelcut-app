@@ -12,6 +12,8 @@ const toNum = (v, d = 0) => {
   return Number.isFinite(n) ? n : d;
 };
 
+const MODULE_HITBOX_NAME = 'module-hitbox';
+
 /**
  * Renders ONE cabinet module in Konva with all interactions.
  *
@@ -149,17 +151,6 @@ export default function FacadeKonvaModule({
         />
       )}
 
-      {/* ── Zone de clic générale rendue AVANT les items pour que les items draggables soient au-dessus en z-order ── */}
-      {!isPlace && !isAdd && (
-        <Rect
-          x={intLeft} y={intTop}
-          width={iW} height={iH}
-          fill="transparent"
-          listening={!isErase}
-          onClick={handleGroupClick}
-        />
-      )}
-
       {/* ── Interior elements (drawers, doors, shelves, rods, drawer separators) ── */}
       <FacadeKonvaItems
         moduleRect={moduleRect}
@@ -215,18 +206,30 @@ export default function FacadeKonvaModule({
         listening={false}
       />
 
-      {/* ── Zone de clic pour placement tablette / tringle (au-dessus — capture la position du clic) ── */}
-      {/* listening=false en mode 'move' pour ne pas bloquer le drag des items draggables. */}
-      {isPlace && (
+      {/* ── Hit zones — toutes APRÈS les items pour ne pas bloquer leurs handlers ── */}
+
+      {/* Zone générale : sélection de module (select) */}
+      {!isPlace && !isAdd && (
+        <Rect
+          name={MODULE_HITBOX_NAME}
+          x={intLeft} y={intTop}
+          width={iW} height={iH}
+          fill="transparent"
+          listening={!isErase}
+          onClick={handleGroupClick}
+        />
+      )}
+
+      {/* Zone placement tablette / tringle — désactivée en mode move pour laisser les drags */}
+      {isPlace && interactionMode !== 'move' && (
         <Rect
           x={intLeft} y={intTop}
           width={iW} height={iH}
           fill="transparent"
-          listening={interactionMode !== 'move'}
           onClick={(e) => {
             e.cancelBubble = true;
             const stage = e.target.getStage();
-            const pos   = stage?.getPointerPosition();
+            const pos = stage?.getPointerPosition();
             if (!pos) return;
             const yRatio = Math.max(0, Math.min(1, (pos.y - intTop) / iH));
             onAddElement?.({ type: activeTool, yRatio });
@@ -234,14 +237,12 @@ export default function FacadeKonvaModule({
         />
       )}
 
-      {/* ── Zone de clic pour outils d'ajout (au-dessus — pas de position nécessaire) ── */}
-      {/* listening=false en mode 'move' pour ne pas bloquer le drag des séparateurs de tiroirs. */}
-      {isAdd && (
+      {/* Zone ajout tiroir / porte / coulissante — désactivée en mode move */}
+      {isAdd && interactionMode !== 'move' && (
         <Rect
           x={intLeft} y={intTop}
           width={iW} height={iH}
           fill="transparent"
-          listening={interactionMode !== 'move'}
           onClick={handleGroupClick}
         />
       )}

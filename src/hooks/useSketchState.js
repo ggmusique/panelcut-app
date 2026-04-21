@@ -68,6 +68,7 @@ export function useSketchState({ initialResult, draft, konvaEditorRef, onComplet
       width:  toNum(initialCab.width,  200),
       height: toNum(initialCab.height, 240),
       plinth: toNum(initialCab.plinth,   0),
+      depth:  toNum(initialCab.depth,   60),
     }
   );
 
@@ -194,13 +195,15 @@ export function useSketchState({ initialResult, draft, konvaEditorRef, onComplet
   }, [initialResult]);
 
   const currentCabinet = useMemo(() => {
-    const w  = cabinetDims.width;
-    const h  = cabinetDims.height;
-    const pl = cabinetDims.plinth;
+    const w     = cabinetDims.width;
+    const h     = cabinetDims.height;
+    const pl    = cabinetDims.plinth;
+    const depth = cabinetDims.depth || 60;
     if (!w || !h) return null;
     const interiorH = Math.max(1, h - pl);
     return {
       width: w, height: h, plinth: pl,
+      depth,
       globalSlidingDoors: globalSliding.enabled
         ? {
             count:    Math.max(2, Math.min(4, parseInt(globalSliding.count, 10) || 2)),

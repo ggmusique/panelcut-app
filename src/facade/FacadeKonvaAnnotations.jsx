@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import ReactDOM from 'react-dom';
 import { Group, Line, Rect, Text, Circle, Arrow } from 'react-konva';
 import { uid } from '../utils/sketchEditorConstants';
 
@@ -46,7 +45,7 @@ function stagePointToViewport(stage, point) {
  * Floating <input> rendered via portal into document.body.
  * Props: x, y (viewport px), value, onCommit, onCancel
  */
-function OverlayInput({ x, y, value: initialValue, placeholder = '', onCommit, onCancel }) {
+export function OverlayInput({ x, y, value: initialValue, placeholder = '', onCommit, onCancel }) {
   const [val, setVal] = useState(initialValue ?? '');
   const ref = useRef(null);
 
@@ -62,7 +61,7 @@ function OverlayInput({ x, y, value: initialValue, placeholder = '', onCommit, o
     if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
   }, [commit, onCancel]);
 
-  return ReactDOM.createPortal(
+  return (
     <input
       ref={ref}
       value={val}
@@ -86,8 +85,7 @@ function OverlayInput({ x, y, value: initialValue, placeholder = '', onCommit, o
         outline:    'none',
         zIndex:     9999,
       }}
-    />,
-    document.body,
+    />
   );
 }
 
@@ -102,10 +100,9 @@ function DimElement({
   onUpdate,
   onRemove,
   stageRef,
+  onOpenEdit,
 }) {
   const [hovered,      setHovered]      = useState(false);
-  const [editingLabel, setEditingLabel] = useState(false);
-  const [bubbleScreen, setBubbleScreen] = useState({ x: 0, y: 0 });
 
   const { x1, y1, x2, y2, id } = el;
   const midX  = (x1 + x2) / 2;
@@ -135,19 +132,11 @@ function DimElement({
     if (!stage) return;
     const pointerPos = stage.getRelativePointerPosition?.() ?? stage.getPointerPosition();
     const pos = stagePointToViewport(stage, pointerPos || { x: midX, y: midY });
-    setBubbleScreen({
+    onOpenEdit?.(el, {
       x: pos.x - BUBBLE_W / 2,
       y: pos.y - BUBBLE_H / 2 - 4,
     });
-    setEditingLabel(true);
-  }, [stageRef, midX, midY]);
-
-  const commitLabel = useCallback((val) => {
-    setEditingLabel(false);
-    onUpdate?.({ ...el, label: val });
-  }, [el, onUpdate]);
-
-  const cancelLabel = useCallback(() => setEditingLabel(false), []);
+  }, [stageRef, midX, midY, el, onOpenEdit]);
 
   // Drag of the whole group
   const handleGroupDragEnd = useCallback((e) => {
@@ -330,18 +319,6 @@ function DimElement({
           />
         </>
       )}
-
-      {/* Inline input overlay for label */}
-      {editingLabel && (
-        <OverlayInput
-          x={bubbleScreen.x}
-          y={bubbleScreen.y}
-          value={el.label ?? ''}
-          placeholder="valeur"
-          onCommit={commitLabel}
-          onCancel={cancelLabel}
-        />
-      )}
     </>
   );
 }
@@ -351,10 +328,8 @@ function DimElement({
 /**
  * Renders a single sticky note annotation (type === 'note').
  */
-function NoteElement({ el, isErase, onUpdate, onRemove, stageRef }) {
+function NoteElement({ el, isErase, onUpdate, onRemove, stageRef, onOpenEdit }) {
   const [hovered,     setHovered]     = useState(false);
-  const [editingText, setEditingText] = useState(false);
-  const [noteScreen,  setNoteScreen]  = useState({ x: 0, y: 0 });
 
   const { id, x, y, text } = el;
 
@@ -369,16 +344,8 @@ function NoteElement({ el, isErase, onUpdate, onRemove, stageRef }) {
     if (!stage) return;
     const pointerPos = stage.getRelativePointerPosition?.() ?? stage.getPointerPosition();
     const pos = stagePointToViewport(stage, pointerPos || { x, y });
-    setNoteScreen({ x: pos.x, y: pos.y - 14 });
-    setEditingText(true);
-  }, [stageRef, x, y]);
-
-  const commitText = useCallback((val) => {
-    setEditingText(false);
-    onUpdate?.({ ...el, text: val });
-  }, [el, onUpdate]);
-
-  const cancelText = useCallback(() => setEditingText(false), []);
+    onOpenEdit?.(el, { x: pos.x, y: pos.y - 14 });
+  }, [stageRef, x, y, el, onOpenEdit]);
 
   const handleDragEnd = useCallback((e) => {
     onUpdate?.({ ...el, x: e.target.x(), y: e.target.y() });
@@ -447,19 +414,24 @@ function NoteElement({ el, isErase, onUpdate, onRemove, stageRef }) {
           <DeleteCross x={approxW - 8} y={-8} onClick={(e) => { e.cancelBubble = true; onRemove?.(id); }} />
         )}
       </Group>
-
-      {editingText && (
-        <OverlayInput
-          x={noteScreen.x}
-          y={noteScreen.y}
-          value={el.text ?? ''}
-          placeholder="note…"
-          onCommit={commitText}
-          onCancel={cancelText}
-        />
-      )}
     </>
   );
+}
+
+// ── Auto-label calculator ────────────────────────────────────────────────────
+
+/**
+ * Converts a drawn segment (in Konva content coords) to a cm value.
+ * Projects onto the dominant axis and maps to cabinet dimensions.
+ */
+function computeAutoLabel(x1, y1, x2, y2, drawW, drawH, cabW, cabH) {
+  const dx = Math.abs(x2 - x1);
+  const dy = Math.abs(y2 - y1);
+  if (!drawW || !drawH || !cabW || !cabH) return '';
+  const cm = dx >= dy
+    ? ((dx / drawW) * cabW)
+    : ((dy / drawH) * cabH);
+  return cm.toFixed(1);
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -492,6 +464,15 @@ export default function FacadeKonvaAnnotations({
   onElementUpdate,
   onElementRemove,
   stageRef,
+  // Cabinet dimensions for auto-label
+  cabW = 0,
+  cabH = 0,
+  drawW = 0,
+  drawH = 0,
+  // Overlay callbacks — called with JSX to render outside the Konva tree
+  onPendingDimOverlay,
+  onNoteOverlay,
+  onEditingElOverlay,
 }) {
   // ── Drawing state ──────────────────────────────────────────────────────────
   const [drawing,    setDrawing]    = useState(false);  // dim creation in progress
@@ -505,6 +486,9 @@ export default function FacadeKonvaAnnotations({
   // For note creation
   const [noteInputPos, setNoteInputPos] = useState(null); // {x, y} screen coords
   const noteStagePos   = useRef(null);                    // stage coords when note input opened
+
+  // For editing existing elements (dim label or note text)
+  const [editingEl,  setEditingEl]  = useState(null); // { el, pos: {x,y} }
 
   const isErase = activeTool === 'erase';
   const isDim   = activeTool === 'dim';
@@ -551,6 +535,7 @@ export default function FacadeKonvaAnnotations({
       return;
     }
 
+    const autoLabel = computeAutoLabel(dimStart.x, dimStart.y, pos.x, pos.y, drawW, drawH, cabW, cabH);
     const newDim = {
       id:    uid(),
       type:  'dim',
@@ -558,22 +543,15 @@ export default function FacadeKonvaAnnotations({
       y1:    dimStart.y,
       x2:    pos.x,
       y2:    pos.y,
-      label: '',
+      label: autoLabel,
     };
 
     setDimStart(null);
     setDimPreview(null);
 
-    // Open label input immediately
-    const mx = (newDim.x1 + newDim.x2) / 2;
-    const my = (newDim.y1 + newDim.y2) / 2;
-    const midScreen = stagePointToViewport(stage, { x: mx, y: my });
-    setPendingDim(newDim);
-    setPendingLabelPos({
-      x: midScreen.x - BUBBLE_W / 2,
-      y: midScreen.y - BUBBLE_H / 2 - 4,
-    });
-  }, [isDim, drawing, dimStart]);
+    // Commit directement avec le label calculé — pas besoin d'input
+    onElementAdd?.({ ...newDim, label: autoLabel });
+  }, [isDim, drawing, dimStart, drawW, drawH, cabW, cabH, onElementAdd]);
 
   const handleStageClick = useCallback((e) => {
     if (!isNote) return;
@@ -619,6 +597,66 @@ export default function FacadeKonvaAnnotations({
 
   const cancelNote = useCallback(() => setNoteInputPos(null), []);
 
+  // ── Commit editing existing element ───────────────────────────────────────
+  const commitEditingEl = useCallback((val) => {
+    if (!editingEl) return;
+    const { el } = editingEl;
+    setEditingEl(null);
+    if (el.type === 'dim') onElementUpdate?.({ ...el, label: val });
+    else                   onElementUpdate?.({ ...el, text:  val });
+  }, [editingEl, onElementUpdate]);
+
+  const cancelEditingEl = useCallback(() => setEditingEl(null), []);
+
+  // ── Sync overlays to parent ────────────────────────────────────────────────
+  useEffect(() => {
+    onPendingDimOverlay?.(
+      pendingDim && pendingLabelPos ? (
+        <OverlayInput
+          key="pending-dim"
+          x={pendingLabelPos.x}
+          y={pendingLabelPos.y}
+          value={pendingDim?.label ?? ''}
+          placeholder="valeur"
+          onCommit={commitPendingDim}
+          onCancel={cancelPendingDim}
+        />
+      ) : null
+    );
+  }, [pendingDim, pendingLabelPos, commitPendingDim, cancelPendingDim, onPendingDimOverlay]);
+
+  useEffect(() => {
+    onNoteOverlay?.(
+      noteInputPos ? (
+        <OverlayInput
+          key="note-input"
+          x={noteInputPos.x}
+          y={noteInputPos.y}
+          value=""
+          placeholder="note…"
+          onCommit={commitNote}
+          onCancel={cancelNote}
+        />
+      ) : null
+    );
+  }, [noteInputPos, commitNote, cancelNote, onNoteOverlay]);
+
+  useEffect(() => {
+    onEditingElOverlay?.(
+      editingEl ? (
+        <OverlayInput
+          key={`edit-${editingEl.el.id}`}
+          x={editingEl.pos.x}
+          y={editingEl.pos.y}
+          value={editingEl.el.type === 'dim' ? (editingEl.el.label ?? '') : (editingEl.el.text ?? '')}
+          placeholder={editingEl.el.type === 'dim' ? 'valeur' : 'note…'}
+          onCommit={commitEditingEl}
+          onCancel={cancelEditingEl}
+        />
+      ) : null
+    );
+  }, [editingEl, commitEditingEl, cancelEditingEl, onEditingElOverlay]);
+
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <Group>
@@ -641,14 +679,45 @@ export default function FacadeKonvaAnnotations({
 
       {/* ── Dim preview while drawing ── */}
       {drawing && dimStart && dimPreview && (
-        <Line
-          points={[dimStart.x, dimStart.y, dimPreview.x, dimPreview.y]}
-          stroke={DIM_STROKE}
-          strokeWidth={1.5}
-          dash={[6, 4]}
-          opacity={0.7}
-          listening={false}
-        />
+        <Group>
+          <Line
+            points={[dimStart.x, dimStart.y, dimPreview.x, dimPreview.y]}
+            stroke={DIM_STROKE}
+            strokeWidth={1.5}
+            dash={[6, 4]}
+            opacity={0.7}
+            listening={false}
+          />
+          {/* Label live calculé */}
+          {(() => {
+            const liveLabel = computeAutoLabel(
+              dimStart.x, dimStart.y, dimPreview.x, dimPreview.y,
+              drawW, drawH, cabW, cabH
+            );
+            if (!liveLabel) return null;
+            const mx = (dimStart.x + dimPreview.x) / 2;
+            const my = (dimStart.y + dimPreview.y) / 2 - 14;
+            return (
+              <>
+                <Rect
+                  x={mx - 24} y={my - 10}
+                  width={48} height={20}
+                  fill="#0c2d3a" stroke={DIM_STROKE}
+                  strokeWidth={1} cornerRadius={4}
+                  listening={false}
+                />
+                <Text
+                  x={mx - 24} y={my - 10}
+                  width={48} height={20}
+                  text={`${liveLabel} cm`}
+                  align="center" verticalAlign="middle"
+                  fontSize={11} fill={DIM_STROKE}
+                  fontStyle="bold" listening={false}
+                />
+              </>
+            );
+          })()}
+        </Group>
       )}
 
       {/* ── Existing dim elements ── */}
@@ -662,6 +731,7 @@ export default function FacadeKonvaAnnotations({
             onUpdate={onElementUpdate}
             onRemove={onElementRemove}
             stageRef={stageRef}
+            onOpenEdit={(el, pos) => setEditingEl({ el, pos })}
           />
         ))}
 
@@ -676,32 +746,13 @@ export default function FacadeKonvaAnnotations({
             onUpdate={onElementUpdate}
             onRemove={onElementRemove}
             stageRef={stageRef}
+            onOpenEdit={(el, pos) => setEditingEl({ el, pos })}
           />
         ))}
 
       {/* ── Pending dim label input ── */}
-      {pendingDim && pendingLabelPos && (
-        <OverlayInput
-          x={pendingLabelPos.x}
-          y={pendingLabelPos.y}
-          value=""
-          placeholder="valeur"
-          onCommit={commitPendingDim}
-          onCancel={cancelPendingDim}
-        />
-      )}
-
       {/* ── Note text input ── */}
-      {noteInputPos && (
-        <OverlayInput
-          x={noteInputPos.x}
-          y={noteInputPos.y}
-          value=""
-          placeholder="note…"
-          onCommit={commitNote}
-          onCancel={cancelNote}
-        />
-      )}
+      {/* Overlays are rendered outside the Konva tree via onPendingDimOverlay/onNoteOverlay/onEditingElOverlay callbacks */}
     </Group>
   );
 }
