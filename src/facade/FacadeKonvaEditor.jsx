@@ -253,6 +253,7 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
   onDrawerResize,
   onModuleSelect,
   onSelectionChange,
+  assemblyType    = 'traverse_sur_montant',
   activeTool      = 'select',
   showGrid        = true,
   onChange,
@@ -388,7 +389,10 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
 
   const thPx   = toNum(thick, 1.8) * (drawW / Math.max(1, toNum(cabW)));
   const plPx   = toNum(plinth)      * (drawH / Math.max(1, toNum(cabH)));
-  const innerH = drawH - plPx;
+  const innerH  = drawH - plPx;
+  const isTSM   = assemblyType !== 'montant_sur_traverse';
+  const montantY = isTSM ? mT + thPx : mT;
+  const montantH = isTSM ? innerH - 2 * thPx : innerH;
 
   const mRects = useMemo(() =>
     computeKonvaMRects({ facadeModules, joints, thPx, drawW, mL, mT, innerH }),
@@ -796,7 +800,7 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
           {/* Interior background (inside the four panels) */}
           <Rect
             x={mL + thPx}     y={mT + thPx}
-            width={drawW - 2 * thPx} height={innerH - thPx}
+            width={drawW - 2 * thPx} height={isTSM ? innerH - 2 * thPx : innerH - thPx}
             fill="#ede4d3"
             listening={false}
           />
@@ -818,13 +822,13 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
 
           {/* ── SIDE PANELS ── */}
           <Rect
-            x={mL} y={mT} width={thPx} height={innerH}
+            x={mL} y={montantY} width={thPx} height={montantH}
             {...woodGradH(thPx)}
             stroke={WOOD_STROKE} strokeWidth={1.5}
             listening={false}
           />
           <Rect
-            x={mL + drawW - thPx} y={mT} width={thPx} height={innerH}
+            x={mL + drawW - thPx} y={montantY} width={thPx} height={montantH}
             {...woodGradH(thPx)}
             stroke={WOOD_STROKE} strokeWidth={1.5}
             listening={false}
@@ -855,12 +859,12 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
               return (
                 <Group key={`sep-${i}`} listening={false}>
                   <Rect
-                    x={sepX}        y={mT} width={thPx} height={innerH}
+                    x={sepX}        y={montantY} width={thPx} height={montantH}
                     {...sepGradH(thPx)}
                     stroke={WOOD_STROKE} strokeWidth={1}
                   />
                   <Rect
-                    x={sepX + thPx} y={mT} width={thPx} height={innerH}
+                    x={sepX + thPx} y={montantY} width={thPx} height={montantH}
                     {...sepGradH(thPx)}
                     stroke={WOOD_STROKE} strokeWidth={1}
                   />
@@ -879,7 +883,7 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
             return (
               <Rect
                 key={`sep-${i}`}
-                x={sepX} y={mT} width={thPx} height={innerH}
+                x={sepX} y={montantY} width={thPx} height={montantH}
                 {...woodGradH(thPx)}
                 stroke={WOOD_STROKE} strokeWidth={1}
                 listening={false}

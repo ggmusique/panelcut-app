@@ -33,6 +33,7 @@ export default function SketchToolbar({
   selectedModuleIdx, onSelectModuleIdx,
   moduleDetails, onModuleDetailsChange,
   onSave, onMoveModule,
+  assemblyType, onAssemblyTypeChange,
 }) {
   const dragSrcIdx = useRef(null);
   const [dragOverIdx, setDragOverIdx] = useState(null);
@@ -151,6 +152,31 @@ export default function SketchToolbar({
               onDetailChange={onModuleDetailsChange} />
           </Section>
         )}
+
+        <Section title="ASSEMBLAGE">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <label style={{ fontSize: 10, color: '#484f58', letterSpacing: '0.04em' }}>TYPE D'ASSEMBLAGE</label>
+            {[
+              { v: 'traverse_sur_montant', label: 'Traverses sur montants', desc: '(standard)' },
+              { v: 'montant_sur_traverse', label: 'Montants sur traverses', desc: '(caisson)' },
+            ].map(opt => (
+              <label key={opt.v} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                <input
+                  type="radio"
+                  name="assembly"
+                  value={opt.v}
+                  checked={(assemblyType || 'traverse_sur_montant') === opt.v}
+                  onChange={() => onAssemblyTypeChange?.(opt.v)}
+                  style={{ accentColor: '#1f6feb' }}
+                />
+                <div>
+                  <div style={{ fontSize: 12, color: '#e6edf3' }}>{opt.label}</div>
+                  <div style={{ fontSize: 10, color: '#484f58' }}>{opt.desc}</div>
+                </div>
+              </label>
+            ))}
+          </div>
+        </Section>
 
         <Section title="PORTES COULISSANTES">
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>

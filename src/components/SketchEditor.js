@@ -47,6 +47,7 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
     moduleDetails, setModuleDetails,
     globalSliding, setGlobalSliding,
     joints,
+    assemblyType,  setAssemblyType,
     generalNotes,  setGeneralNotes,
     elements,
     widthInputs,   setWidthInputs,
@@ -336,6 +337,8 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
             onModuleDetailsChange={setModuleDetails}
             onSave={() => { void triggerRemoteSave(); }}
             onMoveModule={(fromIdx, toIdx) => { handleMoveModule(fromIdx, toIdx); setSelectedModuleIdx(toIdx); }}
+            assemblyType={assemblyType}
+            onAssemblyTypeChange={setAssemblyType}
           />
 
           <SketchEditorCanvas
@@ -364,6 +367,7 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
             onDrawerResize={handleDrawerResize}
             generalNotes={generalNotes}
             onGeneralNotesChange={setGeneralNotes}
+            assemblyType={assemblyType}
           />
 
         <aside className="hidden w-[332px] shrink-0 border-l border-white/10 bg-[linear-gradient(180deg,#10192d,#0a1120)] xl:flex xl:flex-col">

@@ -45,6 +45,7 @@ const SketchEditorCanvas = forwardRef(function SketchEditorCanvas(
     // Affichage
     showGrid,
     currentCabinet,
+    assemblyType,
   },
   konvaEditorRef
 ) {
@@ -132,6 +133,7 @@ const SketchEditorCanvas = forwardRef(function SketchEditorCanvas(
             onHistoryChange={onHistoryChange}
             showGrid={showGrid}
             currentCabinet={currentCabinet}
+            assemblyType={assemblyType}
           />
 
           {/* Popup module sélectionné */}

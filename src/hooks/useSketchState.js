@@ -150,6 +150,9 @@ export function useSketchState({ initialResult, draft, konvaEditorRef, onComplet
   const [joints, setJoints] = useState(
     () => savedState?.joints || Array(nbJoints).fill(true)
   );
+  const [assemblyType, setAssemblyType] = useState(
+    savedState?.assemblyType || 'traverse_sur_montant'
+  );
   useEffect(() => {
     setJoints(prev => {
       const n = Math.max(0, facadeModules.length - 1);
@@ -271,6 +274,7 @@ export function useSketchState({ initialResult, draft, konvaEditorRef, onComplet
             generalNotes,
             joints,
             globalSliding,
+            assemblyType,
           },
         }));
       }, 0);
@@ -447,6 +451,7 @@ export function useSketchState({ initialResult, draft, konvaEditorRef, onComplet
     moduleDetails, setModuleDetails,
     globalSliding, setGlobalSliding,
     joints,
+    assemblyType,  setAssemblyType,
     generalNotes,  setGeneralNotes,
     elements,
     widthInputs,   setWidthInputs,
