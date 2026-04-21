@@ -3,7 +3,7 @@ import { Disc, Layers3, PencilRuler, ScanSearch, Sparkles, Wand2 } from 'lucide-
 import { useAuth } from '../contexts/AuthContext';
 import SketchToolbar from './SketchToolbar';
 import SketchEditorCanvas from './SketchEditorCanvas';
-import CabinetStaticViewer from '../visualization/CabinetStaticViewer';
+import ProfessionalRealisticViewer from '../visualization/ProfessionalRealisticViewer';
 import { useSketchPersistence } from '../hooks/useSketchPersistence';
 import { useSketchState } from '../hooks/useSketchState';
 import { LS_SKETCH_KEY, uid } from '../utils/sketchEditorConstants';
@@ -382,9 +382,13 @@ export default function SketchEditor({ image, scanImage, initialResult, draft, o
           </div>
 
           <div className="px-3 pt-3">
-            <div className="overflow-hidden rounded-[24px] border border-white/10 bg-white/[0.03] shadow-[0_18px_50px_rgba(0,0,0,0.28)] p-3">
-              <CabinetStaticViewer
-                currentCabinet={currentCabinet}
+            <div className="overflow-hidden rounded-[24px] border border-white/10 bg-white/[0.03] shadow-[0_18px_50px_rgba(0,0,0,0.28)]">
+              <ProfessionalRealisticViewer
+                cabinet={currentCabinet}
+                name="Aperçu meuble"
+                presentationMode
+                embedded
+                viewerHeight={340}
               />
             </div>
           </div>
