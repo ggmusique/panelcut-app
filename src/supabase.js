@@ -7,7 +7,10 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   console.error('Supabase credentials manquants — vérifie .env');
 }
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+export const supabase =
+  SUPABASE_URL && SUPABASE_ANON_KEY
+    ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+    : null;
 
 // ── Auth ──────────────────────────────────────────────────────────────────
 

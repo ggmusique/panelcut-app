@@ -1,14 +1,27 @@
 import { useState, useRef } from 'react';
+import {
+  BookOpenText,
+  BetweenHorizonalStart,
+  DoorClosed,
+  Eraser,
+  PanelsTopLeft,
+  PencilRuler,
+  Ruler,
+  Rows3,
+  SquareStack,
+  ToggleLeft,
+} from 'lucide-react';
 import { defaultDrawerParts } from '../utils/sketchEditorConstants';
 
 const TOOLS = [
-  { id: 'drawer', icon: '🗄️', label: 'Tiroir',       color: '#fbbf24' },
-  { id: 'shelf',  icon: '📦', label: 'Tablette',     color: '#34d399' },
-  { id: 'rod',    icon: '👔', label: 'Tringle',      color: '#f472b6' },
-  { id: 'door',   icon: '🚪', label: 'Porte',        color: '#60a5fa' },
-  { id: 'sliding',icon: '🚪↔️', label: 'Coulissante', color: '#93c5fd' },
-  { id: 'dim',    icon: '📏', label: 'Cote',         color: '#22d3ee' },
-  { id: 'note',   icon: '📝', label: 'Note',         color: '#fb923c' },
+  { id: 'drawer',  icon: Rows3,                label: 'Tiroir',       color: '#eab308' },
+  { id: 'shelf',   icon: PanelsTopLeft,        label: 'Tablette',     color: '#10b981' },
+  { id: 'rod',     icon: BetweenHorizonalStart,label: 'Tringle',      color: '#60a5fa' },
+  { id: 'door',    icon: DoorClosed,           label: 'Porte',        color: '#f59e0b' },
+  { id: 'sliding', icon: SquareStack,          label: 'Coulissante',  color: '#8b5cf6' },
+  { id: 'dim',     icon: Ruler,                label: 'Cote',         color: '#06b6d4' },
+  { id: 'note',    icon: PencilRuler,          label: 'Note',         color: '#fb923c' },
+  { id: 'erase',   icon: Eraser,               label: 'Effacer',      color: '#f87171' },
 ];
 
 const toNum = (v, d = 0) => { const n = Number(v); return Number.isFinite(n) ? n : d; };
@@ -50,54 +63,142 @@ export default function SketchToolbar({
   const dragSrcIdx = useRef(null);
   return (
     <>
-      {/* ── Barre outils ── */}
-      <div className="flex gap-2 p-2 bg-slate-800 overflow-x-auto border-b border-slate-700">
-        {dimensionsFromWizard && (
-          <span className="flex items-center gap-1 px-2 py-1 rounded text-xs font-bold bg-green-700/30 text-green-400 border border-green-600/40">✓ Cotes</span>
-        )}
-        {TOOLS.map(t => (
-          <button key={t.id} onClick={() => onToolChange(t.id)}
-            className={`flex items-center gap-1.5 ${isCompactMobile ? 'px-2 py-2' : 'px-3 py-2'} rounded text-sm font-medium transition ${
-              activeTool === t.id ? 'bg-slate-600 text-white ring-2 ring-offset-1 ring-offset-slate-800' : 'text-slate-400 hover:bg-slate-700'
-            }`}
-            style={activeTool === t.id ? { borderColor: t.color, borderWidth: '2px' } : {}}>
-            <span>{t.icon}</span>
-            {!isCompactMobile && <span>{t.label}</span>}
-          </button>
-        ))}
-        {!isCompactMobile && <div className="ml-auto text-xs text-slate-400 self-center px-2 whitespace-nowrap">{hint}</div>}
+      <div className="border-b border-white/10 bg-[linear-gradient(180deg,rgba(20,30,49,0.95),rgba(11,18,33,0.92))]">
+        <div className="flex flex-wrap items-center gap-3 px-3 py-1.5">
+          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+            <ToggleLeft className="h-4 w-4 text-amber-300" />
+            Outils d'édition
+          </div>
+          {dimensionsFromWizard && (
+            <span className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-300">
+              Dimensions importées
+            </span>
+          )}
+          {!isCompactMobile && (
+            <div className="ml-auto rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-slate-300">
+              {hint}
+            </div>
+          )}
+        </div>
+
+        <div className="flex gap-1.5 overflow-x-auto px-3 pb-2">
+          {TOOLS.map((t) => {
+            const Icon = t.icon;
+            const active = activeTool === t.id;
+            return (
+              <button
+                key={t.id}
+                onClick={() => onToolChange(t.id)}
+                className={`group min-w-[64px] rounded-xl border px-2 py-1.5 text-left transition ${
+                  active
+                    ? 'border-white/20 bg-white/[0.08] text-white shadow-[0_12px_32px_rgba(0,0,0,0.22)]'
+                    : 'border-white/8 bg-white/[0.03] text-slate-300 hover:border-white/15 hover:bg-white/[0.06]'
+                }`}
+                style={active ? { boxShadow: `inset 0 0 0 1px ${t.color}55` } : {}}
+              >
+                <div
+                  className="mb-1 flex h-7 w-7 items-center justify-center rounded-lg border"
+                  style={{
+                    color: t.color,
+                    borderColor: active ? `${t.color}55` : 'rgba(255,255,255,0.08)',
+                    background: active ? `${t.color}18` : 'rgba(255,255,255,0.03)',
+                  }}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                </div>
+                <div className="text-[11px] font-semibold">{t.label}</div>
+                {!isCompactMobile && (
+                  <div className="hidden">
+                    {t.id === 'drawer' && 'Façade basse'}
+                    {t.id === 'shelf' && 'Étagère intérieure'}
+                    {t.id === 'rod' && 'Suspension'}
+                    {t.id === 'door' && 'Battante'}
+                    {t.id === 'sliding' && 'Portes frontales'}
+                    {t.id === 'dim' && 'Cotation libre'}
+                    {t.id === 'note' && 'Commentaire'}
+                    {t.id === 'erase' && 'Supprimer'}
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      {/* ── Dimensions meuble + largeurs modules ── */}
-      <div className="bg-slate-900 border-b border-slate-700 p-2 flex flex-wrap gap-2 items-center text-xs">
-        <span className="text-slate-400">Cotes :</span>
-        <label className="text-slate-300">L <input value={cabinetDims.width}
-          onChange={e => onCabinetDimsChange(v => ({ ...v, width: toNum(e.target.value, 0) }))}
-          className="w-20 ml-1 px-1 py-0.5 bg-slate-800 border border-slate-600 rounded"/> cm</label>
-        <label className="text-slate-300">H <input value={cabinetDims.height}
-          onChange={e => onCabinetDimsChange(v => ({ ...v, height: toNum(e.target.value, 0) }))}
-          className="w-20 ml-1 px-1 py-0.5 bg-slate-800 border border-slate-600 rounded"/> cm</label>
-        <label className="text-slate-300">Plinthe <input value={cabinetDims.plinth}
-          onChange={e => onCabinetDimsChange(v => ({ ...v, plinth: toNum(e.target.value, 0) }))}
-          className="w-20 ml-1 px-1 py-0.5 bg-slate-800 border border-slate-600 rounded"/> cm</label>
-        <span className="text-slate-500 ml-2">Modules :</span>
-        {facadeModules.map((m, i) => (
-          <label key={m.id || i} className="text-slate-300">M{i + 1}
-            <input
-              value={widthInputs[i] ?? ''}
-              onChange={e => onWidthInputChange(i, e.target.value)}
-              onBlur={() => onCommitWidth(i)}
-              onKeyDown={e => { if (e.key === 'Enter') { onCommitWidth(i); e.target.blur(); } }}
-              className="w-16 ml-1 px-1 py-0.5 bg-slate-800 border border-slate-600 rounded"
-            />
-          </label>
-        ))}
+      <div className="border-b border-white/10 bg-[#0f1729] px-3 py-1.5">
+        <div className="grid gap-2 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,1.95fr)]">
+          <div className="rounded-xl border border-white/8 bg-white/[0.03] px-2.5 py-2">
+            <div className="mb-1.5 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+              <BookOpenText className="h-4 w-4 text-amber-300" />
+              Dimensions Totales
+            </div>
+            <div className="grid gap-2 sm:grid-cols-3">
+              <label className="text-slate-300">
+                <span className="mb-1 block text-[10px] uppercase tracking-[0.12em] text-slate-500">Largeur</span>
+                <div className="flex h-8 items-center gap-2 rounded-lg border border-white/8 bg-[#121c31] px-2">
+                  <input
+                    value={cabinetDims.width}
+                    onChange={e => onCabinetDimsChange(v => ({ ...v, width: toNum(e.target.value, 0) }))}
+                    className="w-full bg-transparent text-xs text-white outline-none"
+                  />
+                  <span className="text-[11px] text-slate-500">cm</span>
+                </div>
+              </label>
+              <label className="text-slate-300">
+                <span className="mb-1 block text-[10px] uppercase tracking-[0.12em] text-slate-500">Hauteur</span>
+                <div className="flex h-8 items-center gap-2 rounded-lg border border-white/8 bg-[#121c31] px-2">
+                  <input
+                    value={cabinetDims.height}
+                    onChange={e => onCabinetDimsChange(v => ({ ...v, height: toNum(e.target.value, 0) }))}
+                    className="w-full bg-transparent text-xs text-white outline-none"
+                  />
+                  <span className="text-[11px] text-slate-500">cm</span>
+                </div>
+              </label>
+              <label className="text-slate-300">
+                <span className="mb-1 block text-[10px] uppercase tracking-[0.12em] text-slate-500">Plinthe</span>
+                <div className="flex h-8 items-center gap-2 rounded-lg border border-white/8 bg-[#121c31] px-2">
+                  <input
+                    value={cabinetDims.plinth}
+                    onChange={e => onCabinetDimsChange(v => ({ ...v, plinth: toNum(e.target.value, 0) }))}
+                    className="w-full bg-transparent text-xs text-white outline-none"
+                  />
+                  <span className="text-[11px] text-slate-500">cm</span>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-white/8 bg-white/[0.03] px-2.5 py-2">
+            <div className="mb-1.5 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+              <PanelsTopLeft className="h-4 w-4 text-sky-300" />
+              Largeurs des Modules
+            </div>
+            <div className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-5">
+              {facadeModules.map((m, i) => (
+                <label key={m.id || i} className="text-slate-300">
+                  <span className="mb-1 block text-[10px] uppercase tracking-[0.12em] text-slate-500">M{i + 1}</span>
+                  <div className="flex h-8 items-center gap-2 rounded-lg border border-white/8 bg-[#121c31] px-2">
+                    <input
+                      value={widthInputs[i] ?? ''}
+                      onChange={e => onWidthInputChange(i, e.target.value)}
+                      onBlur={() => onCommitWidth(i)}
+                      onKeyDown={e => { if (e.key === 'Enter') { onCommitWidth(i); e.target.blur(); } }}
+                      className="w-full bg-transparent text-xs text-white outline-none"
+                    />
+                    <span className="text-[11px] text-slate-500">cm</span>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* ── Coulissantes globales + détails menuiserie ── */}
       {facadeModules.length > 0 && (
-        <div className="bg-slate-900/95 border-b border-slate-700 px-3 py-2 flex flex-wrap items-center gap-3 text-xs">
-          <span className="text-cyan-300 font-bold">🚪↔️ Coulissantes meuble:</span>
+        <div className="border-b border-white/10 bg-[#0b1221] px-4 py-2.5">
+          <div className="flex flex-wrap items-center gap-2.5 text-xs">
+          <span className="rounded-full border border-cyan-400/20 bg-cyan-500/10 px-2.5 py-1 font-semibold text-cyan-300">Coulissantes meuble</span>
           <label className="flex items-center gap-1 text-slate-200">
             <input
               type="checkbox"
@@ -127,7 +228,7 @@ export default function SketchToolbar({
             </>
           )}
 
-          <span className="text-amber-300 font-bold">🧩 Détail menuiserie:</span>
+          <span className="ml-2 rounded-full border border-amber-400/20 bg-amber-500/10 px-2.5 py-1 font-semibold text-amber-300">Détail menuiserie</span>
           <div className="flex items-center gap-1">
             {facadeModules.map((_, i) => (
               <button
@@ -154,7 +255,7 @@ export default function SketchToolbar({
                   if (from !== null && from !== i) onMoveModule?.(from, i);
                 }}
                 onClick={() => onSelectModuleIdx(i)}
-                className={`px-2 py-1 rounded border ${selectedModuleIdx === i ? 'bg-amber-500/20 border-amber-400 text-amber-300' : 'bg-slate-800 border-slate-600 text-slate-300'} ${dragOverIdx === i ? 'border-l-[2px] border-l-blue-500' : ''}`}
+                className={`rounded-xl border px-2.5 py-1.5 ${selectedModuleIdx === i ? 'bg-amber-500/20 border-amber-400 text-amber-300' : 'bg-slate-800 border-slate-600 text-slate-300'} ${dragOverIdx === i ? 'border-l-[2px] border-l-blue-500' : ''}`}
               >
                 M{i + 1}
               </button>
@@ -232,9 +333,9 @@ export default function SketchToolbar({
             </div>
           )}
         </div>
+        </div>
       )}
 
-      {/* ── FAB mobile (fixe en bas à droite) ── */}
       {isCompactMobile && (
         <div className="fixed bottom-4 right-3 z-[60] flex flex-col gap-2">
           <button

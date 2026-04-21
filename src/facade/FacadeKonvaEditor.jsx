@@ -398,18 +398,28 @@ const FacadeKonvaEditor = React.forwardRef(function FacadeKonvaEditor({
       }
       const scaleBy  = newDist / lastDist.current;
       const stage    = stageRef.current;
+      if (!stage) return;
       const oldScale = stage.scaleX();
       const newScale = Math.max(0.5, Math.min(4, oldScale * scaleBy));
-      const pointer  = stage.getPointerPosition();
-      if (!pointer) return;
+      const containerRect = stage.container().getBoundingClientRect();
+      const center = {
+        x: newCenter.x - containerRect.left,
+        y: newCenter.y - containerRect.top,
+      };
+      const deltaCenter = lastCenter.current
+        ? {
+            x: newCenter.x - lastCenter.current.x,
+            y: newCenter.y - lastCenter.current.y,
+          }
+        : { x: 0, y: 0 };
       const mousePointTo = {
-        x: (pointer.x - stage.x()) / oldScale,
-        y: (pointer.y - stage.y()) / oldScale,
+        x: (center.x - stage.x()) / oldScale,
+        y: (center.y - stage.y()) / oldScale,
       };
       setScale(newScale);
       setPosition({
-        x: pointer.x - mousePointTo.x * newScale,
-        y: pointer.y - mousePointTo.y * newScale,
+        x: center.x - mousePointTo.x * newScale + deltaCenter.x,
+        y: center.y - mousePointTo.y * newScale + deltaCenter.y,
       });
       lastDist.current   = newDist;
       lastCenter.current = newCenter;

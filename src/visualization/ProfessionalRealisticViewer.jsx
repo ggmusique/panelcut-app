@@ -834,7 +834,7 @@ function SceneControls({ viewPreset, Wm, Hm, Dm, cabZ, camDist, autoRotate, glCa
    ═══════════════════════════════════════════════════════════════ */
 
 const ProfessionalRealisticViewer = forwardRef(function ProfessionalRealisticViewer(
-  { cabinet, name, fullScreen = false, presentationMode = false, isCapturing = false, initialFinish = 'oak', onFinishChange },
+  { cabinet, name, fullScreen = false, presentationMode = false, isCapturing = false, initialFinish = 'oak', onFinishChange, viewerHeight = 620, embedded = false },
   ref
 ) {
   if (!cabinet || !cabinet.width || !cabinet.height) {
@@ -899,7 +899,7 @@ const ProfessionalRealisticViewer = forwardRef(function ProfessionalRealisticVie
     <div className={`relative w-full`} onWheel={e => e.stopPropagation()}>
       <div
         className={`relative w-full overflow-hidden shadow-2xl ${fullScreen ? 'rounded-none' : 'rounded-2xl'}`}
-        style={{ height: fullScreen ? '100dvh' : 620, background: isCapturing ? '#ffffff' : undefined }}
+        style={{ height: fullScreen ? '100dvh' : viewerHeight, background: isCapturing ? '#ffffff' : undefined }}
       >
         <Canvas
           shadows
@@ -981,7 +981,7 @@ const ProfessionalRealisticViewer = forwardRef(function ProfessionalRealisticVie
       </div>
 
       {/* View preset buttons — 3×2 grid, shown below canvas */}
-      {!isCapturing && (
+      {!isCapturing && !embedded && (
         <>
           <div className="grid grid-cols-3 gap-1.5 mt-2 px-0.5">
             {VIEW_PRESETS.map(v => (

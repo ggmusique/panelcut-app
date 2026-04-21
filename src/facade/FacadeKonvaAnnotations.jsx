@@ -29,6 +29,17 @@ function DeleteCross({ x, y, onClick }) {
   );
 }
 
+function stagePointToViewport(stage, point) {
+  if (!stage || !point) return { x: 0, y: 0 };
+  const rect = stage.container().getBoundingClientRect();
+  const scaleX = stage.scaleX() || 1;
+  const scaleY = stage.scaleY() || 1;
+  return {
+    x: rect.left + stage.x() + point.x * scaleX,
+    y: rect.top + stage.y() + point.y * scaleY,
+  };
+}
+
 // ── HTML input overlay (portal) ───────────────────────────────────────────────
 
 /**
@@ -122,11 +133,11 @@ function DimElement({
     e.cancelBubble = true;
     const stage = stageRef?.current;
     if (!stage) return;
-    const cr   = stage.container().getBoundingClientRect();
-    const pos  = stage.getPointerPosition() || { x: midX, y: midY };
+    const pointerPos = stage.getRelativePointerPosition?.() ?? stage.getPointerPosition();
+    const pos = stagePointToViewport(stage, pointerPos || { x: midX, y: midY });
     setBubbleScreen({
-      x: cr.left + pos.x - BUBBLE_W / 2,
-      y: cr.top  + pos.y - BUBBLE_H / 2 - 4,
+      x: pos.x - BUBBLE_W / 2,
+      y: pos.y - BUBBLE_H / 2 - 4,
     });
     setEditingLabel(true);
   }, [stageRef, midX, midY]);
@@ -356,9 +367,9 @@ function NoteElement({ el, isErase, onUpdate, onRemove, stageRef }) {
     e.cancelBubble = true;
     const stage = stageRef?.current;
     if (!stage) return;
-    const cr  = stage.container().getBoundingClientRect();
-    const pos = stage.getPointerPosition() || { x, y };
-    setNoteScreen({ x: cr.left + pos.x, y: cr.top + pos.y - 14 });
+    const pointerPos = stage.getRelativePointerPosition?.() ?? stage.getPointerPosition();
+    const pos = stagePointToViewport(stage, pointerPos || { x, y });
+    setNoteScreen({ x: pos.x, y: pos.y - 14 });
     setEditingText(true);
   }, [stageRef, x, y]);
 
@@ -554,13 +565,13 @@ export default function FacadeKonvaAnnotations({
     setDimPreview(null);
 
     // Open label input immediately
-    const cr = stage?.container().getBoundingClientRect();
     const mx = (newDim.x1 + newDim.x2) / 2;
     const my = (newDim.y1 + newDim.y2) / 2;
+    const midScreen = stagePointToViewport(stage, { x: mx, y: my });
     setPendingDim(newDim);
     setPendingLabelPos({
-      x: (cr?.left ?? 0) + mx - BUBBLE_W / 2,
-      y: (cr?.top  ?? 0) + my - BUBBLE_H / 2 - 4,
+      x: midScreen.x - BUBBLE_W / 2,
+      y: midScreen.y - BUBBLE_H / 2 - 4,
     });
   }, [isDim, drawing, dimStart]);
 
@@ -570,11 +581,11 @@ export default function FacadeKonvaAnnotations({
     const stage = e.target.getStage();
     const pos   = stage?.getRelativePointerPosition?.() ?? stage?.getPointerPosition();
     if (!pos) return;
-    const cr    = stage?.container().getBoundingClientRect();
     noteStagePos.current = pos;
+    const noteScreenPos = stagePointToViewport(stage, pos);
     setNoteInputPos({
-      x: (cr?.left ?? 0) + pos.x,
-      y: (cr?.top  ?? 0) + pos.y - 14,
+      x: noteScreenPos.x,
+      y: noteScreenPos.y - 14,
     });
   }, [isNote]);
 

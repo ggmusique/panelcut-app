@@ -58,7 +58,11 @@ const SketchEditorCanvas = forwardRef(function SketchEditorCanvas(
   return (
     <>
       <div className="flex-1 overflow-auto bg-slate-950 flex justify-center p-4">
-        <div ref={wrapperRef} style={{ position: 'relative', overflow: 'visible', width: '100%' }}>
+        <div
+          ref={wrapperRef}
+          className="rounded-[28px] border border-white/10 bg-[radial-gradient(circle_at_top,#fffef9_0%,#f9f5ea_38%,#efe8d7_100%)] p-4 shadow-[0_24px_80px_rgba(0,0,0,0.35)]"
+          style={{ position: 'relative', overflow: 'visible', width: '100%' }}
+        >
           <FacadeKonvaEditor
             ref={konvaEditorRef}
             svgW={FACADE_W} svgH={FACADE_H}
@@ -96,21 +100,23 @@ const SketchEditorCanvas = forwardRef(function SketchEditorCanvas(
                 position: 'absolute',
                 top,
                 left,
-                background: 'var(--bg-card)',
-                border: '0.5px solid var(--border)',
-                borderRadius: 'var(--radius-sm)',
-                padding: '10px 14px',
-                boxShadow: '0 4px 16px rgba(0,0,0,.12)',
+                background: 'rgba(15, 23, 42, 0.94)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: 16,
+                padding: '12px 14px',
+                boxShadow: '0 18px 48px rgba(15,23,42,.28)',
                 zIndex: 30,
                 minWidth: 180,
-                color: 'var(--text1)',
+                color: '#f8fafc',
+                backdropFilter: 'blur(10px)',
               }}>
-                <div style={{ fontSize: 13, fontWeight: 500 }}>Module {selectedModule.modIdx + 1}</div>
-                <div style={{ fontSize: 12, color: 'var(--text2)' }}>{mod.width.toFixed(1)} cm</div>
-                <hr style={{ margin: '6px 0', borderColor: 'var(--border)', border: 'none', borderTop: '1px solid var(--border)' }} />
+                <div style={{ fontSize: 11, letterSpacing: '0.16em', textTransform: 'uppercase', color: '#94a3b8', marginBottom: 4 }}>Module sélectionné</div>
+                <div style={{ fontSize: 15, fontWeight: 600 }}>Module {selectedModule.modIdx + 1}</div>
+                <div style={{ fontSize: 12, color: '#cbd5e1' }}>{mod.width.toFixed(1)} cm</div>
+                <hr style={{ margin: '8px 0', borderColor: 'rgba(255,255,255,0.08)', border: 'none', borderTop: '1px solid rgba(255,255,255,0.08)' }} />
                 <div style={{ display: 'flex', gap: 12, fontSize: 12 }}>
                   <button
-                    style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', padding: 0, fontSize: 12 }}
+                    style={{ background: 'none', border: 'none', color: '#fda4af', cursor: 'pointer', padding: 0, fontSize: 12 }}
                     onClick={() => {
                       onModuleErase(selectedModule.modIdx);
                       setSelectedModule(null);
@@ -119,7 +125,7 @@ const SketchEditorCanvas = forwardRef(function SketchEditorCanvas(
                     × Supprimer module
                   </button>
                   <button
-                    style={{ background: 'none', border: 'none', color: 'var(--text1)', cursor: 'pointer', padding: 0, fontSize: 12 }}
+                    style={{ background: 'none', border: 'none', color: '#f8fafc', cursor: 'pointer', padding: 0, fontSize: 12 }}
                     onClick={() => {
                       const { modIdx } = selectedModule;
                       onModuleChange(prev => {
@@ -139,12 +145,12 @@ const SketchEditorCanvas = forwardRef(function SketchEditorCanvas(
         </div>
       </div>
 
-      <div className="bg-slate-900 border-t border-slate-700 p-2">
+      <div className="border-t border-white/10 bg-[#0c1322] p-3">
         <textarea
           value={generalNotes}
           onChange={e => onGeneralNotesChange(e.target.value)}
-          placeholder="📝 Notes pour Claude (ex: 2 tiroirs en bas du module 3, porte vitrée à gauche...)"
-          className="w-full h-16 px-3 py-2 bg-slate-800 border border-slate-600 rounded text-sm text-slate-200 placeholder-slate-500 resize-none"
+          placeholder="Notes du concepteur: 2 tiroirs en bas du module 3, porte vitrée à gauche, finition chêne clair..."
+          className="h-20 w-full rounded-2xl border border-white/10 bg-[linear-gradient(180deg,#131c31,#0d1526)] px-4 py-3 text-sm text-slate-200 placeholder-slate-500 shadow-inner outline-none resize-none"
         />
       </div>
     </>

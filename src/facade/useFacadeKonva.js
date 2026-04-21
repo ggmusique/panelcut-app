@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useRef } from 'react';
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { uid } from '../utils/sketchEditorConstants';
 import { SNAP_THRESHOLD } from './konvaTheme';
 
@@ -89,6 +89,19 @@ export function useFacadeKonva({
   };
   const modules = currentSnapshot.modules;
   const items   = currentSnapshot.items;
+
+  useEffect(() => {
+    const nextModules = initialModules || [];
+    const nextItems   = initialItems || [];
+    const modulesChangedExternally = currentSnapshot.modules !== nextModules;
+    const itemsChangedExternally   = currentSnapshot.items !== nextItems;
+
+    if (!modulesChangedExternally && !itemsChangedExternally) return;
+
+    historyRef.current = [{ modules: nextModules, items: nextItems }];
+    historyIndexRef.current = 0;
+    setHistoryIndex(0);
+  }, [initialModules, initialItems, currentSnapshot.modules, currentSnapshot.items]);
 
   // ── État de l'UI ──────────────────────────────────────────────────────────
   const [selectedId,        setSelectedId]        = useState(null);

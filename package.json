@@ -10,15 +10,15 @@
     "html2canvas": "^1.4.1",
     "i18next": "^23.7.6",
     "jspdf": "^4.2.1",
+    "konva": "^9.3.14",
     "lucide-react": "^1.0.1",
     "react": "18.2.0",
     "react-dom": "18.2.0",
     "react-i18next": "^13.5.0",
+    "react-konva": "^18.2.10",
     "react-router-dom": "^6.20.0",
     "react-scripts": "5.0.1",
     "tesseract.js": "^7.0.0",
-    "konva": "^9.3.14",
-    "react-konva": "^18.2.10",
     "three": "^0.160.0"
   },
   "scripts": {
@@ -27,6 +27,7 @@
     "prebuild": "node scripts/version.js",
     "build": "node node_modules/react-scripts/bin/react-scripts.js build",
     "test": "react-scripts test",
+    "test:e2e": "playwright test",
     "eject": "react-scripts eject"
   },
   "browserslist": {
@@ -39,6 +40,7 @@
     ]
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "autoprefixer": "^10.4.27",
     "postcss": "^8.5.8",
     "tailwindcss": "^3.4.1"

@@ -498,7 +498,6 @@ function SlidingDoorsItem({ intLeft, intTop, iW, iH, modIdx, isEraseTool, onRemo
       {hovered && !isEraseTool && (
         <DeleteCross x={intLeft + iW - 16} y={intTop - 8} onClick={(e) => { e.cancelBubble = true; onRemoveElement?.(modIdx, 'sliding'); }} />
       )}
-      )}
     </Group>
   );
 }
